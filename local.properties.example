@@ -1,0 +1,9 @@
+## local.properties.example
+## Copia este archivo como 'local.properties' y asigna los valores correspondientes.
+
+# Ubicacion del Android SDK (generalmente configurado de forma automatica por Android Studio)
+# sdk.dir=C\:\\Users\\USER\\AppData\\Local\\Android\\Sdk
+
+# Configuracion del servicio de Inteligencia Artificial
+AI_BASE_URL=https://api.example.com/
+AI_API_KEY=tu_api_key_aqui
