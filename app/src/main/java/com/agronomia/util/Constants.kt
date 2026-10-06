@@ -15,6 +15,9 @@ object Constants {
     /** Prefijo MIME de la imagen enviada como data URL en Base64. */
     const val IMAGE_DATA_URL_PREFIX = "data:image/jpeg;base64,"
 
+    /** Ruta del endpoint de identificación relativa a la base URL. */
+    const val IDENTIFY_PATH = "v1/chat/completions"
+
     /** Prompt que fuerza una respuesta JSON con los campos requeridos. */
     val IDENTIFY_PROMPT: String = """
         Actúa como botánico experto. Analiza la imagen y identifica la planta.

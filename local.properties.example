@@ -5,8 +5,12 @@
 # sdk.dir=C\:\\Users\\USER\\AppData\\Local\\Android\\Sdk
 
 # Configuracion del servicio de Inteligencia Artificial
-# AI_BASE_URL: host raiz que termina en "/" (Retrofit agrega el path del endpoint)
-AI_BASE_URL=https://api.example.com/
-AI_API_KEY=tu_api_key_aqui
-# Modelo de chat/vision a usar (ajusta al de tu proveedor)
+# Tu URL base y API key personales:
+AI_BASE_URL=http://192.168.17.11:3000/
+AI_API_KEY=sk-b592494f4b7f43f58d2c13362d6494ad
+# Modelo de chat/vision a usar (ajusta al de tu proveedor local)
 AI_MODEL=gpt-4o-mini
+
+# Si tu servidor usa un path diferente para la ruta de identificación,
+# descomenta y cambia la siguiente línea (ej. "identify" o deja vacío "")
+# AI_IDENTIFY_PATH=v1/chat/completions
