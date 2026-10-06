@@ -34,9 +34,13 @@ android {
         val aiApiKey: String = (localProperties.getProperty("AI_API_KEY") ?: "")
             .trim()
             .removeSurrounding("\"")
+        val aiModel: String = (localProperties.getProperty("AI_MODEL") ?: "gpt-4o-mini")
+            .trim()
+            .removeSurrounding("\"")
 
         buildConfigField("String", "AI_BASE_URL", "\"$aiBaseUrl\"")
         buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
+        buildConfigField("String", "AI_MODEL", "\"$aiModel\"")
     }
 
     buildTypes {
