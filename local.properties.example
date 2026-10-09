@@ -12,7 +12,7 @@
 # --- Google Gemini (endpoint compatible con OpenAI) ---
 AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 AI_API_KEY=TU_API_KEY_AQUI
-AI_MODEL=gemini-3.8-flash
+AI_MODEL=gemini-3.5-flash-lite
 AI_IDENTIFY_PATH=chat/completions
 
 # --- Alternativa: OpenAI ---

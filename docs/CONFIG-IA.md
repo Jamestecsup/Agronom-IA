@@ -41,13 +41,25 @@ AI_IDENTIFY_PATH=v1/chat/completions
 ```properties
 AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 AI_API_KEY=<tu API key de Gemini>
-AI_MODEL=gemini-3.8-flash
+AI_MODEL=gemini-3.5-flash-lite
 AI_IDENTIFY_PATH=chat/completions
 ```
 
 - Endpoint final: `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
   (ojo: **sin** el `/v1/` extra que usa OpenAI).
-- Modelos alternativos: `gemini-3.5-flash-lite`, `gemini-2.5-flash`.
+
+### Elección de modelo (medido con la clave real)
+
+| Modelo | Texto | Imagen (760 KB) | Veredicto |
+|---|---|---|---|
+| `gemini-3.8-flash` | 86 s (luego 503) | timeout >150 s | Saturado / demasiado lento |
+| `gemini-3.5-flash-lite` | **1.6 s** | **17.8 s** | ✅ ELEGIDO (JSON correcto) |
+| `gemini-2.5-flash` | 404 | 404 | Retirado por Google |
+
+`gemini-3.8-flash` "piensa" por defecto y además da `503 UNAVAILABLE` por alta
+demanda, así que con nuestro timeout de lectura (60 s) fallaría. Por eso el
+modelo por defecto es `gemini-3.5-flash-lite`, que identifica correctamente
+(ej.: girasol → `Helianthus annuus`, confianza 0.99).
 
 ## Otras alternativas (mismo formato)
 
