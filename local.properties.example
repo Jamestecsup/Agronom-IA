@@ -25,7 +25,8 @@ AI_IDENTIFY_PATH=chat/completions
 # AI_MODEL=llama3.2-vision
 # AI_IDENTIFY_PATH=chat/completions
 
-# --- Alternativa: tu IA institucional propia ---
-# AI_BASE_URL=http://TU_SERVIDOR:3000/
+# --- IA ORIGINAL (institucional, red privada) ---
+# Ver docs/CONFIG-IA.md. Endpoint: http://192.168.17.11:3000/v1/chat/completions
+# AI_BASE_URL=http://192.168.17.11:3000/
 # AI_MODEL=gpt-4o-mini
 # AI_IDENTIFY_PATH=v1/chat/completions

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest solo para builds de DEBUG.
+  Permite HTTP en claro para poder probar contra la IA local/institucional
+  (p. ej. http://192.168.17.11:3000) sin debilitar la build de release.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>
