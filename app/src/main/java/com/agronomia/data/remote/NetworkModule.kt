@@ -23,6 +23,11 @@ object NetworkModule {
         explicitNulls = false
         isLenient = true
         coerceInputValues = true
+        // Clave para que la API de IA funcione: kotlinx.serialization omite por
+        // defecto los valores que son iguales al default (p. ej. type="json_object"
+        // de ResponseFormat o temperature=0.0). Sin esto el servidor recibe
+        // "response_format":{} y responde 400 "Invalid response format type".
+        encodeDefaults = true
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -32,6 +37,7 @@ object NetworkModule {
         level = HttpLoggingInterceptor.Level.BASIC
         // Defensa extra por si en el futuro se sube el nivel de logging.
         redactHeader("Authorization")
+        redactHeader("x-goog-api-key")
     }
 
     private val okHttpClient: OkHttpClient by lazy {
