@@ -26,14 +26,20 @@ object NetworkModule {
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
+        // BASIC solo registra método, URL y código de estado.
+        // NO usar Level.BODY/HEADERS: imprimiría la cabecera Authorization
+        // (API key) y el Base64 completo de la imagen.
         level = HttpLoggingInterceptor.Level.BASIC
+        // Defensa extra por si en el futuro se sube el nivel de logging.
+        redactHeader("Authorization")
     }
 
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .writeTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .connectTimeout(Constants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            // Lectura/escritura amplias: subir la imagen y esperar a la IA puede tardar.
+            .readTimeout(Constants.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(Constants.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .addInterceptor(loggingInterceptor)
             .build()
     }

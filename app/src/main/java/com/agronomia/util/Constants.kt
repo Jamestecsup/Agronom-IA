@@ -7,7 +7,16 @@ object Constants {
     val API_KEY: String = BuildConfig.AI_API_KEY
     val AI_MODEL: String = BuildConfig.AI_MODEL
 
-    const val NETWORK_TIMEOUT_SECONDS = 30L
+    /**
+     * Timeouts de red. La subida de una imagen puede tardar más que una petición
+     * normal, por eso read/write son más amplios que el de conexión.
+     */
+    const val CONNECT_TIMEOUT_SECONDS = 30L
+    const val READ_TIMEOUT_SECONDS = 60L
+    const val WRITE_TIMEOUT_SECONDS = 60L
+
+    /** Umbral mínimo de confianza para aceptar una identificación. */
+    const val MIN_CONFIDENCE = 0.5f
 
     /** Cabecera de autorización enviada a la API. */
     const val AUTH_HEADER_PREFIX = "Bearer"
@@ -15,21 +24,24 @@ object Constants {
     /** Prefijo MIME de la imagen enviada como data URL en Base64. */
     const val IMAGE_DATA_URL_PREFIX = "data:image/jpeg;base64,"
 
-    /** Ruta del endpoint de identificación relativa a la base URL. */
-    const val IDENTIFY_PATH = "v1/chat/completions"
-
-    /** Prompt que fuerza una respuesta JSON con los campos requeridos. */
+    /**
+     * Prompt que fuerza una respuesta JSON con los campos requeridos.
+     * Si la IA no está segura, debe devolver "unknown" en vez de inventar.
+     */
     val IDENTIFY_PROMPT: String = """
-        Actúa como botánico experto. Analiza la imagen y identifica la planta.
-        Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional,
-        sin explicaciones y sin bloques de código Markdown, con exactamente
-        estas claves:
+        Actúa como botánico experto. Analiza la imagen e identifica la planta.
+
+        Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin
+        explicaciones y sin bloques de código Markdown, con exactamente estas claves:
         {
           "commonName": "nombre común de la planta",
           "scientificName": "nombre científico de la planta",
           "confidence": 0.0
         }
-        Donde "confidence" es un número entre 0 y 1 que indica tu nivel de
-        confianza en la identificación.
+        Donde "confidence" es un número entre 0 y 1 que indica tu nivel de confianza.
+
+        Si no estás seguro, si la imagen no muestra una planta o si no puedes
+        identificarla, devuelve exactamente:
+        {"commonName":"unknown","scientificName":"unknown","confidence":0.0}
     """.trimIndent()
 }
