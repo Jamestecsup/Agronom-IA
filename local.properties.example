@@ -5,9 +5,11 @@
 # sdk.dir=C\:\\Users\\USER\\AppData\\Local\\Android\\Sdk
 
 # Configuracion del servicio de Inteligencia Artificial
-# Tu URL base y API key personales:
-AI_BASE_URL=http://192.168.17.11:3000/
-AI_API_KEY=sk-b592494f4b7f43f58d2c13362d6494ad
+# Tu URL base y API key personales. NO escribas valores reales aqui:
+# este archivo SI se versiona. Copia el ejemplo a 'local.properties' y ahi
+# coloca tus credenciales (local.properties esta en .gitignore).
+AI_BASE_URL=http://TU_SERVIDOR:3000/
+AI_API_KEY=TU_API_KEY_AQUI
 # Modelo de chat/vision a usar (ajusta al de tu proveedor local)
 AI_MODEL=gpt-4o-mini
 
