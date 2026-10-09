@@ -1,0 +1,16 @@
+# Obsidian machine-specific workspace state
+/.obsidian/
+/Bienvenido.md
+
+# Android Studio and Gradle local files
+**/.idea/
+**/.gradle/
+**/build/
+**/local.properties
+**/.externalNativeBuild/
+**/.cxx/
+*.iml
+*.apk
+*.aab
+*.jks
+*.keystore

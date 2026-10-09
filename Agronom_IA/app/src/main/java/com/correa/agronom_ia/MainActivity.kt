@@ -1,0 +1,170 @@
+package com.correa.agronom_ia
+
+import android.net.Uri
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.correa.agronom_ia.ui.theme.Agronom_IATheme
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { Agronom_IATheme { PlantPhotoScreen() } }
+    }
+}
+
+@Composable
+private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
+    val state by model.state.collectAsState()
+    val context = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> -> model.addUris(context, uris) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved -> model.onCameraResult(context, saved) }
+    LaunchedEffect(state.message) {
+        state.message?.let { snackbar.showSnackbar(it); model.clearMessage() }
+    }
+
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = MaterialTheme.colorScheme.background) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 22.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("HERBARIO", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("Identifica tus plantas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Selecciona fotos claras de la planta. Puedes agregar hasta cinco imágenes.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { gallery.launch("image/*") }, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("Elegir fotos") }
+                    Button(onClick = { model.prepareCamera(context, camera) }, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("Tomar foto") }
+                }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Imágenes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text("${state.photos.size} de ${PlantPhotoViewModel.MAX_PHOTOS}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (state.photos.isEmpty()) {
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Aún no hay imágenes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                            Text("Selecciona al menos una imagen para continuar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            } else {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        state.photos.forEach { photo ->
+                            Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.width(156.dp)) {
+                                Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (photo.preview != null) Image(photo.preview.asImageBitmap(), contentDescription = "Vista previa de ${photo.name}", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(11.dp)))
+                                    else Box(Modifier.fillMaxWidth().aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp) }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(photo.name, maxLines = 1, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                                        TextButton(onClick = { model.remove(photo.id) }, enabled = !state.busy) { Text("Quitar") }
+                                    }
+                                    Text(photo.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (state.error != null) item { Text(state.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            if (state.busy) item {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text(state.progress ?: "Validando imágenes…", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            item {
+                Button(onClick = { model.upload() }, enabled = state.photos.isNotEmpty() && !state.busy && !state.uploaded, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text(if (state.uploaded) "Guardadas correctamente" else "Guardar imágenes")
+                }
+            }
+            if (state.uploaded && state.analysis == null) item {
+                OutlinedButton(onClick = { model.analyze() }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Analizar planta con IA") }
+            }
+            state.analysis?.let { analysis -> item { AnalysisCard(analysis) } }
+            item { Spacer(Modifier.height(4.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun AnalysisCard(analysis: PlantAnalysis) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Resultado del análisis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(if (analysis.identified) analysis.commonName else "No se pudo identificar con seguridad", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+            if (analysis.scientificName.isNotBlank()) Text(analysis.scientificName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Confianza estimada: ${analysis.confidence}", style = MaterialTheme.typography.labelLarge)
+            AnalysisDetail("Descripción", analysis.description)
+            AnalysisDetail("Riego", analysis.watering)
+            AnalysisDetail("Iluminación", analysis.lighting)
+            AnalysisDetail("Sustrato", analysis.substrate)
+            AnalysisDetail("Cuidados", analysis.care)
+            AnalysisDetail("Incertidumbre", analysis.uncertainty)
+            Text("La identificación es orientativa y puede ser incorrecta. Verifica especies tóxicas antes de manipularlas o consumirlas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun AnalysisDetail(title: String, text: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
