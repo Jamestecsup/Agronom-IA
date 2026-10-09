@@ -65,6 +65,7 @@ class PlantRepositoryImpl(
 
             try {
                 val response = apiService.identifyPlant(
+                    url = Constants.identifyEndpointUrl(),
                     authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
                     request = buildRequest(imageBase64)
                 )

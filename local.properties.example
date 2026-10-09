@@ -8,11 +8,24 @@
 # Tu URL base y API key personales. NO escribas valores reales aqui:
 # este archivo SI se versiona. Copia el ejemplo a 'local.properties' y ahi
 # coloca tus credenciales (local.properties esta en .gitignore).
-AI_BASE_URL=http://TU_SERVIDOR:3000/
-AI_API_KEY=TU_API_KEY_AQUI
-# Modelo de chat/vision a usar (ajusta al de tu proveedor local)
-AI_MODEL=gpt-4o-mini
 
-# Si tu servidor usa un path diferente para la ruta de identificación,
-# descomenta y cambia la siguiente línea (ej. "identify" o deja vacío "")
+# --- Google Gemini (endpoint compatible con OpenAI) ---
+AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+AI_API_KEY=TU_API_KEY_AQUI
+AI_MODEL=gemini-3.8-flash
+AI_IDENTIFY_PATH=chat/completions
+
+# --- Alternativa: OpenAI ---
+# AI_BASE_URL=https://api.openai.com/
+# AI_MODEL=gpt-4o-mini
+# AI_IDENTIFY_PATH=v1/chat/completions
+
+# --- Alternativa: servidor local (Ollama / LM Studio) ---
+# AI_BASE_URL=http://192.168.1.10:11434/v1/
+# AI_MODEL=llama3.2-vision
+# AI_IDENTIFY_PATH=chat/completions
+
+# --- Alternativa: tu IA institucional propia ---
+# AI_BASE_URL=http://TU_SERVIDOR:3000/
+# AI_MODEL=gpt-4o-mini
 # AI_IDENTIFY_PATH=v1/chat/completions

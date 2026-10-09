@@ -8,6 +8,12 @@ object Constants {
     val AI_MODEL: String = BuildConfig.AI_MODEL
 
     /**
+     * Ruta del endpoint de chat relativa a [BASE_URL].
+     * OpenAI: "v1/chat/completions"  |  Gemini: "chat/completions"
+     */
+    val IDENTIFY_PATH: String = BuildConfig.AI_IDENTIFY_PATH
+
+    /**
      * Timeouts de red. La subida de una imagen puede tardar más que una petición
      * normal, por eso read/write son más amplios que el de conexión.
      */
@@ -44,4 +50,14 @@ object Constants {
         identificarla, devuelve exactamente:
         {"commonName":"unknown","scientificName":"unknown","confidence":0.0}
     """.trimIndent()
+
+    /**
+     * Construye la URL completa del endpoint de identificación a partir de
+     * [BASE_URL] y [IDENTIFY_PATH]. Evita duplicar o perder barras.
+     */
+    fun identifyEndpointUrl(): String {
+        val base = BASE_URL.trim().let { if (it.endsWith("/")) it else "$it/" }
+        val path = IDENTIFY_PATH.trim().trimStart('/')
+        return base + path
+    }
 }

@@ -37,10 +37,18 @@ android {
         val aiModel: String = (localProperties.getProperty("AI_MODEL") ?: "gpt-4o-mini")
             .trim()
             .removeSurrounding("\"")
+        // Ruta del endpoint de chat, relativa a AI_BASE_URL.
+        // OpenAI: "v1/chat/completions"  |  Gemini: "chat/completions"
+        val aiIdentifyPath: String = (
+            localProperties.getProperty("AI_IDENTIFY_PATH") ?: "v1/chat/completions"
+            )
+            .trim()
+            .removeSurrounding("\"")
 
         buildConfigField("String", "AI_BASE_URL", "\"$aiBaseUrl\"")
         buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
         buildConfigField("String", "AI_MODEL", "\"$aiModel\"")
+        buildConfigField("String", "AI_IDENTIFY_PATH", "\"$aiIdentifyPath\"")
     }
 
     buildTypes {
