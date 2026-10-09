@@ -3,8 +3,10 @@ package com.agronomia.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
 import android.util.Base64
+import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -27,6 +29,7 @@ object ImageUtils {
      * Convierte un [Uri] de imagen a Base64.
      *
      * - Valida que sea JPG, PNG o WEBP.
+     * - Corrige la orientación según la etiqueta EXIF (fotos de cámara rotadas).
      * - Reduce el lado mayor a un máximo de 1024 px manteniendo la proporción.
      * - Recomprime a JPEG con calidad 80.
      * - Devuelve los bytes JPEG codificados en Base64 (sin saltos de línea).
@@ -55,7 +58,11 @@ object ImageUtils {
                     }
                 }
 
-                // 2. Leer dimensiones sin cargar el bitmap en memoria.
+                // 2. Leer la orientación EXIF antes de decodificar.
+                //    Las fotos de cámara suelen guardarse rotadas y con la orientación en EXIF.
+                val orientation = readExifOrientation(context, uri)
+
+                // 3. Leer dimensiones sin cargar el bitmap en memoria.
                 val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 try {
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -76,16 +83,16 @@ object ImageUtils {
                     )
                 }
 
-                // 3. Calcular inSampleSize para no cargar un bitmap gigante en memoria.
+                // 4. Calcular inSampleSize para no cargar un bitmap gigante en memoria.
                 val maxSide = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
                 boundsOptions.inSampleSize = calculateInSampleSize(maxSide)
 
-                // 4. Decodificar bitmap real.
+                // 5. Decodificar bitmap real (de forma escalada).
                 val decodeOptions = BitmapFactory.Options().apply {
                     inSampleSize = boundsOptions.inSampleSize
                     inPreferredConfig = Bitmap.Config.ARGB_8888
                 }
-                var bitmap: Bitmap? = try {
+                val decoded: Bitmap? = try {
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         BitmapFactory.decodeStream(input, null, decodeOptions)
                     }
@@ -96,21 +103,29 @@ object ImageUtils {
                     )
                 }
 
-                if (bitmap == null) {
+                if (decoded == null) {
                     return@withContext Resource.Error(
                         "No se pudo decodificar la imagen. El archivo podría estar dañado o no ser JPG, PNG ni WEBP."
                     )
                 }
 
+                var bitmap: Bitmap = decoded
                 try {
-                    // 5. Escalar a máximo 1024 px de lado manteniendo proporción.
+                    // 6. Corregir la orientación según EXIF.
+                    val oriented = applyExifOrientation(bitmap, orientation)
+                    if (oriented !== bitmap && !bitmap.isRecycled) {
+                        bitmap.recycle()
+                    }
+                    bitmap = oriented
+
+                    // 7. Escalar a máximo 1024 px de lado manteniendo proporción.
                     val scaled = scaleDown(bitmap, MAX_SIDE_PX)
-                    if (scaled !== bitmap && bitmap.isRecycled.not()) {
+                    if (scaled !== bitmap && !bitmap.isRecycled) {
                         bitmap.recycle()
                     }
                     bitmap = scaled
 
-                    // 6. Comprimir a JPEG calidad 80.
+                    // 8. Comprimir a JPEG calidad 80.
                     val output = ByteArrayOutputStream()
                     val compressed = bitmap.compress(
                         Bitmap.CompressFormat.JPEG,
@@ -129,12 +144,12 @@ object ImageUtils {
                         )
                     }
 
-                    // 7. Codificar a Base64.
+                    // 9. Codificar a Base64 (NO_WRAP: sin saltos de línea).
                     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                     Resource.Success(base64)
                 } finally {
                     // Evitar fugas de memoria nativa del Bitmap.
-                    if (bitmap?.isRecycled == false) {
+                    if (!bitmap.isRecycled) {
                         bitmap.recycle()
                     }
                 }
@@ -151,9 +166,52 @@ object ImageUtils {
             }
         }
 
+    /** Lee la orientación EXIF de la imagen. Devuelve [ExifInterface.ORIENTATION_NORMAL] si no se puede leer. */
+    private fun readExifOrientation(context: Context, uri: Uri): Int =
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                ExifInterface(input).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            } ?: ExifInterface.ORIENTATION_NORMAL
+        } catch (_: Exception) {
+            // Si el formato no soporta EXIF o falla la lectura, se asume orientación normal.
+            ExifInterface.ORIENTATION_NORMAL
+        }
+
+    /**
+     * Aplica la rotación/volteo indicada por la orientación EXIF.
+     * Si la orientación es normal o no se puede aplicar, devuelve el mismo [bitmap].
+     */
+    private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.postScale(-1f, 1f)
+                matrix.postRotate(90f)
+            }
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.postScale(-1f, 1f)
+                matrix.postRotate(270f)
+            }
+            else -> return bitmap
+        }
+        return try {
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        } catch (_: Exception) {
+            bitmap
+        }
+    }
+
     private fun calculateInSampleSize(maxSide: Int): Int {
         var inSampleSize = 1
-        var halfMax = maxSide / 2
+        val halfMax = maxSide / 2
         // Reducir a potencia de 2 hasta que el lado mayor estimado quepa cerca de MAX_SIDE_PX.
         while (halfMax / inSampleSize >= MAX_SIDE_PX) {
             inSampleSize *= 2

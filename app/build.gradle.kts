@@ -90,6 +90,9 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
 
+    // Lectura de orientación EXIF (fotos de cámara rotadas)
+    implementation(libs.androidx.exifinterface)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
