@@ -34,12 +34,22 @@ interface PlantRepository {
 }
 
 class PlantRepositoryImpl(
-    private val apiService: PlantApiService = NetworkModule.plantApiService,
     private val json: Json = NetworkModule.json
 ) : PlantRepository {
 
+    // Resolución perezosa: si la URL no está configurada preferimos devolver un
+    // error legible en [identifyPlant] en lugar de lanzar al construir la clase.
+    private val apiService: PlantApiService by lazy { NetworkModule.plantApiService }
+
     override suspend fun identifyPlant(imageBase64: String): Result<PlantResult> =
         withContext(Dispatchers.IO) {
+            if (Constants.BASE_URL.isBlank()) {
+                return@withContext Result.failure(
+                    PlantIdentificationException(
+                        "Falta la URL de la IA. Configura AI_BASE_URL en local.properties."
+                    )
+                )
+            }
             if (Constants.API_KEY.isBlank()) {
                 return@withContext Result.failure(
                     PlantIdentificationException(
@@ -58,6 +68,14 @@ class PlantRepositoryImpl(
                     authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
                     request = buildRequest(imageBase64)
                 )
+
+                // Algunos servidores responden 200 con un objeto "error" en el cuerpo.
+                response.error?.let { apiError ->
+                    throw PlantIdentificationException(
+                        apiError.message?.takeIf { it.isNotBlank() }
+                            ?: "La IA devolvió un error al procesar la imagen."
+                    )
+                }
 
                 val content = response.choices.firstOrNull()?.message?.content
                     ?: throw PlantIdentificationException(
@@ -136,13 +154,15 @@ class PlantRepositoryImpl(
         )
 
     private fun parsePlantResult(rawContent: String): PlantResult {
-        val cleaned = stripCodeFences(rawContent).trim()
-        if (cleaned.isEmpty()) {
-            throw PlantIdentificationException("La IA devolvió una respuesta vacía. Inténtalo de nuevo.")
+        val jsonText = extractJsonObject(rawContent)
+        if (jsonText.isBlank()) {
+            throw PlantIdentificationException(
+                "La IA devolvió una respuesta vacía. Inténtalo de nuevo."
+            )
         }
 
         val dto = try {
-            json.decodeFromString<PlantResultDto>(cleaned)
+            json.decodeFromString<PlantResultDto>(jsonText)
         } catch (e: SerializationException) {
             throw PlantIdentificationException(
                 "La respuesta de la IA no es un JSON válido con el formato esperado.",
@@ -150,12 +170,8 @@ class PlantRepositoryImpl(
             )
         }
 
-        if (dto.commonName.isBlank() && dto.scientificName.isBlank()) {
-            throw PlantIdentificationException(
-                "La IA no pudo identificar la planta en la imagen. Prueba con una foto más nítida."
-            )
-        }
-
+        // Se devuelven los campos aunque vengan vacíos/"unknown": el ViewModel
+        // decide si eso corresponde al estado "No identificada".
         return PlantResult(
             commonName = dto.commonName.trim(),
             scientificName = dto.scientificName.trim(),
@@ -163,15 +179,20 @@ class PlantRepositoryImpl(
         )
     }
 
-    private fun stripCodeFences(content: String): String {
+    /**
+     * Extrae el primer objeto JSON del texto devuelto por la IA.
+     * Tolera bloques Markdown ```json ... ``` y texto adicional antes o después,
+     * siempre que el JSON sea un objeto plano.
+     */
+    internal fun extractJsonObject(content: String): String {
         val trimmed = content.trim()
-        if (!trimmed.startsWith("```")) return trimmed
-        return trimmed
-            .removePrefix("```json")
-            .removePrefix("```JSON")
-            .removePrefix("```")
-            .removeSuffix("```")
-            .trim()
+        val start = trimmed.indexOf('{')
+        val end = trimmed.lastIndexOf('}')
+        return if (start >= 0 && end > start) {
+            trimmed.substring(start, end + 1)
+        } else {
+            trimmed
+        }
     }
 
     private fun mapHttpError(e: HttpException): String {
