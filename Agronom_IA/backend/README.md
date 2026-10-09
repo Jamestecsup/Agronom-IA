@@ -34,7 +34,7 @@ Comprueba el endpoint con `http://127.0.0.1/agronomia-api/api/images.php` (GET d
 
 El endpoint `POST /api/analyze.php` está implementado. Después de guardar el lote, la app permite solicitar el análisis. PHP carga solo los archivos asociados al lote, los envía a la Responses API con el modelo `gpt-4.1-mini` y salida JSON estructurada, actualiza el estado de procesamiento y devuelve la respuesta a Compose. La llamada ocurre únicamente tras pulsar **Analizar planta con IA**; requiere Internet y consume la cuota de la cuenta del proveedor. El parámetro `store=false` evita guardar la respuesta en el servicio.
 
-La clave no se encontró configurada en el equipo. Para activarla, agrega esta línea a `httpd-agronomia.conf` con la clave de tu cuenta, guarda el archivo protegido por ACL y reinicia Apache:
+La clave no se encontró configurada en el equipo. Apache incluye el archivo privado `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf`, cuya ACL da control al usuario local, Administradores y SYSTEM. Para activarla, agrega allí esta línea con la clave de tu cuenta y reinicia Apache:
 
 ```apache
 SetEnv PLANT_AI_API_KEY "TU_CLAVE_API"

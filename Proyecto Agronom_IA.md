@@ -28,6 +28,15 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - En XAMPP ya se importó el esquema, se creó una cuenta API aleatoria de mínimo privilegio, se desplegó la API en `htdocs/agronomia-api`, se creó `C:\xampp\plant-images` con ACL restringida, se ajustó php.ini (16 MiB por archivo, 80 MiB POST) y Apache reinició con la configuración local protegida.
 - Verificación real contra Apache/MySQL: GET 405, texto disfrazado de imagen 415, lote de cinco PNG 201 con cinco filas y archivos correspondientes, lote de seis 422; se eliminaron los lotes de prueba y se verificó la limpieza. El endpoint de IA devuelve 503 hasta configurar la clave.
 - Pruebas cámara/permisos e interacción real de Android requieren emulador/dispositivo.
-- La integración de IA está implementada con OpenAI Responses, `gpt-4.1-mini`, JSON estructurado y respuesta en Compose. El modelo admite imágenes ([ficha oficial](https://developers.openai.com/api/docs/models/gpt-4.1-mini)). Pendiente solo agregar `PLANT_AI_API_KEY` al archivo Apache protegido; la clave no estaba configurada y por eso no se ejecutó una inferencia real.
+- La integración de IA está implementada con OpenAI Responses, `gpt-4.1-mini`, JSON estructurado y respuesta en Compose. El modelo admite imágenes ([ficha oficial](https://developers.openai.com/api/docs/models/gpt-4.1-mini)). Apache incluye el archivo privado `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf`; falta agregar allí `PLANT_AI_API_KEY`. La clave no estaba configurada y por eso no se ejecutó una inferencia real.
 - La regla de firewall de Windows para permitir Apache en el perfil privado y la subred local no se pudo crear: Windows respondió “Acceso denegado” sin elevación administrativa. Para usar un teléfono físico, agregar como administrador una regla TCP entrante puerto 80, perfil Private y dirección remota LocalSubnet.
 - La regla de firewall todavía requiere una consola administrativa: `New-NetFirewallRule -DisplayName "Agronomia local XAMPP API" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 -Profile Private -RemoteAddress LocalSubnet`.
+
+## Commits
+
+- `635316e` — Implementa flujo móvil de imágenes y análisis.
+- `e6892f0` — Añade API PHP, validación y persistencia MySQL.
+- `ef6ed26` — Documenta instalación local, IA y verificaciones.
+- `784fc3e` — Incluye archivos base del proyecto Android.
+
+El repositorio está en la raíz de la bóveda. `.obsidian`, `Bienvenido.md`, `local.properties`, compilaciones y archivos de IDE quedan fuera de Git.
