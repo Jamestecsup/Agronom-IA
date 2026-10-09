@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,7 +44,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import java.io.File
 
@@ -60,12 +60,13 @@ private fun createCameraImageUri(context: Context): Uri {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CaptureScreen(
+    viewModel: CaptureViewModel,
     onNavigateToResult: () -> Unit,
-    modifier: Modifier = Modifier,
-    viewModel: CaptureViewModel = viewModel()
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val imageUri by viewModel.imageUri.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -196,10 +197,22 @@ fun CaptureScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Button(
-                onClick = onNavigateToResult,
-                enabled = imageUri != null,
+                onClick = {
+                    // Lanza el procesado + envío en el ViewModel y navega al resultado.
+                    viewModel.identifyCurrentImage()
+                    onNavigateToResult()
+                },
+                enabled = imageUri != null && uiState !is IdentificationUiState.Loading,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                if (uiState is IdentificationUiState.Loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                }
                 Text("Identificar")
             }
         }
