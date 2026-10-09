@@ -63,22 +63,42 @@ object ImageUtils {
 
                 // 3. Leer dimensiones sin cargar el bitmap en memoria.
                 val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                try {
+                // Se usa un flag para distinguir "no se pudo abrir el flujo" de
+                // "se abrió pero no se pudo decodificar" (cubren casos distintos).
+                val streamOpened: Boolean = try {
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         BitmapFactory.decodeStream(input, null, boundsOptions)
-                    } ?: return@withContext Resource.Error(
-                        "No se pudo abrir la imagen. Verifica que el archivo exista y vuelve a intentarlo."
-                    )
+                        true
+                    } ?: false
                 } catch (e: SecurityException) {
                     return@withContext Resource.Error(
                         "Sin permiso para leer la imagen. Otorga acceso y vuelve a intentarlo.",
                         e
                     )
                 }
+                if (!streamOpened) {
+                    return@withContext Resource.Error(
+                        "No se pudo abrir la imagen. Verifica que el archivo exista y vuelve a intentarlo."
+                    )
+                }
 
                 if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) {
+                    // Si el archivo pesa 0 bytes (típico de la cámara virtual del emulador)
+                    // o está dañado, avisar con claridad para que el usuario use otra vía.
+                    val fileSize = try {
+                        context.contentResolver.openFileDescriptor(uri, "r")
+                            ?.use { fd -> fd.statSize } ?: -1L
+                    } catch (_: Exception) {
+                        -1L
+                    }
                     return@withContext Resource.Error(
-                        "No se pudo decodificar la imagen. El archivo podría estar dañado o no ser una imagen válida."
+                        if (fileSize == 0L) {
+                            "La imagen está vacía (0 bytes). En el emulador, la cámara virtual puede " +
+                                "guardar fotos vacías; usa la Galería o toma otra foto."
+                        } else {
+                            "No se pudo decodificar la imagen. El archivo podría estar dañado o no ser " +
+                                "una imagen válida."
+                        }
                     )
                 }
 
