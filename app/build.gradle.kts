@@ -45,10 +45,30 @@ android {
             .trim()
             .removeSurrounding("\"")
 
+        // Pl@ntNet: identificacion de especie por imagen.
+        val plantNetBaseUrl: String = (localProperties.getProperty("PLANTNET_BASE_URL")
+            ?: "https://my-api.plantnet.org/")
+            .trim()
+            .removeSurrounding("\"")
+        val plantNetApiKey: String = (localProperties.getProperty("PLANTNET_API_KEY") ?: "")
+            .trim()
+            .removeSurrounding("\"")
+        val plantNetProject: String = (localProperties.getProperty("PLANTNET_PROJECT") ?: "all")
+            .trim()
+            .removeSurrounding("\"")
+        val plantNetLang: String = (localProperties.getProperty("PLANTNET_LANG") ?: "es")
+            .trim()
+            .removeSurrounding("\"")
+
         buildConfigField("String", "AI_BASE_URL", "\"$aiBaseUrl\"")
         buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
         buildConfigField("String", "AI_MODEL", "\"$aiModel\"")
         buildConfigField("String", "AI_IDENTIFY_PATH", "\"$aiIdentifyPath\"")
+
+        buildConfigField("String", "PLANTNET_BASE_URL", "\"$plantNetBaseUrl\"")
+        buildConfigField("String", "PLANTNET_API_KEY", "\"$plantNetApiKey\"")
+        buildConfigField("String", "PLANTNET_PROJECT", "\"$plantNetProject\"")
+        buildConfigField("String", "PLANTNET_LANG", "\"$plantNetLang\"")
     }
 
     buildTypes {

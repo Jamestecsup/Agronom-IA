@@ -5,10 +5,10 @@ import kotlinx.serialization.Serializable
 
 /*
  * DTOs para una API de IA tipo chat/visión (OpenAI-compatible):
- *   POST {AI_BASE_URL}/v1/chat/completions
+ *   POST {AI_BASE_URL}{AI_IDENTIFY_PATH}
  *
- * Si tu proveedor usa otro esquema (p. ej. PlantNet v2 identify, que recibe
- * multipart y responde con "results"), ajusta estos DTOs y el servicio.
+ * Se usan con Gemini/OpenAI (identificación de respaldo por visión e información
+ * textual). Pl@ntNet tiene sus propios DTOs en PlantNetDto.kt.
  */
 
 // ---------- Request ----------
@@ -86,5 +86,16 @@ data class PlantResultDto(
     @SerialName("scientificName")
     val scientificName: String = "",
     @SerialName("confidence")
+    val confidence: Double = 0.0
+)
+
+// ---------- Información textual de la planta (Gemini) ----------
+
+@Serializable
+data class PlantInfoDto(
+    val family: String = "",
+    val description: String = "",
+    val uses: String = "",
+    val care: String = "",
     val confidence: Double = 0.0
 )

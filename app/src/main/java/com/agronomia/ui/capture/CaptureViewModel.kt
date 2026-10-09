@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.agronomia.data.repository.PlantRepository
 import com.agronomia.data.repository.PlantRepositoryImpl
 import com.agronomia.domain.model.PlantResult
-import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
 import com.agronomia.util.Resource
 import kotlinx.coroutines.Job
@@ -21,16 +20,13 @@ sealed interface IdentificationUiState {
     /** Aún no se ha iniciado una identificación. */
     data object Idle : IdentificationUiState
 
-    /** La imagen se está procesando o el servidor está respondiendo. */
+    /** La imagen se está procesando, se identifica la especie o se busca su información. */
     data object Loading : IdentificationUiState
 
-    /** Se obtuvo una identificación con confianza suficiente. */
+    /** Se obtuvo una identificación con su información. */
     data class Success(val plant: PlantResult) : IdentificationUiState
 
-    /** La IA no pudo identificar la planta o la confianza es baja. */
-    data object NotIdentified : IdentificationUiState
-
-    /** Ocurrió un error (red, formato, servidor, etc.). */
+    /** Ocurrió un error (red, formato, sin certeza, etc.). */
     data class Error(val message: String) : IdentificationUiState
 }
 
@@ -90,31 +86,22 @@ class CaptureViewModel @JvmOverloads constructor(
         identifyJob = viewModelScope.launch {
             _uiState.value = IdentificationUiState.Loading
 
-            when (val processed = ImageUtils.uriToBase64Jpeg(getApplication(), uri)) {
+            when (val processed = ImageUtils.uriToJpegBytes(getApplication(), uri)) {
                 is Resource.Error -> {
                     _uiState.value = IdentificationUiState.Error(processed.message)
                 }
                 is Resource.Success -> {
                     _uiState.value = mapResult(repository.identifyPlant(processed.data))
                 }
-                Resource.Loading -> Unit // No aplica: uriToBase64Jpeg no emite Loading.
+                Resource.Loading -> Unit // No aplica: uriToJpegBytes no emite Loading.
             }
         }
     }
 
-    /** Decide si el resultado es una identificación válida o "no identificada". */
+    /** Traduce el [Result] del repositorio al estado de la UI. */
     private fun mapResult(result: Result<PlantResult>): IdentificationUiState =
         result.fold(
-            onSuccess = { plant ->
-                val hasValidName =
-                    (plant.commonName.isNotBlank() && !plant.commonName.equals("unknown", true)) ||
-                        (plant.scientificName.isNotBlank() && !plant.scientificName.equals("unknown", true))
-                if (hasValidName && plant.confidence >= Constants.MIN_CONFIDENCE) {
-                    IdentificationUiState.Success(plant)
-                } else {
-                    IdentificationUiState.NotIdentified
-                }
-            },
+            onSuccess = { IdentificationUiState.Success(it) },
             onFailure = { error ->
                 IdentificationUiState.Error(
                     error.message ?: "No se pudo identificar la planta. Inténtalo de nuevo."

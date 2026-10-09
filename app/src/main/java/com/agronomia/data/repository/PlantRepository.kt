@@ -6,14 +6,21 @@ import com.agronomia.data.remote.ContentPart
 import com.agronomia.data.remote.ImageUrl
 import com.agronomia.data.remote.NetworkModule
 import com.agronomia.data.remote.PlantApiService
+import com.agronomia.data.remote.PlantInfoDto
+import com.agronomia.data.remote.PlantNetApiService
 import com.agronomia.data.remote.PlantResultDto
 import com.agronomia.data.remote.ResponseFormat
 import com.agronomia.domain.model.PlantResult
 import com.agronomia.util.Constants
+import com.agronomia.util.ImageUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.io.IOException
 import java.net.ConnectException
@@ -26,11 +33,19 @@ class PlantIdentificationException(message: String, cause: Throwable? = null) :
 
 interface PlantRepository {
     /**
-     * Identifica una planta a partir de su imagen ya codificada en Base64 (JPEG).
+     * Identifica una planta y obtiene información sobre ella.
+     *
+     * Flujo:
+     *  1. Pl@ntNet identifica la especie a partir de la imagen.
+     *  2. Se le pide a Gemini (texto) información de esa especie.
+     * Si Pl@ntNet no identifica con confianza suficiente, se usa Gemini (visión)
+     * como respaldo; si en ese respaldo Gemini no alcanza la certeza exigida, se
+     * devuelve un error pidiendo más imágenes.
+     *
      * @return [Result.success] con [PlantResult] o [Result.failure] con
      *         [PlantIdentificationException] cuyo mensaje es apto para UI.
      */
-    suspend fun identifyPlant(imageBase64: String): Result<PlantResult>
+    suspend fun identifyPlant(imageBytes: ByteArray): Result<PlantResult>
 }
 
 class PlantRepositoryImpl(
@@ -39,51 +54,21 @@ class PlantRepositoryImpl(
 
     // Resolución perezosa: si la URL no está configurada preferimos devolver un
     // error legible en [identifyPlant] en lugar de lanzar al construir la clase.
-    private val apiService: PlantApiService by lazy { NetworkModule.plantApiService }
+    private val geminiService: PlantApiService by lazy { NetworkModule.plantApiService }
+    private val plantNetService: PlantNetApiService by lazy { NetworkModule.plantNetApiService }
 
-    override suspend fun identifyPlant(imageBase64: String): Result<PlantResult> =
+    override suspend fun identifyPlant(imageBytes: ByteArray): Result<PlantResult> =
         withContext(Dispatchers.IO) {
-            if (Constants.BASE_URL.isBlank()) {
-                return@withContext Result.failure(
-                    PlantIdentificationException(
-                        "Falta la URL de la IA. Configura AI_BASE_URL en local.properties."
-                    )
-                )
-            }
-            if (Constants.API_KEY.isBlank()) {
-                return@withContext Result.failure(
-                    PlantIdentificationException(
-                        "Falta la API key. Configura AI_API_KEY en local.properties."
-                    )
-                )
-            }
-            if (imageBase64.isBlank()) {
+            if (imageBytes.isEmpty()) {
                 return@withContext Result.failure(
                     PlantIdentificationException("La imagen está vacía. Vuelve a capturarla.")
                 )
             }
 
             try {
-                val response = apiService.identifyPlant(
-                    url = Constants.identifyEndpointUrl(),
-                    authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
-                    request = buildRequest(imageBase64)
-                )
-
-                // Algunos servidores responden 200 con un objeto "error" en el cuerpo.
-                response.error?.let { apiError ->
-                    throw PlantIdentificationException(
-                        apiError.message?.takeIf { it.isNotBlank() }
-                            ?: "La IA devolvió un error al procesar la imagen."
-                    )
-                }
-
-                val content = response.choices.firstOrNull()?.message?.content
-                    ?: throw PlantIdentificationException(
-                        "La IA no devolvió contenido. Inténtalo de nuevo."
-                    )
-
-                Result.success(parsePlantResult(content))
+                val species = identifySpecies(imageBytes)
+                val info = fetchPlantInfo(species)
+                Result.success(species.toPlantResult(info))
             } catch (e: PlantIdentificationException) {
                 Result.failure(e)
             } catch (e: HttpException) {
@@ -133,7 +118,124 @@ class PlantRepositoryImpl(
             }
         }
 
-    private fun buildRequest(imageBase64: String): ChatCompletionRequest =
+    /**
+     * Identifica la especie: primero Pl@ntNet; si no da una coincidencia confiable,
+     * cae al respaldo con Gemini visión (que exige la certeza configurada).
+     */
+    private suspend fun identifySpecies(imageBytes: ByteArray): SpeciesMatch {
+        val plantNetMatch = try {
+            identifyWithPlantNet(imageBytes)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null // Cualquier fallo de Pl@ntNet → se intenta el respaldo.
+        }
+
+        if (plantNetMatch != null && plantNetMatch.confidence >= Constants.PLANTNET_MIN_CONFIDENCE) {
+            return plantNetMatch
+        }
+
+        // Respaldo: Gemini visión.
+        val geminiMatch = identifyWithGeminiVision(imageBytes)
+        val hasName = geminiMatch.scientificName.isNotBlank() &&
+            !geminiMatch.scientificName.equals("unknown", true)
+        if (!hasName || geminiMatch.confidence < Constants.GEMINI_FALLBACK_MIN_CONFIDENCE) {
+            throw PlantIdentificationException(
+                "No se pudo verificar la planta con certeza. Envía más imágenes " +
+                    "(flor, hoja o tallo) para una mejor identificación."
+            )
+        }
+        return geminiMatch
+    }
+
+    /** Llama a Pl@ntNet y devuelve la mejor coincidencia (o null si no hay resultados). */
+    private suspend fun identifyWithPlantNet(imageBytes: ByteArray): SpeciesMatch? {
+        val imagePart = MultipartBody.Part.createFormData(
+            "images",
+            "plant.jpg",
+            imageBytes.toRequestBody("image/jpeg".toMediaType())
+        )
+        val organs = "auto".toRequestBody("text/plain".toMediaType())
+
+        val response = plantNetService.identify(Constants.plantNetIdentifyUrl(), imagePart, organs)
+        val best = response.results.maxByOrNull { it.score } ?: return null
+        val species = best.species ?: return null
+        val scientificName = species.scientificNameWithoutAuthor.ifBlank { species.scientificName }
+        if (scientificName.isBlank()) return null
+
+        return SpeciesMatch(
+            commonName = species.commonNames.firstOrNull().orEmpty(),
+            scientificName = scientificName,
+            family = species.family?.scientificNameWithoutAuthor.orEmpty(),
+            confidence = best.score.coerceIn(0.0, 1.0).toFloat()
+        )
+    }
+
+    /** Respaldo: pide a Gemini que identifique la planta en la imagen. */
+    private suspend fun identifyWithGeminiVision(imageBytes: ByteArray): SpeciesMatch {
+        val response = geminiService.identifyPlant(
+            url = Constants.identifyEndpointUrl(),
+            authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+            request = buildVisionRequest(imageBytes)
+        )
+
+        // Algunos servidores responden 200 con un objeto "error" en el cuerpo.
+        response.error?.let { apiError ->
+            throw PlantIdentificationException(
+                apiError.message?.takeIf { it.isNotBlank() }
+                    ?: "La IA devolvió un error al procesar la imagen."
+            )
+        }
+
+        val content = response.choices.firstOrNull()?.message?.content
+            ?: throw PlantIdentificationException("La IA no devolvió contenido. Inténtalo de nuevo.")
+
+        val dto = parsePlantDto(content)
+        return SpeciesMatch(
+            commonName = dto.commonName.trim(),
+            scientificName = dto.scientificName.trim(),
+            family = "",
+            confidence = dto.confidence.coerceIn(0.0, 1.0).toFloat()
+        )
+    }
+
+    /**
+     * Pide a Gemini información de la planta identificada. Es "best-effort":
+     * si falla, se devuelve la identificación sin la información extra.
+     */
+    private suspend fun fetchPlantInfo(species: SpeciesMatch): PlantInfoDto {
+        return try {
+            val prompt = buildString {
+                append(Constants.INFO_PROMPT)
+                append("\n\nPlanta identificada: ")
+                append(species.scientificName)
+                if (species.commonName.isNotBlank()) {
+                    append(" (nombre común: ")
+                    append(species.commonName)
+                    append(")")
+                }
+                if (species.family.isNotBlank()) {
+                    append(", familia ")
+                    append(species.family)
+                }
+                append(".")
+            }
+
+            val response = geminiService.identifyPlant(
+                url = Constants.identifyEndpointUrl(),
+                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                request = buildTextRequest(prompt)
+            )
+            val content = response.choices.firstOrNull()?.message?.content
+            if (content == null) PlantInfoDto() else parseInfoDto(content)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            PlantInfoDto()
+        }
+    }
+
+    private fun buildVisionRequest(imageBytes: ByteArray): ChatCompletionRequest =
         ChatCompletionRequest(
             model = Constants.AI_MODEL,
             temperature = 0.0,
@@ -146,7 +248,8 @@ class PlantRepositoryImpl(
                         ContentPart(
                             type = "image_url",
                             imageUrl = ImageUrl(
-                                url = Constants.IMAGE_DATA_URL_PREFIX + imageBase64
+                                url = Constants.IMAGE_DATA_URL_PREFIX +
+                                    ImageUtils.toBase64Jpeg(imageBytes)
                             )
                         )
                     )
@@ -154,15 +257,25 @@ class PlantRepositoryImpl(
             )
         )
 
-    private fun parsePlantResult(rawContent: String): PlantResult {
+    private fun buildTextRequest(prompt: String): ChatCompletionRequest =
+        ChatCompletionRequest(
+            model = Constants.AI_MODEL,
+            temperature = 0.0,
+            responseFormat = ResponseFormat(type = "json_object"),
+            messages = listOf(
+                ChatMessage(
+                    role = "user",
+                    content = listOf(ContentPart(type = "text", text = prompt))
+                )
+            )
+        )
+
+    private fun parsePlantDto(rawContent: String): PlantResultDto {
         val jsonText = extractJsonObject(rawContent)
         if (jsonText.isBlank()) {
-            throw PlantIdentificationException(
-                "La IA devolvió una respuesta vacía. Inténtalo de nuevo."
-            )
+            throw PlantIdentificationException("La IA devolvió una respuesta vacía. Inténtalo de nuevo.")
         }
-
-        val dto = try {
+        return try {
             json.decodeFromString<PlantResultDto>(jsonText)
         } catch (e: SerializationException) {
             throw PlantIdentificationException(
@@ -170,14 +283,16 @@ class PlantRepositoryImpl(
                 e
             )
         }
+    }
 
-        // Se devuelven los campos aunque vengan vacíos/"unknown": el ViewModel
-        // decide si eso corresponde al estado "No identificada".
-        return PlantResult(
-            commonName = dto.commonName.trim(),
-            scientificName = dto.scientificName.trim(),
-            confidence = dto.confidence.coerceIn(0.0, 1.0).toFloat()
-        )
+    private fun parseInfoDto(rawContent: String): PlantInfoDto {
+        val jsonText = extractJsonObject(rawContent)
+        if (jsonText.isBlank()) return PlantInfoDto()
+        return try {
+            json.decodeFromString<PlantInfoDto>(jsonText)
+        } catch (_: SerializationException) {
+            PlantInfoDto()
+        }
     }
 
     /**
@@ -200,12 +315,15 @@ class PlantRepositoryImpl(
         val code = e.code()
         val serverMessage = extractServerMessage(e)
         return when (code) {
-            401 -> "No autorizado (401): la API key es inválida o no tiene permisos. " +
-                "Revisa AI_API_KEY en local.properties."
+            400 -> "Solicitud inválida (400). Revisa la imagen e inténtalo de nuevo." +
+                if (serverMessage != null) " Detalle: $serverMessage" else ""
+            401 -> "No autorizado (401): una de las API keys es inválida o no tiene permisos. " +
+                "Revisa PLANTNET_API_KEY / AI_API_KEY en local.properties."
             403 -> "Acceso denegado (403): tu API key no tiene acceso a este servicio."
-            404 -> "Recurso no encontrado (404): revisa la URL del endpoint en AI_BASE_URL."
-            429 -> "Demasiadas solicitudes (429): espera un momento e inténtalo de nuevo."
-            in 500..599 -> "El servidor de IA falló (error $code). Inténtalo más tarde." +
+            404 -> "Recurso no encontrado (404): revisa la URL del endpoint en local.properties."
+            429 -> "Demasiadas solicitudes (429): se agotó la cuota o pediste demasiado. " +
+                "Espera un momento e inténtalo de nuevo."
+            in 500..599 -> "El servidor falló (error $code). Inténtalo más tarde." +
                 if (serverMessage != null) " Detalle: $serverMessage" else ""
             else -> "El servidor respondió con error $code." +
                 if (serverMessage != null) " Detalle: $serverMessage" else ""
@@ -217,11 +335,40 @@ class PlantRepositoryImpl(
         if (body.isNullOrBlank()) {
             null
         } else {
+            // Intenta el formato de Gemini/OpenAI; si no, busca un "message" simple.
             json.decodeFromString<com.agronomia.data.remote.ChatCompletionResponse>(body)
-                .error?.message
-                ?.takeIf { it.isNotBlank() }
+                .error?.message?.takeIf { it.isNotBlank() }
+                ?: extractSimpleMessage(body)
         }
     } catch (_: Exception) {
         null
     }
+
+    private fun extractSimpleMessage(body: String): String? =
+        Regex("\"(?:message|error)\"\\s*:\\s*\"([^\"]+)\"")
+            .find(body)
+            ?.groupValues
+            ?.getOrNull(1)
+
+    /** Coincidencia de especie (identificación), antes de añadir la información. */
+    private data class SpeciesMatch(
+        val commonName: String,
+        val scientificName: String,
+        val family: String,
+        val confidence: Float
+    ) {
+        fun toPlantResult(info: PlantInfoDto): PlantResult = PlantResult(
+            commonName = commonName.trim(),
+            scientificName = scientificName.trim(),
+            family = family.trim().ifBlank { info.family.cleanInfo() },
+            confidence = confidence,
+            description = info.description.cleanInfo(),
+            uses = info.uses.cleanInfo(),
+            care = info.care.cleanInfo()
+        )
+    }
 }
+
+/** Normaliza un texto devuelto por la IA: sin espacios y tratando "unknown" como vacío. */
+private fun String.cleanInfo(): String =
+    trim().takeUnless { it.equals("unknown", true) }.orEmpty()

@@ -59,4 +59,34 @@ object NetworkModule {
     }
 
     val plantApiService: PlantApiService by lazy { createPlantApiService() }
+
+    /**
+     * Cliente OkHttp para Pl@ntNet SIN interceptor de logging: su api-key viaja
+     * como query en la URL y no debe quedar registrada en logcat.
+     */
+    private val plantNetOkHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(Constants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(Constants.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(Constants.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build()
+    }
+
+    fun createPlantNetApiService(
+        baseUrl: String = Constants.PLANTNET_BASE_URL
+    ): PlantNetApiService {
+        require(baseUrl.isNotBlank()) {
+            "PLANTNET_BASE_URL no está configurada en local.properties."
+        }
+        val normalizedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+
+        return Retrofit.Builder()
+            .baseUrl(normalizedBaseUrl)
+            .client(plantNetOkHttpClient)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(PlantNetApiService::class.java)
+    }
+
+    val plantNetApiService: PlantNetApiService by lazy { createPlantNetApiService() }
 }

@@ -15,6 +15,13 @@ AI_API_KEY=TU_API_KEY_AQUI
 AI_MODEL=gemini-3.5-flash-lite
 AI_IDENTIFY_PATH=chat/completions
 
+# --- Pl@ntNet (identificacion de especie por imagen) ---
+# Genera tu key en https://my.plantnet.org/settings/api-key
+PLANTNET_BASE_URL=https://my-api.plantnet.org/
+PLANTNET_API_KEY=TU_PLANTNET_KEY_AQUI
+PLANTNET_PROJECT=all
+PLANTNET_LANG=es
+
 # --- Alternativa: OpenAI ---
 # AI_BASE_URL=https://api.openai.com/
 # AI_MODEL=gpt-4o-mini

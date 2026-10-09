@@ -1,24 +1,68 @@
-# Configuración de la IA
+# Configuración de la app
 
-Toda la configuración del proveedor de IA vive **solo** en `local.properties`
-(archivo no versionado, está en `.gitignore`). Esos valores se inyectan como
-`BuildConfig` y los consume `com.agronomia.util.Constants`.
+La app identifica plantas en **dos pasos**:
 
-| Clave en `local.properties` | Uso |
+1. **Pl@ntNet** identifica la **especie** a partir de la imagen.
+2. **Gemini** (solo texto) genera la **información** de esa especie
+   (descripción, usos, cuidados).
+
+Si Pl@ntNet no da una coincidencia confiable, se usa **Gemini visión** como
+respaldo. Si en ese respaldo Gemini no alcanza la certeza exigida (100 % por
+defecto), se muestra un error pidiendo al usuario **más imágenes** (flor, hoja,
+tallo).
+
+## Dónde se configura
+
+Todo vive **solo** en `local.properties` (no versionado, está en `.gitignore`).
+Los valores se inyectan como `BuildConfig` y los consume
+`com.agronomia.util.Constants`.
+
+| Clave | Uso |
 |---|---|
-| `AI_BASE_URL` | URL base del servidor de IA (debe terminar en `/`). |
-| `AI_API_KEY` | Clave de API. **Nunca** la subas al repo. |
-| `AI_MODEL` | Modelo de chat/visión. |
-| `AI_IDENTIFY_PATH` | Ruta del endpoint relativa a la base. |
+| `AI_BASE_URL` | URL base de la IA de texto/visión (Gemini/OpenAI). |
+| `AI_API_KEY` | Clave de la IA de texto/visión. |
+| `AI_MODEL` | Modelo de la IA de texto/visión. |
+| `AI_IDENTIFY_PATH` | Ruta del endpoint de chat relativa a la base. |
+| `PLANTNET_BASE_URL` | URL base de Pl@ntNet. |
+| `PLANTNET_API_KEY` | Clave privada de Pl@ntNet. |
+| `PLANTNET_PROJECT` | Flora/proyecto (`all` por defecto). |
+| `PLANTNET_LANG` | Idioma de los nombres comunes (`es`). |
 
-El endpoint final se arma como `AI_BASE_URL + AI_IDENTIFY_PATH`
-(ver `Constants.identifyEndpointUrl()`).
+---
+
+## Pl@ntNet (identificación de especie) — PRIMARIA
+
+```properties
+PLANTNET_BASE_URL=https://my-api.plantnet.org/
+PLANTNET_API_KEY=<tu key de Pl@ntNet>
+PLANTNET_PROJECT=all
+PLANTNET_LANG=es
+```
+
+- Endpoint: `POST {PLANTNET_BASE_URL}v2/identify/{project}?api-key=...&lang=...&nb-results=...`
+- Cuerpo **multipart**: `images` (JPEG) + `organs=auto`.
+- Genera/consulta tu key en https://my.plantnet.org/settings/api-key
+- **La api-key viaja en la URL**, por eso Pl@ntNet usa un cliente OkHttp **sin
+  logging** (ver `NetworkModule`) para no filtrarla en logcat.
+
+## Google Gemini (información / respaldo visión)
+
+```properties
+AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+AI_API_KEY=<tu key de Gemini>
+AI_MODEL=gemini-3.5-flash-lite
+AI_IDENTIFY_PATH=chat/completions
+```
+
+- Endpoint final: `.../openai/chat/completions` (ojo: **sin** el `/v1/` de OpenAI).
+- Modelo probado: `gemini-3.5-flash-lite` (rápido y estable). `gemini-3.8-flash`
+  resultó lento/saturado (503) y con nuestro timeout fallaría.
 
 ---
 
 ## IA ORIGINAL (institucional / red WiFi privada)
 
-Valores para volver a probar contra la IA del instituto cuando estés en su red:
+Para volver a probar contra la IA del instituto cuando estés en su red:
 
 ```properties
 AI_BASE_URL=http://192.168.17.11:3000/
@@ -28,40 +72,12 @@ AI_IDENTIFY_PATH=v1/chat/completions
 ```
 
 - Endpoint final: `http://192.168.17.11:3000/v1/chat/completions`
-- Solo funciona dentro de la red WiFi privada donde está el servidor.
-- Es **HTTP en claro**. En builds `debug` ya está permitido
-  (`app/src/debug/AndroidManifest.xml`); en `release` sigue bloqueado por seguridad.
-- La API key original se quitó de `local.properties.example` (commit `a720f7e`);
-  si la necesitas, está en el historial de git, pero **conviene rotarla**.
+- Es **HTTP en claro**: en builds `debug` ya está permitido
+  (`app/src/debug/AndroidManifest.xml`); en `release` sigue bloqueado.
+- La key original se quitó de `local.properties.example` (commit `a720f7e`);
+  si la necesitas está en el historial de git, pero **conviene rotarla**.
 
----
-
-## Proveedor actual: Google Gemini (compatible con OpenAI)
-
-```properties
-AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
-AI_API_KEY=<tu API key de Gemini>
-AI_MODEL=gemini-3.5-flash-lite
-AI_IDENTIFY_PATH=chat/completions
-```
-
-- Endpoint final: `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
-  (ojo: **sin** el `/v1/` extra que usa OpenAI).
-
-### Elección de modelo (medido con la clave real)
-
-| Modelo | Texto | Imagen (760 KB) | Veredicto |
-|---|---|---|---|
-| `gemini-3.8-flash` | 86 s (luego 503) | timeout >150 s | Saturado / demasiado lento |
-| `gemini-3.5-flash-lite` | **1.6 s** | **17.8 s** | ✅ ELEGIDO (JSON correcto) |
-| `gemini-2.5-flash` | 404 | 404 | Retirado por Google |
-
-`gemini-3.8-flash` "piensa" por defecto y además da `503 UNAVAILABLE` por alta
-demanda, así que con nuestro timeout de lectura (60 s) fallaría. Por eso el
-modelo por defecto es `gemini-3.5-flash-lite`, que identifica correctamente
-(ej.: girasol → `Helianthus annuus`, confianza 0.99).
-
-## Otras alternativas (mismo formato)
+## Otras alternativas de IA (mismo formato OpenAI)
 
 | Proveedor | `AI_BASE_URL` | `AI_MODEL` ejemplo | `AI_IDENTIFY_PATH` |
 |---|---|---|---|
@@ -71,13 +87,20 @@ modelo por defecto es `gemini-3.5-flash-lite`, que identifica correctamente
 
 ---
 
+## Umbrales (en `Constants.kt`)
+
+- `PLANTNET_MIN_CONFIDENCE` (0.2): si la mejor coincidencia de Pl@ntNet queda por
+  debajo, se usa el respaldo con Gemini visión.
+- `GEMINI_FALLBACK_MIN_CONFIDENCE` (1.0 = 100 %): en el respaldo, si Gemini no
+  llega a esta certeza, se pide al usuario más imágenes.
+
 ## Cómo probar rápido (texto o imagen)
 
 Script: `scripts/test-ia.ps1` (lee la key de `local.properties`, nunca la imprime).
 
 ```powershell
-# Prueba de texto
-powershell -ExecutionPolicy Bypass -File scripts\test-ia.ps1 -Prompt "Dime el nombre científico del girasol"
+# Prueba de texto contra la IA
+powershell -ExecutionPolicy Bypass -File scripts\test-ia.ps1 -Prompt "Dime el nombre cientifico del girasol"
 
 # Prueba con imagen
 powershell -ExecutionPolicy Bypass -File scripts\test-ia.ps1 -ImagePath "C:\ruta\planta.jpg"
@@ -85,6 +108,6 @@ powershell -ExecutionPolicy Bypass -File scripts\test-ia.ps1 -ImagePath "C:\ruta
 
 ## Cómo cambiar de proveedor (para una IA que lea esto)
 
-1. Edita las 4 claves en `local.properties`.
+1. Edita las claves en `local.properties`.
 2. Recompila (`./gradlew assembleDebug` o Run en Android Studio).
-3. No hace falta tocar código: el cliente ya es OpenAI-compatible.
+3. El cliente de IA ya es OpenAI-compatible; no hay que tocar código.

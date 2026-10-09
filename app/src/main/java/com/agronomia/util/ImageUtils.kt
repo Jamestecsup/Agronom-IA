@@ -26,19 +26,18 @@ object ImageUtils {
     private val ALLOWED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp")
 
     /**
-     * Convierte un [Uri] de imagen a Base64.
+     * Convierte un [Uri] de imagen a **bytes JPEG** listos para subir.
      *
      * - Valida que sea JPG, PNG o WEBP.
      * - Corrige la orientación según la etiqueta EXIF (fotos de cámara rotadas).
      * - Reduce el lado mayor a un máximo de 1024 px manteniendo la proporción.
      * - Recomprime a JPEG con calidad 80.
-     * - Devuelve los bytes JPEG codificados en Base64 (sin saltos de línea).
      *
      * Se ejecuta en [Dispatchers.IO], fuera del hilo principal.
      *
-     * @return [Resource.Success] con el String Base64, o [Resource.Error] con mensaje claro en español.
+     * @return [Resource.Success] con los bytes JPEG, o [Resource.Error] con mensaje claro en español.
      */
-    suspend fun uriToBase64Jpeg(context: Context, uri: Uri): Resource<String> =
+    suspend fun uriToJpegBytes(context: Context, uri: Uri): Resource<ByteArray> =
         withContext(Dispatchers.IO) {
             try {
                 // 1. Validar formato por MIME type.
@@ -144,9 +143,8 @@ object ImageUtils {
                         )
                     }
 
-                    // 9. Codificar a Base64 (NO_WRAP: sin saltos de línea).
-                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    Resource.Success(base64)
+                    // 9. Devolver los bytes JPEG (Pl@ntNet los sube en multipart).
+                    Resource.Success(bytes)
                 } finally {
                     // Evitar fugas de memoria nativa del Bitmap.
                     if (!bitmap.isRecycled) {
@@ -165,6 +163,12 @@ object ImageUtils {
                 )
             }
         }
+
+    /**
+     * Codifica bytes JPEG a Base64 sin saltos de línea.
+     * Se usa para el respaldo con visión de Gemini (imagen como data URL).
+     */
+    fun toBase64Jpeg(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
     /** Lee la orientación EXIF de la imagen. Devuelve [ExifInterface.ORIENTATION_NORMAL] si no se puede leer. */
     private fun readExifOrientation(context: Context, uri: Uri): Int =

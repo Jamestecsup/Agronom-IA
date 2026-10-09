@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -61,10 +64,13 @@ fun ResultScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Center,
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Spacer(modifier = Modifier.height(8.dp))
+
             when (val state = uiState) {
                 IdentificationUiState.Idle -> {
                     Text(
@@ -80,8 +86,9 @@ fun ResultScreen(
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Identificando la planta...",
-                        style = MaterialTheme.typography.bodyLarge
+                        text = "Identificando la planta...\nPuede tardar unos segundos.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center
                     )
                 }
 
@@ -91,13 +98,6 @@ fun ResultScreen(
                         imageUri = imageUri,
                         onTakeAnotherPhoto = takeAnotherPhoto
                     )
-
-                IdentificationUiState.NotIdentified -> MessageContent(
-                    title = "No se pudo identificar la planta",
-                    message = "Prueba con una foto más nítida, con buena luz y " +
-                        "enfocando hojas o flores.",
-                    onTakeAnotherPhoto = takeAnotherPhoto
-                )
 
                 is IdentificationUiState.Error -> MessageContent(
                     title = "No se pudo identificar la planta",
@@ -130,7 +130,9 @@ private fun SuccessContent(
     }
 
     Text(
-        text = plant.commonName.ifBlank { "Planta identificada" },
+        text = plant.commonName.ifBlank {
+            plant.scientificName.ifBlank { "Planta identificada" }
+        },
         style = MaterialTheme.typography.headlineSmall,
         textAlign = TextAlign.Center
     )
@@ -145,11 +147,24 @@ private fun SuccessContent(
         )
     }
 
+    if (plant.family.isNotBlank()) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Familia: ${plant.family}",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
+    }
+
     Spacer(modifier = Modifier.height(8.dp))
     Text(
         text = "Confianza: ${(plant.confidence * 100).roundToInt()}%",
         style = MaterialTheme.typography.bodyMedium
     )
+
+    InfoSection("Descripción", plant.description)
+    InfoSection("Usos", plant.uses)
+    InfoSection("Cuidados", plant.care)
 
     Spacer(modifier = Modifier.height(24.dp))
     Button(
@@ -158,6 +173,29 @@ private fun SuccessContent(
     ) {
         Text("Tomar otra foto")
     }
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+/** Bloque de información (título + cuerpo). No se muestra si el cuerpo está vacío. */
+@Composable
+private fun InfoSection(title: String, body: String) {
+    if (body.isBlank()) return
+
+    Spacer(modifier = Modifier.height(16.dp))
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Start,
+        modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = body,
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Start,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
