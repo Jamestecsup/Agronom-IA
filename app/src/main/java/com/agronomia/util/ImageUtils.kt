@@ -190,6 +190,19 @@ object ImageUtils {
      */
     fun toBase64Jpeg(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
+    /**
+     * Indica si el archivo del [uri] tiene contenido (más de 0 bytes).
+     * La cámara virtual del emulador tiende a dejar el archivo de salida en
+     * 0 bytes; con esto se detecta rápido sin abrir el PDF/bitmap completo.
+     */
+    fun uriHasContent(context: Context, uri: Uri): Boolean = try {
+        context.contentResolver.openFileDescriptor(uri, "r")
+            ?.use { descriptor -> descriptor.statSize > 0 }
+            ?: false
+    } catch (_: Exception) {
+        false
+    }
+
     /** Lee la orientación EXIF de la imagen. Devuelve [ExifInterface.ORIENTATION_NORMAL] si no se puede leer. */
     private fun readExifOrientation(context: Context, uri: Uri): Int =
         try {

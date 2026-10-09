@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.agronomia.util.ImageUtils
 import java.io.File
 
 private fun createCameraImageUri(context: Context): Uri {
@@ -70,13 +72,31 @@ fun CaptureScreen(
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
 
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        viewModel.onImageSelected(uri)
+    }
+
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        if (success) {
-            pendingCameraUri?.let(viewModel::onImageSelected)
-        } else {
-            pendingCameraUri = null
+        val uri = pendingCameraUri
+        pendingCameraUri = null
+        if (success && uri != null && ImageUtils.uriHasContent(context, uri)) {
+            viewModel.onImageSelected(uri)
+        } else if (success && uri != null) {
+            // La cámara (virtual) del emulador dejó el archivo en 0 bytes:
+            // abrimos la galería para elegir una imagen real y seguir con ella.
+            viewModel.clearImage()
+            Toast.makeText(
+                context,
+                "La foto salió vacía en este emulador. Elige una de la galería.",
+                Toast.LENGTH_LONG
+            ).show()
+            galleryLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
         }
     }
 
@@ -88,12 +108,6 @@ fun CaptureScreen(
             pendingCameraUri = uri
             takePictureLauncher.launch(uri)
         }
-    }
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        viewModel.onImageSelected(uri)
     }
 
     fun launchCamera() {
