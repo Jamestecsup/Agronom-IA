@@ -11,7 +11,7 @@ Aplicación Android Kotlin/Jetpack Compose para seleccionar o capturar hasta cin
 
 ## Ejecución
 
-Abre `Agronom_IA` en Android Studio. La URL predeterminada `http://10.0.2.2/agronomia-api` sirve para Android Emulator con la API desplegada en XAMPP. Para dispositivo físico usa la IP LAN del PC en una propiedad Gradle, por ejemplo `-PPLANT_API_BASE_URL=http://192.168.1.20/agronomia-api`. Sigue `backend/README.md` para la configuración local y firewall.
+Abre `Agronom_IA` en Android Studio. La URL predeterminada `http://10.0.2.2/agronomia-api` sirve para Android Emulator con la API desplegada en XAMPP. En Android 17 / API 37, Android solicita permiso de red local al guardar o analizar por primera vez; es necesario concederlo. Para dispositivo físico usa la IP LAN del PC en una propiedad Gradle, por ejemplo `-PPLANT_API_BASE_URL=http://192.168.1.20/agronomia-api`. Sigue `backend/README.md` para la configuración local y firewall.
 
 El tipo `debug` permite HTTP para el backend local; `release` desactiva tráfico sin cifrar. Antes de distribuir, configura HTTPS. El API local todavía no autentica clientes.
 

@@ -1,11 +1,14 @@
 package com.correa.agronom_ia
 
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +42,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +67,34 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
     val state by model.state.collectAsState()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
+    var pendingNetworkAction by remember { mutableStateOf<NetworkAction?>(null) }
+    val localNetworkPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val action = pendingNetworkAction
+        pendingNetworkAction = null
+        if (granted) {
+            when (action) {
+                NetworkAction.UPLOAD -> model.upload()
+                NetworkAction.ANALYZE -> model.analyze()
+                null -> Unit
+            }
+        } else {
+            model.reportError("Se necesita permiso de red local para comunicarse con el servidor de desarrollo.")
+        }
+    }
+    fun runWithLocalNetworkPermission(action: NetworkAction) {
+        val permission = "android.permission.ACCESS_LOCAL_NETWORK"
+        if (Build.VERSION.SDK_INT >= 37 &&
+            ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingNetworkAction = action
+            localNetworkPermission.launch(permission)
+        } else {
+            when (action) {
+                NetworkAction.UPLOAD -> model.upload()
+                NetworkAction.ANALYZE -> model.analyze()
+            }
+        }
+    }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> -> model.addUris(context, uris) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved -> model.onCameraResult(context, saved) }
     LaunchedEffect(state.message) {
@@ -129,18 +162,20 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
                 }
             }
             item {
-                Button(onClick = { model.upload() }, enabled = state.photos.isNotEmpty() && !state.busy && !state.uploaded, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Button(onClick = { runWithLocalNetworkPermission(NetworkAction.UPLOAD) }, enabled = state.photos.isNotEmpty() && !state.busy && !state.uploaded, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                     Text(if (state.uploaded) "Guardadas correctamente" else "Guardar imágenes")
                 }
             }
             if (state.uploaded && state.analysis == null) item {
-                OutlinedButton(onClick = { model.analyze() }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Analizar planta con IA") }
+                OutlinedButton(onClick = { runWithLocalNetworkPermission(NetworkAction.ANALYZE) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Analizar planta con IA") }
             }
             state.analysis?.let { analysis -> item { AnalysisCard(analysis) } }
             item { Spacer(Modifier.height(4.dp)) }
         }
     }
 }
+
+private enum class NetworkAction { UPLOAD, ANALYZE }
 
 @Composable
 private fun AnalysisCard(analysis: PlantAnalysis) {

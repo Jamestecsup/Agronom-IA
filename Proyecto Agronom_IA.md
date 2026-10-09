@@ -14,6 +14,7 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - PHP valida otra vez conteo, tamaño, contenido detectado (`fileinfo`), dimensiones (`getimagesize`) y decodificación GD. El lote es atómico a nivel lógico: staging, transacción SQL, limpieza de archivos si falla.
 - OpenAI Responses (`gpt-4.1-mini`) recibe imágenes solo tras la acción explícita del usuario. La respuesta estructurada incluye confianza y advertencias; el resultado no se trata como identificación botánica certificada.
 - HTTP y endpoint sin autenticación se limitan al desarrollo local en red privada; preparar TLS y autenticación antes de exponer.
+- Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, exige el permiso runtime `ACCESS_LOCAL_NETWORK` para sockets hacia la red local. El flujo lo solicita al guardar o analizar y continúa solo si el usuario lo concede.
 
 ## API y almacenamiento
 
@@ -24,10 +25,11 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - Verificado después de los cambios: `:app:assembleDebug`, `:app:assembleRelease` y `:app:testDebugUnitTest` pasan (la prueba unitaria preexistente es la prueba plantilla de suma).
 - `php -l backend/api/images.php`: sin errores de sintaxis; PHP local confirma GD con WebP y mysqli habilitados.
 - Smoke tests PHP locales: GET responde 405 JSON; archivo de texto enviado como JPEG responde 415; imagen válida sin configuración devuelve 500 por `PLANT_UPLOAD_DIR` ausente antes de crear archivos (comportamiento esperado).
-- Sin emulador/dispositivo ADB disponible. No se probó captura real ni selección interactiva.
+- Android Emulator Pixel 8 (API 37): se reprodujo el timeout inicial, se comprobó que expiraba al conectar al host antes del POST y se verificó el permiso nuevo con una carga real. Al conceder `ACCESS_LOCAL_NETWORK`, Apache respondió HTTP 201 y la pantalla confirmó el registro en servidor/MySQL.
+- Esta verificación dejó dos lotes de prueba (uno por cURL y otro desde la app) en `agronomia.plant_images` y sus archivos en `C:\xampp\plant-images`; identificadores `4b6c158c-2a91-4c1b-949a-551622095bcb` y `b2cc9326-549a-4460-bcd0-7e52bd2b78c2`.
 - En XAMPP ya se importó el esquema, se creó una cuenta API aleatoria de mínimo privilegio, se desplegó la API en `htdocs/agronomia-api`, se creó `C:\xampp\plant-images` con ACL restringida, se ajustó php.ini (16 MiB por archivo, 80 MiB POST) y Apache reinició con la configuración local protegida.
 - Verificación real contra Apache/MySQL: GET 405, texto disfrazado de imagen 415, lote de cinco PNG 201 con cinco filas y archivos correspondientes, lote de seis 422; se eliminaron los lotes de prueba y se verificó la limpieza. El endpoint de IA devuelve 503 hasta configurar la clave.
-- Pruebas cámara/permisos e interacción real de Android requieren emulador/dispositivo.
+- La selección interactiva y el permiso de red local se probaron en el emulador; la captura real mediante cámara todavía requiere verificación manual.
 - La integración de IA está implementada con OpenAI Responses, `gpt-4.1-mini`, JSON estructurado y respuesta en Compose. El modelo admite imágenes ([ficha oficial](https://developers.openai.com/api/docs/models/gpt-4.1-mini)). Apache incluye el archivo privado `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf`; falta agregar allí `PLANT_AI_API_KEY`. La clave no estaba configurada y por eso no se ejecutó una inferencia real.
 - La regla de firewall de Windows para permitir Apache en el perfil privado y la subred local no se pudo crear: Windows respondió “Acceso denegado” sin elevación administrativa. Para usar un teléfono físico, agregar como administrador una regla TCP entrante puerto 80, perfil Private y dirección remota LocalSubnet.
 - La regla de firewall todavía requiere una consola administrativa: `New-NetFirewallRule -DisplayName "Agronomia local XAMPP API" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 -Profile Private -RemoteAddress LocalSubnet`.

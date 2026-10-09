@@ -161,6 +161,8 @@ class PlantPhotoViewModel : ViewModel() {
 
     fun clearMessage() { mutableState.value = mutableState.value.copy(message = null) }
 
+    fun reportError(message: String) { mutableState.value = mutableState.value.copy(error = message) }
+
     private fun validateAndStore(context: Context, uri: Uri): PlantPhoto {
         val id = UUID.randomUUID().toString()
         val incoming = File(context.cacheDir, "incoming-$id")
