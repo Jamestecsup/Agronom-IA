@@ -95,7 +95,16 @@ data class PlantResultDto(
 data class PlantInfoDto(
     val family: String = "",
     val description: String = "",
+    val light: String = "",
+    val watering: String = "",
+    val flowering: String = "",
     val uses: String = "",
     val care: String = "",
     val confidence: Double = 0.0
+)
+
+/** Prompt de investigación que Gemini genera a partir de la ficha de Pl@ntNet. */
+@Serializable
+data class RefinedPromptDto(
+    val prompt: String = ""
 )

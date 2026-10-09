@@ -9,7 +9,8 @@ import kotlinx.serialization.Serializable
  *   POST {PLANTNET_BASE_URL}v2/identify/{project}?api-key=...&lang=...&nb-results=...
  *   Cuerpo multipart: "images" (JPG/PNG) + "organs"
  *
- * La respuesta trae "results" ordenados por "score" (0..1) y "bestMatch".
+ * Guardamos la ficha completa de la mejor coincidencia (no solo el nombre):
+ * esa ficha se usa después para que Gemini genere el prompt de investigación.
  */
 
 @Serializable
@@ -34,15 +35,36 @@ data class PlantNetResult(
 data class PlantNetSpecies(
     @SerialName("scientificNameWithoutAuthor")
     val scientificNameWithoutAuthor: String = "",
+    @SerialName("scientificNameAuthorship")
+    val scientificNameAuthorship: String = "",
     @SerialName("scientificName")
     val scientificName: String = "",
     @SerialName("commonNames")
     val commonNames: List<String> = emptyList(),
-    val family: PlantNetTaxon? = null
+    val genus: PlantNetTaxon? = null,
+    val family: PlantNetTaxon? = null,
+    val gbif: PlantNetRef? = null,
+    val powo: PlantNetRef? = null,
+    val iucn: PlantNetIucn? = null
 )
 
 @Serializable
 data class PlantNetTaxon(
     @SerialName("scientificNameWithoutAuthor")
-    val scientificNameWithoutAuthor: String = ""
+    val scientificNameWithoutAuthor: String = "",
+    @SerialName("scientificNameAuthorship")
+    val scientificNameAuthorship: String = "",
+    @SerialName("scientificName")
+    val scientificName: String = ""
+)
+
+@Serializable
+data class PlantNetRef(
+    val id: String? = null
+)
+
+@Serializable
+data class PlantNetIucn(
+    val id: String? = null,
+    val category: String? = null
 )

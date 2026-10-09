@@ -73,20 +73,39 @@ object Constants {
     """.trimIndent()
 
     /**
-     * Prompt de información (Gemini texto). Se completa con el nombre de la planta.
-     * Fuerza un JSON estructurado con la información a mostrar.
+     * Prompt paso 1 de la cadena (Gemini texto): recibe la ficha de Pl@ntNet y
+     * genera un prompt optimizado para investigar ESA planta concreta.
+     * El prompt generado es interno (no se muestra al usuario).
      */
-    val INFO_PROMPT: String = """
-        Actúa como botánico experto. Te doy el nombre de una planta ya identificada
-        y debes dar información breve, clara y en español sobre ella.
+    val REFINE_PROMPT: String = """
+        Actúa como experto en botánica y jardinería. Te doy la ficha de
+        identificación de una planta (datos de Pl@ntNet). Genera un prompt
+        optimizado, en español, para investigar ESA planta concreta: información
+        general, cuidados, luz, riego, floración, usos y cualquier dato importante
+        para alguien que la tiene o quiere cultivarla.
 
         Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
-        bloques de código Markdown, con exactamente estas claves:
+        bloques de código Markdown, con exactamente esta clave:
+        {"prompt": "el prompt de investigación generado"}
+        No inventes datos de la planta: apóyate solo en la ficha dada y en el nombre.
+    """.trimIndent()
+
+    /**
+     * Prompt paso 2 de la cadena (Gemini texto): ejecuta el prompt de
+     * investigación y devuelve el JSON final con la información a mostrar.
+     */
+    val INFO_PROMPT: String = """
+        Actúa como botánico experto. Ejecuta el prompt de investigación que te dan
+        sobre una planta y responde ÚNICAMENTE con un objeto JSON válido, sin texto
+        adicional y sin bloques de código Markdown, con exactamente estas claves:
         {
           "family": "familia botánica",
           "description": "descripción breve de la planta (2 o 3 frases)",
+          "light": "requisitos de luz",
+          "watering": "requisitos de riego",
+          "flowering": "floración (época y características)",
           "uses": "usos principales",
-          "care": "cuidados básicos",
+          "care": "cuidados básicos y recomendaciones",
           "confidence": 0.0
         }
         "confidence" es un número entre 0 y 1 que indica tu certeza sobre la información.

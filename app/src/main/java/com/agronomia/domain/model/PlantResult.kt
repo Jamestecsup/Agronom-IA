@@ -10,6 +10,9 @@ data class PlantResult(
     val family: String,
     val confidence: Float,
     val description: String,
+    val light: String,
+    val watering: String,
+    val flowering: String,
     val uses: String,
     val care: String
 )

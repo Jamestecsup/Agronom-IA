@@ -1,15 +1,18 @@
 # Configuración de la app
 
-La app identifica plantas en **dos pasos**:
+La app identifica plantas con este flujo:
 
-1. **Pl@ntNet** identifica la **especie** a partir de la imagen.
-2. **Gemini** (solo texto) genera la **información** de esa especie
-   (descripción, usos, cuidados).
+1. **Pl@ntNet** identifica la **especie** y devuelve su ficha (nombre científico,
+   nombres comunes, familia, género, IDs GBIF/POWO/IUCN, score).
+2. **Gemini (1)** genera un **prompt optimizado** a partir de esa ficha.
+3. **Gemini (2)** ejecuta ese prompt y devuelve el **JSON final** con la
+   información que se muestra en pantalla: descripción, luz, riego, floración,
+   usos y cuidados.
 
 Si Pl@ntNet no da una coincidencia confiable, se usa **Gemini visión** como
-respaldo. Si en ese respaldo Gemini no alcanza la certeza exigida (100 % por
-defecto), se muestra un error pidiendo al usuario **más imágenes** (flor, hoja,
-tallo).
+respaldo (la cadena de prompts se aplica igual, con la información disponible).
+Si en ese respaldo Gemini no alcanza la certeza exigida (100 % por defecto), se
+muestra un error pidiendo al usuario **más imágenes** (flor, hoja, tallo).
 
 ## Dónde se configura
 

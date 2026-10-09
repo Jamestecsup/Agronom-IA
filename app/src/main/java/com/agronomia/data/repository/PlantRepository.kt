@@ -8,7 +8,9 @@ import com.agronomia.data.remote.NetworkModule
 import com.agronomia.data.remote.PlantApiService
 import com.agronomia.data.remote.PlantInfoDto
 import com.agronomia.data.remote.PlantNetApiService
+import com.agronomia.data.remote.PlantNetSpecies
 import com.agronomia.data.remote.PlantResultDto
+import com.agronomia.data.remote.RefinedPromptDto
 import com.agronomia.data.remote.ResponseFormat
 import com.agronomia.domain.model.PlantResult
 import com.agronomia.util.Constants
@@ -36,11 +38,12 @@ interface PlantRepository {
      * Identifica una planta y obtiene información sobre ella.
      *
      * Flujo:
-     *  1. Pl@ntNet identifica la especie a partir de la imagen.
-     *  2. Se le pide a Gemini (texto) información de esa especie.
+     *  1. Pl@ntNet identifica la especie y devuelve su ficha (nombre, familia, IDs).
+     *  2. Gemini genera un prompt optimizado a partir de esa ficha.
+     *  3. Gemini ejecuta ese prompt y devuelve el JSON final con la información.
+     *
      * Si Pl@ntNet no identifica con confianza suficiente, se usa Gemini (visión)
-     * como respaldo; si en ese respaldo Gemini no alcanza la certeza exigida, se
-     * devuelve un error pidiendo más imágenes.
+     * como respaldo (la cadena de prompts se aplica igual con lo que se tenga).
      *
      * @return [Result.success] con [PlantResult] o [Result.failure] con
      *         [PlantIdentificationException] cuyo mensaje es apto para UI.
@@ -67,7 +70,7 @@ class PlantRepositoryImpl(
 
             try {
                 val species = identifySpecies(imageBytes)
-                val info = fetchPlantInfo(species)
+                val info = runInfoChain(species)
                 Result.success(species.toPlantResult(info))
             } catch (e: PlantIdentificationException) {
                 Result.failure(e)
@@ -148,7 +151,10 @@ class PlantRepositoryImpl(
         return geminiMatch
     }
 
-    /** Llama a Pl@ntNet y devuelve la mejor coincidencia (o null si no hay resultados). */
+    /**
+     * Llama a Pl@ntNet y devuelve la mejor coincidencia con su ficha completa
+     * (o null si no hay resultados).
+     */
     private suspend fun identifyWithPlantNet(imageBytes: ByteArray): SpeciesMatch? {
         val imagePart = MultipartBody.Part.createFormData(
             "images",
@@ -167,7 +173,9 @@ class PlantRepositoryImpl(
             commonName = species.commonNames.firstOrNull().orEmpty(),
             scientificName = scientificName,
             family = species.family?.scientificNameWithoutAuthor.orEmpty(),
-            confidence = best.score.coerceIn(0.0, 1.0).toFloat()
+            confidence = best.score.coerceIn(0.0, 1.0).toFloat(),
+            plantNetSpecies = species,
+            bestMatch = response.bestMatch.orEmpty()
         )
     }
 
@@ -195,44 +203,107 @@ class PlantRepositoryImpl(
             commonName = dto.commonName.trim(),
             scientificName = dto.scientificName.trim(),
             family = "",
-            confidence = dto.confidence.coerceIn(0.0, 1.0).toFloat()
+            confidence = dto.confidence.coerceIn(0.0, 1.0).toFloat(),
+            plantNetSpecies = null,
+            bestMatch = ""
         )
     }
 
     /**
-     * Pide a Gemini información de la planta identificada. Es "best-effort":
-     * si falla, se devuelve la identificación sin la información extra.
+     * Cadena de información: Gemini paso 1 genera un prompt optimizado a partir
+     * de la ficha; Gemini paso 2 ejecuta ese prompt y devuelve el JSON final.
+     * Es "best-effort": si algún paso falla, se devuelve la identificación sin
+     * información extra (o la información parcial).
      */
-    private suspend fun fetchPlantInfo(species: SpeciesMatch): PlantInfoDto {
-        return try {
-            val prompt = buildString {
-                append(Constants.INFO_PROMPT)
-                append("\n\nPlanta identificada: ")
-                append(species.scientificName)
-                if (species.commonName.isNotBlank()) {
-                    append(" (nombre común: ")
-                    append(species.commonName)
-                    append(")")
-                }
-                if (species.family.isNotBlank()) {
-                    append(", familia ")
-                    append(species.family)
-                }
-                append(".")
-            }
+    private suspend fun runInfoChain(species: SpeciesMatch): PlantInfoDto {
+        val refinedPrompt = generateRefinedPrompt(species)
+        if (refinedPrompt.isBlank()) return PlantInfoDto()
+        return generatePlantInfo(refinedPrompt)
+    }
 
+    /** Paso 1: pide a Gemini que refine la ficha en un prompt de investigación. */
+    private suspend fun generateRefinedPrompt(species: SpeciesMatch): String {
+        return try {
+            val message = Constants.REFINE_PROMPT + "\n\n" + buildPlantNetFicha(species)
             val response = geminiService.identifyPlant(
                 url = Constants.identifyEndpointUrl(),
                 authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
-                request = buildTextRequest(prompt)
+                request = buildTextRequest(message)
             )
-            val content = response.choices.firstOrNull()?.message?.content
-            if (content == null) PlantInfoDto() else parseInfoDto(content)
+            val content = response.choices.firstOrNull()?.message?.content ?: return ""
+            val dto = parseRefinedPromptDto(content) ?: return ""
+            dto.prompt.cleanInfo()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    /** Paso 2: pide a Gemini la información final (JSON estructurado). */
+    private suspend fun generatePlantInfo(refinedPrompt: String): PlantInfoDto {
+        return try {
+            val message = Constants.INFO_PROMPT + "\n\nPrompt de investigación:\n" + refinedPrompt
+            val response = geminiService.identifyPlant(
+                url = Constants.identifyEndpointUrl(),
+                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                request = buildTextRequest(message)
+            )
+            val content = response.choices.firstOrNull()?.message?.content ?: return PlantInfoDto()
+            parseInfoDto(content)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             PlantInfoDto()
         }
+    }
+
+    /** Construye un texto legible con la ficha de Pl@ntNet para alimentar el prompt. */
+    private fun buildPlantNetFicha(species: SpeciesMatch): String {
+        val sp = species.plantNetSpecies
+        return buildString {
+            append("Ficha de la planta:\n")
+            if (species.scientificName.isNotBlank()) {
+                append("- Nombre científico: ").append(species.scientificName)
+                sp?.scientificNameAuthorship?.takeIf { it.isNotBlank() }?.let {
+                    append(" ").append(it)
+                }
+                append("\n")
+            }
+            sp?.commonNames?.takeIf { it.isNotEmpty() }?.let {
+                append("- Nombres comunes: ").append(it.joinToString(", ")).append("\n")
+            }
+            sp?.genus?.scientificNameWithoutAuthor?.takeIf { it.isNotBlank() }?.let {
+                append("- Género: ").append(it).append("\n")
+            }
+            if (species.family.isNotBlank()) {
+                append("- Familia: ").append(species.family).append("\n")
+            }
+            append("- Similitud (score Pl@ntNet): ")
+                .append((species.confidence * 100).toInt())
+                .append("%\n")
+            sp?.gbif?.id?.takeIf { it.isNotBlank() }?.let {
+                append("- GBIF ID: ").append(it).append("\n")
+            }
+            sp?.powo?.id?.takeIf { it.isNotBlank() }?.let {
+                append("- POWO ID: ").append(it).append("\n")
+            }
+            sp?.iucn?.let { iucn ->
+                val parts = listOfNotNull(
+                    iucn.id?.takeIf { it.isNotBlank() },
+                    iucn.category?.takeIf { it.isNotBlank() }
+                )
+                if (parts.isNotEmpty()) {
+                    append("- IUCN: ").append(parts.joinToString(" | ")).append("\n")
+                }
+            }
+            if (species.bestMatch.isNotBlank()) {
+                append("- Mejor coincidencia (bestMatch): ").append(species.bestMatch).append("\n")
+            }
+            if (sp == null) {
+                append("(Identificada por IA de visión; no hay ficha completa de Pl@ntNet.)\n")
+            }
+        }.trim()
     }
 
     private fun buildVisionRequest(imageBytes: ByteArray): ChatCompletionRequest =
@@ -282,6 +353,16 @@ class PlantRepositoryImpl(
                 "La respuesta de la IA no es un JSON válido con el formato esperado.",
                 e
             )
+        }
+    }
+
+    private fun parseRefinedPromptDto(rawContent: String): RefinedPromptDto? {
+        val jsonText = extractJsonObject(rawContent)
+        if (jsonText.isBlank()) return null
+        return try {
+            json.decodeFromString<RefinedPromptDto>(jsonText)
+        } catch (_: SerializationException) {
+            null
         }
     }
 
@@ -350,12 +431,17 @@ class PlantRepositoryImpl(
             ?.groupValues
             ?.getOrNull(1)
 
-    /** Coincidencia de especie (identificación), antes de añadir la información. */
+    /**
+     * Coincidencia de especie (identificación) con la ficha de Pl@ntNet cuando
+     * está disponible; se usa para alimentar la cadena de información.
+     */
     private data class SpeciesMatch(
         val commonName: String,
         val scientificName: String,
         val family: String,
-        val confidence: Float
+        val confidence: Float,
+        val plantNetSpecies: PlantNetSpecies? = null,
+        val bestMatch: String = ""
     ) {
         fun toPlantResult(info: PlantInfoDto): PlantResult = PlantResult(
             commonName = commonName.trim(),
@@ -363,6 +449,9 @@ class PlantRepositoryImpl(
             family = family.trim().ifBlank { info.family.cleanInfo() },
             confidence = confidence,
             description = info.description.cleanInfo(),
+            light = info.light.cleanInfo(),
+            watering = info.watering.cleanInfo(),
+            flowering = info.flowering.cleanInfo(),
             uses = info.uses.cleanInfo(),
             care = info.care.cleanInfo()
         )
