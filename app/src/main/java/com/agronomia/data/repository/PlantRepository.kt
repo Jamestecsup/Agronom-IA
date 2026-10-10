@@ -7,6 +7,8 @@ import com.agronomia.data.remote.ContentPart
 import com.agronomia.data.remote.GlossaryDto
 import com.agronomia.data.remote.GlossaryTermDto
 import com.agronomia.data.remote.ImageUrl
+import com.agronomia.data.remote.MaterialItemDto
+import com.agronomia.data.remote.MaterialsDto
 import com.agronomia.data.remote.NetworkModule
 import com.agronomia.data.remote.PlantApiService
 import com.agronomia.data.remote.PlantInfoDto
@@ -17,6 +19,7 @@ import com.agronomia.data.remote.RefinedPromptDto
 import com.agronomia.data.remote.ResponseFormat
 import com.agronomia.domain.model.PlantResult
 import com.agronomia.domain.model.PlantSection
+import com.agronomia.domain.model.MaterialItem
 import com.agronomia.domain.model.WordMeaning
 import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
@@ -249,6 +252,8 @@ class PlantRepositoryImpl(
      *     uno con la ficha extendida + el prompt de investigación.
      *  3. Con el texto de cada categoría, la IA genera su glosario contextual
      *     (palabras difíciles + significado), también en paralelo.
+     *  4. Solo en categorías de cuidado, la IA lista materiales, productos y
+     *     alternativas viables (p. ej. forzado fuera de estación), en paralelo.
      * Es "best-effort" por categoría: si algo falla, esa parte queda vacía
      * pero lo demás se muestra igual.
      */
@@ -260,6 +265,9 @@ class PlantRepositoryImpl(
         }.mapValues { (_, job) -> job.await() }
         val glossaries = Constants.CATEGORY_ORDER.associateWith { category ->
             async { generateGlossary(category, texts[category].orEmpty(), species) }
+        }.mapValues { (_, job) -> job.await() }
+        val materials = Constants.MATERIAL_CATEGORIES.associateWith { category ->
+            async { generateMaterials(category, texts[category].orEmpty(), species) }
         }.mapValues { (_, job) -> job.await() }
         val info = PlantInfoDto(
             description = texts["description"].orEmpty(),
@@ -276,7 +284,8 @@ class PlantRepositoryImpl(
                 key = key,
                 title = Constants.CATEGORY_TITLES[key].orEmpty(),
                 body = texts[key].orEmpty(),
-                terms = glossaries[key].orEmpty()
+                terms = glossaries[key].orEmpty(),
+                materials = materials[key].orEmpty()
             )
         }
         InfoChainResult(info, sections)
@@ -377,6 +386,70 @@ class PlantRepositoryImpl(
             throw e
         } catch (_: Exception) {
             emptyList()
+        }
+    }
+
+    /**
+     * Paso 4: con el texto ya generado de UNA categoría de cuidado, pide a la
+     * IA sus materiales, productos y alternativas viables.
+     * Best-effort: si falla, la sección se muestra sin materiales.
+     */
+    private suspend fun generateMaterials(
+        category: String,
+        categoryText: String,
+        species: SpeciesMatch
+    ): List<MaterialItem> {
+        if (categoryText.isBlank()) return emptyList()
+        val title = Constants.CATEGORY_TITLES[category].orEmpty().ifBlank { category }
+        val plantLabel = species.scientificName.ifBlank { species.commonName }.ifBlank { "planta" }
+        return try {
+            val message = buildString {
+                append(Constants.MATERIALS_PROMPT)
+                append("\n\nPlanta: ").append(plantLabel)
+                if (species.commonName.isNotBlank() && species.scientificName.isNotBlank()) {
+                    append(" (").append(species.commonName).append(")")
+                }
+                append("\nCategoría: ").append(title)
+                append("\n\nTexto de la categoría:\n").append(categoryText)
+            }
+            val response = aiService.identifyPlant(
+                url = Constants.identifyEndpointUrl(),
+                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                request = buildTextRequest(message)
+            )
+            val content = response.choices.firstOrNull()?.message?.content ?: return emptyList()
+            parseMaterialsDto(content).items.mapNotNull { item ->
+                val name = item.name.cleanInfo()
+                val detail = item.detail.cleanInfo()
+                if (name.isBlank()) null else MaterialItem(name, detail)
+            }.take(6)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Parsea los materiales {"items": [{"name": "...", "detail": "..."}]}.
+     * Tolerante: acepta también la clave "materials" y descarta vacíos.
+     */
+    private fun parseMaterialsDto(rawContent: String): MaterialsDto {
+        val jsonText = extractJsonObject(rawContent)
+        if (jsonText.isBlank()) return MaterialsDto()
+        return try {
+            val root = json.parseToJsonElement(jsonText) as? JsonObject ?: return MaterialsDto()
+            val array = (root["items"] ?: root["materials"]) as? JsonArray ?: return MaterialsDto()
+            val items = array.mapNotNull { element ->
+                val obj = element as? JsonObject ?: return@mapNotNull null
+                val name = (obj["name"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+                val detail = (obj["detail"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+                if (name.isBlank() || detail.equals("unknown", true)) null
+                else MaterialItemDto(name, detail)
+            }
+            MaterialsDto(items)
+        } catch (_: Exception) {
+            MaterialsDto()
         }
     }
 

@@ -217,6 +217,36 @@ object Constants {
     """.trimIndent()
 
     /**
+     * Categorías de cuidado que piden materiales y alternativas (paso 4).
+     * Descripción, floración y usos no llevan materiales.
+     */
+    val MATERIAL_CATEGORIES: List<String> = listOf(
+        "light", "watering", "soil", "climate", "care"
+    )
+
+    /**
+     * Paso 4 de la cadena (IA de texto): con la planta, la categoría y el texto
+     * ya generado, lista materiales, productos y herramientas útiles más
+     * alternativas viables (p. ej. forzado en invernadero si no es la estación).
+     * Se ejecuta en paralelo, una vez por categoría de cuidado.
+     */
+    val MATERIALS_PROMPT: String = """
+        Actúas dentro de una app que ayuda a agricultores a cuidar plantas. Te doy
+        la planta, la categoría de cuidado y el texto ya generado para esa
+        categoría. Lista de 3 a 6 materiales, productos o herramientas concretos
+        que se mencionan o sirven para esa categoría, con nombres genéricos y 1 o
+        2 marcas comerciales de ejemplo como referencia cuando aplique. Incluye
+        también alternativas viables cuando la estación o el clima no acompañen
+        (por ejemplo, forzado de plantas en ambiente controlado, mallas, riego
+        tecnificado). Cada ítem en 1 o 2 frases cortas y prácticas.
+
+        Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+        bloques de código Markdown, con exactamente esta forma:
+        {"items": [{"name": "nombre del material o alternativa", "detail": "para qué sirve y ejemplo de uso"}]}
+        Si no hay materiales, responde {"items": []}.
+    """.trimIndent()
+
+    /**
      * Construye la URL completa del endpoint de IA (texto/visión) a partir de
      * [BASE_URL] y [IDENTIFY_PATH]. Evita duplicar o perder barras.
      */

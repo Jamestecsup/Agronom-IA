@@ -18,6 +18,12 @@ La app identifica plantas con este flujo:
    cada una de forma sencilla DENTRO DEL CONTEXTO (`{"terms": [{"word",
    "meaning"}]}`). En la app esas palabras salen resaltadas y al tocarlas se
    abre su significado.
+5. **La IA (paso 4)** lista **materiales y alternativas** solo en categorías de
+   cuidado (luz, riego, suelo, clima, cuidados), en paralelo: productos y
+   herramientas con marcas de ejemplo más alternativas viables si la estación
+   no acompaña (p. ej. forzado en ambiente controlado)
+   (`{"items": [{"name", "detail"}]}`). Se muestran en tarjetas de tonos que
+   combinan con el color esencial de su categoría.
 
 Si Pl@ntNet no da una coincidencia confiable, se usa **la IA de visión** como
 respaldo (la cadena se aplica igual, con la información disponible).

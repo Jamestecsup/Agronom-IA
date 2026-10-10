@@ -132,6 +132,21 @@ data class GlossaryTermDto(
     val meaning: String = ""
 )
 
+/**
+ * Materiales y alternativas de una categoría de cuidado (paso 4 de la cadena).
+ * Forma esperada: {"items": [{"name": "...", "detail": "..."}]}.
+ */
+@Serializable
+data class MaterialsDto(
+    val items: List<MaterialItemDto> = emptyList()
+)
+
+@Serializable
+data class MaterialItemDto(
+    val name: String = "",
+    val detail: String = ""
+)
+
 /** Prompt de investigación que Gemini genera a partir de la ficha de Pl@ntNet. */
 @Serializable
 data class RefinedPromptDto(

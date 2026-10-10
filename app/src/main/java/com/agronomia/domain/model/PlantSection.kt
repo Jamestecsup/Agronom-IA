@@ -10,12 +10,22 @@ data class WordMeaning(
 )
 
 /**
- * Bloque de una categoría de cuidado: título, texto extenso y glosario de
- * palabras difíciles con su significado en el contexto de la categoría.
+ * Material o alternativa útil para una categoría de cuidado: nombre (genérico,
+ * con marcas de ejemplo cuando aplique) y detalle práctico de uso.
+ */
+data class MaterialItem(
+    val name: String,
+    val detail: String
+)
+
+/**
+ * Bloque de una categoría de cuidado: título, texto extenso, glosario de
+ * palabras difíciles y (solo en categorías de cuidado) materiales/alternativas.
  */
 data class PlantSection(
     val key: String,
     val title: String,
     val body: String,
-    val terms: List<WordMeaning> = emptyList()
+    val terms: List<WordMeaning> = emptyList(),
+    val materials: List<MaterialItem> = emptyList()
 )
