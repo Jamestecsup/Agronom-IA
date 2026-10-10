@@ -4,6 +4,8 @@ import com.agronomia.data.remote.CategoryInfoDto
 import com.agronomia.data.remote.ChatCompletionRequest
 import com.agronomia.data.remote.ChatMessage
 import com.agronomia.data.remote.ContentPart
+import com.agronomia.data.remote.GlossaryDto
+import com.agronomia.data.remote.GlossaryTermDto
 import com.agronomia.data.remote.ImageUrl
 import com.agronomia.data.remote.NetworkModule
 import com.agronomia.data.remote.PlantApiService
@@ -14,6 +16,8 @@ import com.agronomia.data.remote.PlantResultDto
 import com.agronomia.data.remote.RefinedPromptDto
 import com.agronomia.data.remote.ResponseFormat
 import com.agronomia.domain.model.PlantResult
+import com.agronomia.domain.model.PlantSection
+import com.agronomia.domain.model.WordMeaning
 import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
 import kotlinx.coroutines.CancellationException
@@ -23,8 +27,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -79,8 +86,8 @@ class PlantRepositoryImpl(
 
             try {
                 val species = identifySpecies(imageBytes)
-                val info = runInfoChain(species)
-                Result.success(species.toPlantResult(info))
+                val chain = runInfoChain(species)
+                Result.success(species.toPlantResult(chain.info, chain.sections))
             } catch (e: PlantIdentificationException) {
                 Result.failure(e)
             } catch (e: HttpException) {
@@ -240,17 +247,21 @@ class PlantRepositoryImpl(
      *  1. La IA genera un prompt optimizado de investigación (contexto base).
      *  2. La IA ejecuta UN prompt por categoría de cuidado, en paralelo, cada
      *     uno con la ficha extendida + el prompt de investigación.
-     * Es "best-effort" por categoría: si una falla, esa sección queda vacía
-     * pero las demás se muestran igual.
+     *  3. Con el texto de cada categoría, la IA genera su glosario contextual
+     *     (palabras difíciles + significado), también en paralelo.
+     * Es "best-effort" por categoría: si algo falla, esa parte queda vacía
+     * pero lo demás se muestra igual.
      */
-    private suspend fun runInfoChain(species: SpeciesMatch): PlantInfoDto = coroutineScope {
+    private suspend fun runInfoChain(species: SpeciesMatch): InfoChainResult = coroutineScope {
         val refinedPrompt = generateRefinedPrompt(species)
         val ficha = buildPlantNetFicha(species)
-        val deferred = Constants.CATEGORY_ORDER.associateWith { category ->
+        val texts = Constants.CATEGORY_ORDER.associateWith { category ->
             async { generateCategoryInfo(category, ficha, refinedPrompt) }
-        }
-        val texts = deferred.mapValues { (_, job) -> job.await() }
-        PlantInfoDto(
+        }.mapValues { (_, job) -> job.await() }
+        val glossaries = Constants.CATEGORY_ORDER.associateWith { category ->
+            async { generateGlossary(category, texts[category].orEmpty(), species) }
+        }.mapValues { (_, job) -> job.await() }
+        val info = PlantInfoDto(
             description = texts["description"].orEmpty(),
             light = texts["light"].orEmpty(),
             watering = texts["watering"].orEmpty(),
@@ -260,7 +271,22 @@ class PlantRepositoryImpl(
             uses = texts["uses"].orEmpty(),
             care = texts["care"].orEmpty()
         )
+        val sections = Constants.CATEGORY_ORDER.map { key ->
+            PlantSection(
+                key = key,
+                title = Constants.CATEGORY_TITLES[key].orEmpty(),
+                body = texts[key].orEmpty(),
+                terms = glossaries[key].orEmpty()
+            )
+        }
+        InfoChainResult(info, sections)
     }
+
+    /** Resultado interno de la cadena: textos por categoría + secciones con glosario. */
+    private data class InfoChainResult(
+        val info: PlantInfoDto,
+        val sections: List<PlantSection>
+    )
 
     /** Paso 1: pide a la IA que refine la ficha en un prompt de investigación. */
     private suspend fun generateRefinedPrompt(species: SpeciesMatch): String {
@@ -310,6 +336,70 @@ class PlantRepositoryImpl(
             throw e
         } catch (_: Exception) {
             ""
+        }
+    }
+
+    /**
+     * Paso 3: con el texto ya generado de UNA categoría, pide a la IA su
+     * glosario contextual (palabras difíciles + significado sencillo).
+     * Best-effort: si falla, la sección se muestra sin palabras resaltadas.
+     */
+    private suspend fun generateGlossary(
+        category: String,
+        categoryText: String,
+        species: SpeciesMatch
+    ): List<WordMeaning> {
+        if (categoryText.isBlank()) return emptyList()
+        val title = Constants.CATEGORY_TITLES[category].orEmpty().ifBlank { category }
+        val plantLabel = species.scientificName.ifBlank { species.commonName }.ifBlank { "planta" }
+        return try {
+            val message = buildString {
+                append(Constants.GLOSSARY_PROMPT)
+                append("\n\nPlanta: ").append(plantLabel)
+                if (species.commonName.isNotBlank() && species.scientificName.isNotBlank()) {
+                    append(" (").append(species.commonName).append(")")
+                }
+                append("\nCategoría: ").append(title)
+                append("\n\nTexto de la categoría:\n").append(categoryText)
+            }
+            val response = aiService.identifyPlant(
+                url = Constants.identifyEndpointUrl(),
+                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                request = buildTextRequest(message)
+            )
+            val content = response.choices.firstOrNull()?.message?.content ?: return emptyList()
+            parseGlossaryDto(content).terms.mapNotNull { term ->
+                val word = term.word.cleanInfo()
+                val meaning = term.meaning.cleanInfo()
+                if (word.length < 3 || meaning.isBlank()) null else WordMeaning(word, meaning)
+            }.take(8)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Parsea el glosario {"terms": [{"word": "...", "meaning": "..."}]}.
+     * Tolerante: acepta también la clave "glossary" y descarta entradas vacías.
+     */
+    private fun parseGlossaryDto(rawContent: String): GlossaryDto {
+        val jsonText = extractJsonObject(rawContent)
+        if (jsonText.isBlank()) return GlossaryDto()
+        return try {
+            val root = json.parseToJsonElement(jsonText) as? JsonObject ?: return GlossaryDto()
+            val array = (root["terms"] ?: root["glossary"]) as? JsonArray ?: return GlossaryDto()
+            val terms = array.mapNotNull { item ->
+                val obj = item as? JsonObject ?: return@mapNotNull null
+                val word = (obj["word"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+                val meaning = (obj["meaning"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+                if (word.isBlank() || meaning.isBlank() || meaning.equals("unknown", true)) null
+                else GlossaryTermDto(word, meaning)
+            }
+            GlossaryDto(terms)
+        } catch (_: Exception) {
+            GlossaryDto()
         }
     }
 
@@ -533,20 +623,14 @@ class PlantRepositoryImpl(
         val powoId: String = "",
         val iucnCategory: String = ""
     ) {
-        fun toPlantResult(info: PlantInfoDto): PlantResult = PlantResult(
-            commonName = commonName.trim(),
-            scientificName = scientificName.trim(),
-            family = family.trim().ifBlank { info.family.cleanInfo() },
-            confidence = confidence,
-            description = info.description.cleanInfo(),
-            light = info.light.cleanInfo(),
-            watering = info.watering.cleanInfo(),
-            soil = info.soil.cleanInfo(),
-            climate = info.climate.cleanInfo(),
-            flowering = info.flowering.cleanInfo(),
-            uses = info.uses.cleanInfo(),
-            care = info.care.cleanInfo()
-        )
+        fun toPlantResult(info: PlantInfoDto, sections: List<PlantSection>): PlantResult =
+            PlantResult(
+                commonName = commonName.trim(),
+                scientificName = scientificName.trim(),
+                family = family.trim().ifBlank { info.family.cleanInfo() },
+                confidence = confidence,
+                sections = sections
+            )
     }
 
     /** Especie candidata alternativa de Pl@ntNet (para la ficha extendida). */

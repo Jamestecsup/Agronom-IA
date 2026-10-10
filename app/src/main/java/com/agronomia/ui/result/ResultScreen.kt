@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -19,20 +21,29 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.agronomia.domain.model.PlantResult
+import com.agronomia.domain.model.PlantSection
+import com.agronomia.domain.model.WordMeaning
 import com.agronomia.ui.capture.CaptureViewModel
 import com.agronomia.ui.capture.IdentificationUiState
 import kotlin.math.roundToInt
@@ -163,14 +174,28 @@ private fun SuccessContent(
         style = MaterialTheme.typography.bodyMedium
     )
 
-    InfoSection("Descripción", plant.description)
-    InfoSection("Luz", plant.light)
-    InfoSection("Riego", plant.watering)
-    InfoSection("Suelo", plant.soil)
-    InfoSection("Clima", plant.climate)
-    InfoSection("Floración", plant.flowering)
-    InfoSection("Usos", plant.uses)
-    InfoSection("Cuidados", plant.care)
+    // Palabra seleccionada del glosario: se muestra su significado en contexto.
+    var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
+
+    plant.sections.forEach { section ->
+        SectionCard(
+            section = section,
+            onTermClick = { selectedTerm = it }
+        )
+    }
+
+    selectedTerm?.let { term ->
+        AlertDialog(
+            onDismissRequest = { selectedTerm = null },
+            title = { Text(term.word) },
+            text = { Text(term.meaning) },
+            confirmButton = {
+                TextButton(onClick = { selectedTerm = null }) {
+                    Text("Entendido")
+                }
+            }
+        )
+    }
 
     Spacer(modifier = Modifier.height(24.dp))
     Button(
@@ -182,10 +207,17 @@ private fun SuccessContent(
     Spacer(modifier = Modifier.height(8.dp))
 }
 
-/** Bloque de información (título + cuerpo) en tarjeta delineada. No se muestra si el cuerpo está vacío. */
+/**
+ * Bloque de una categoría en tarjeta delineada, con las palabras difíciles
+ * resaltadas: al tocarlas se abre su significado en contexto.
+ * No se muestra si el cuerpo está vacío.
+ */
 @Composable
-private fun InfoSection(title: String, body: String) {
-    if (body.isBlank()) return
+private fun SectionCard(
+    section: PlantSection,
+    onTermClick: (WordMeaning) -> Unit
+) {
+    if (section.body.isBlank()) return
 
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedCard(
@@ -194,21 +226,86 @@ private fun InfoSection(title: String, body: String) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = title,
+                text = section.title.ifBlank { section.key },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Start,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.fillMaxWidth()
+            val highlightStyle = SpanStyle(
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+                textDecoration = TextDecoration.Underline
             )
+            val annotated = remember(section.body, section.terms) {
+                buildAnnotatedText(section.body, section.terms, highlightStyle)
+            }
+            ClickableText(
+                text = annotated,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                onClick = { offset ->
+                    annotated.getStringAnnotations("term", offset, offset)
+                        .firstOrNull()?.let { annotation ->
+                            section.terms.find { it.word == annotation.item }
+                                ?.let(onTermClick)
+                        }
+                }
+            )
+            if (section.terms.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Toca una palabra resaltada para ver su significado.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
+}
+
+/**
+ * Resalta en el texto las palabras del glosario (insensible a mayúsculas,
+ * con límites de palabra y sin traslapes). Cada resaltado lleva una anotación
+ * con la palabra para abrir su significado al tocarla.
+ */
+private fun buildAnnotatedText(
+    body: String,
+    terms: List<WordMeaning>,
+    highlight: SpanStyle
+): AnnotatedString {
+    val builder = AnnotatedString.Builder()
+    builder.append(body)
+    if (terms.isEmpty()) return builder.toAnnotatedString()
+
+    val lowerBody = body.lowercase()
+    val used = mutableListOf<IntRange>()
+    // Términos largos primero para que no los tape un sub-término más corto.
+    terms.sortedByDescending { it.word.length }.forEach { term ->
+        val word = term.word.trim()
+        if (word.length < 3) return@forEach
+        val lowerWord = word.lowercase()
+        var from = 0
+        while (true) {
+            val found = lowerBody.indexOf(lowerWord, from)
+            if (found < 0) break
+            val end = found + word.length
+            val beforeOk = found == 0 || !lowerBody[found - 1].isLetterOrDigit()
+            val afterOk = end >= lowerBody.length || !lowerBody[end].isLetterOrDigit()
+            val overlaps = used.any { it.first < end && found < it.last }
+            if (beforeOk && afterOk && !overlaps) {
+                builder.addStyle(highlight, found, end)
+                builder.addStringAnnotation("term", word, found, end)
+                used.add(found until end)
+            }
+            from = end
+        }
+    }
+    return builder.toAnnotatedString()
 }
 
 @Composable

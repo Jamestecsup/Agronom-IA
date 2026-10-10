@@ -115,6 +115,23 @@ data class CategoryInfoDto(
     val text: String = ""
 )
 
+/**
+ * Glosario contextual de una categoría (paso 3 de la cadena): palabras
+ * difíciles del texto con su significado explicado EN EL CONTEXTO de la
+ * categoría, para usuarios sin conocimiento previo.
+ * Forma esperada: {"terms": [{"word": "...", "meaning": "..."}]}.
+ */
+@Serializable
+data class GlossaryDto(
+    val terms: List<GlossaryTermDto> = emptyList()
+)
+
+@Serializable
+data class GlossaryTermDto(
+    val word: String = "",
+    val meaning: String = ""
+)
+
 /** Prompt de investigación que Gemini genera a partir de la ficha de Pl@ntNet. */
 @Serializable
 data class RefinedPromptDto(
