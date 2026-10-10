@@ -73,6 +73,17 @@ object Constants {
     """.trimIndent()
 
     /**
+     * Estilo de redacción obligatorio para TODO lo que ve el usuario: la app es
+     * para agricultores y personas sin conocimiento previo de plantas. Nada de
+     * tecnicismos sin explicar: o se usa la palabra común, o se explica entre
+     * paréntesis (p. ej. no decir solo "entomófila" o "aquenios").
+     */
+    private const val LENGUAJE_SENCILLO =
+        "Redáctalo con palabras sencillas, como si se lo explicaras a un agricultor " +
+            "sin estudios: frases cortas, consejos prácticos y ningún tecnicismo sin " +
+            "explicar entre paréntesis."
+
+    /**
      * Prompt paso 1 de la cadena (IA de texto): recibe la ficha extendida de
      * Pl@ntNet y genera un prompt optimizado para investigar ESA planta concreta.
      * El prompt generado es interno (no se muestra al usuario): alimenta los 8
@@ -84,6 +95,7 @@ object Constants {
         optimizado, en español, para investigar ESA planta concreta: descripción,
         luz, riego, suelo, clima, floración, usos y cuidados; incluye cualquier
         dato importante para alguien que la tiene o quiere cultivarla.
+        $LENGUAJE_SENCILLO
 
         Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
         bloques de código Markdown, con exactamente esta clave:
@@ -119,6 +131,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, describe EN EXTENSO la planta: qué es, porte,
             tallos, hojas, flores/frutos y rasgos para reconocerla (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "descripción extensa de la planta"}
@@ -129,6 +142,7 @@ object Constants {
             investigación que te dan, explica EN EXTENSO los requisitos de luz de
             la planta: sol directo/semisombra/sombra, horas al día, orientación y
             qué pasa con luz insuficiente o excesiva (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "requisitos de luz en extenso"}
@@ -139,6 +153,7 @@ object Constants {
             investigación que te dan, explica EN EXTENSO el riego de la planta:
             frecuencia por estación, cantidad, método, drenaje y señales de exceso
             o falta de agua (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "requisitos de riego en extenso"}
@@ -149,6 +164,7 @@ object Constants {
             investigación que te dan, explica EN EXTENSO el suelo ideal de la planta:
             tipo, textura, pH, materia orgánica, drenaje y maceta o sustrato
             recomendado (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "suelo y sustrato ideales en extenso"}
@@ -159,6 +175,7 @@ object Constants {
             investigación que te dan, explica EN EXTENSO el clima de la planta:
             temperatura ideal y límites, humedad, resistencia al frío/calor y
             época de siembra o trasplante (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "clima y temperatura en extenso"}
@@ -169,6 +186,7 @@ object Constants {
             investigación que te dan, explica EN EXTENSO la floración de la planta:
             época, duración, características de flores/frutos y cómo favorecerla
             (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "floración en extenso"}
@@ -179,6 +197,7 @@ object Constants {
             investigación que te dan, explica EN EXTENSO los usos de la planta:
             ornamental, alimenticio, medicinal, ecológico u otros, con ejemplos
             concretos (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "usos principales en extenso"}
@@ -189,6 +208,7 @@ object Constants {
             investigación que te dan, explica EN EXTENSO los cuidados de la planta:
             fertilización, poda, trasplante, plagas y enfermedades comunes y cómo
             prevenirlas (4 a 6 frases).
+            $LENGUAJE_SENCILLO
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "cuidados básicos en extenso"}

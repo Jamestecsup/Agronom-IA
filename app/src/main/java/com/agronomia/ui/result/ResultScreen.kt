@@ -16,6 +16,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -181,26 +182,33 @@ private fun SuccessContent(
     Spacer(modifier = Modifier.height(8.dp))
 }
 
-/** Bloque de información (título + cuerpo). No se muestra si el cuerpo está vacío. */
+/** Bloque de información (título + cuerpo) en tarjeta delineada. No se muestra si el cuerpo está vacío. */
 @Composable
 private fun InfoSection(title: String, body: String) {
     if (body.isBlank()) return
 
-    Spacer(modifier = Modifier.height(16.dp))
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Start,
-        modifier = Modifier.fillMaxWidth()
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-        text = body,
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Start,
-        modifier = Modifier.fillMaxWidth()
-    )
+    Spacer(modifier = Modifier.height(12.dp))
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
 }
 
 @Composable
