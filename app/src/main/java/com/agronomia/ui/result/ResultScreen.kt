@@ -1,6 +1,7 @@
 package com.agronomia.ui.result
 
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,8 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -41,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.agronomia.domain.model.MaterialItem
 import com.agronomia.domain.model.PlantResult
 import com.agronomia.domain.model.PlantSection
 import com.agronomia.domain.model.WordMeaning
@@ -208,9 +213,27 @@ private fun SuccessContent(
 }
 
 /**
- * Bloque de una categoría en tarjeta delineada, con las palabras difíciles
- * resaltadas: al tocarlas se abre su significado en contexto.
- * No se muestra si el cuerpo está vacío.
+ * Color esencial de cada categoría: tiñe su tarjeta, su título, sus palabras
+ * resaltadas y sus materiales (en tonos que combinan).
+ */
+private val CATEGORY_ACCENTS: Map<String, Color> = mapOf(
+    "description" to Color(0xFF616161),
+    "light" to Color(0xFFB26A00),
+    "watering" to Color(0xFF1565C0),
+    "soil" to Color(0xFF6D4C41),
+    "climate" to Color(0xFF00838F),
+    "flowering" to Color(0xFFC2185B),
+    "uses" to Color(0xFFE65100),
+    "care" to Color(0xFF2E7D32)
+)
+
+private fun categoryAccent(key: String): Color =
+    CATEGORY_ACCENTS[key] ?: Color(0xFF616161)
+
+/**
+ * Bloque de una categoría en tarjeta delineada con su color esencial, con las
+ * palabras difíciles resaltadas y (en categorías de cuidado) sus materiales y
+ * alternativas. No se muestra si el cuerpo está vacío.
  */
 @Composable
 private fun SectionCard(
@@ -218,23 +241,29 @@ private fun SectionCard(
     onTermClick: (WordMeaning) -> Unit
 ) {
     if (section.body.isBlank()) return
+    val accent = categoryAccent(section.key)
 
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = accent.copy(alpha = 0.08f)
+        ),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = section.title.ifBlank { section.key },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = accent,
                 textAlign = TextAlign.Start,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(8.dp))
             val highlightStyle = SpanStyle(
-                color = MaterialTheme.colorScheme.primary,
+                color = accent,
                 fontWeight = FontWeight.Bold,
                 textDecoration = TextDecoration.Underline
             )
@@ -260,6 +289,61 @@ private fun SectionCard(
                     text = "Toca una palabra resaltada para ver su significado.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (section.materials.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Materiales y alternativas",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = accent,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                section.materials.forEachIndexed { index, item ->
+                    MaterialChip(item = item, accent = accent)
+                    if (index < section.materials.lastIndex) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Tarjeta pequeña de un material o alternativa, en un tono que combina con el
+ * color esencial de su categoría.
+ */
+@Composable
+private fun MaterialChip(item: MaterialItem, accent: Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = accent.copy(alpha = 0.14f)
+        ),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.30f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = item.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (item.detail.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = item.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Start,
                     modifier = Modifier.fillMaxWidth()
                 )
