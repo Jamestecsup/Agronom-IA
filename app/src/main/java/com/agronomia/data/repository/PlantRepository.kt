@@ -459,16 +459,23 @@ class PlantRepositoryImpl(
      * Extrae el primer objeto JSON del texto devuelto por la IA.
      * Tolera bloques Markdown ```json ... ``` y texto adicional antes o después,
      * siempre que el JSON sea un objeto plano.
+     *
+     * Además neutraliza caracteres de control literales (U+0000–U+001F): la IA a
+     * veces devuelve escapes \u00XX que, tras decodificar la respuesta externa,
+     * quedan como controles crudos dentro del texto; esos bytes son ilegales en
+     * un segundo parse JSON y vaciaban categorías aleatorias. Se cambian por
+     * espacios (la estructura JSON solo usa caracteres >= 0x20).
      */
     internal fun extractJsonObject(content: String): String {
         val trimmed = content.trim()
         val start = trimmed.indexOf('{')
         val end = trimmed.lastIndexOf('}')
-        return if (start >= 0 && end > start) {
+        val raw = if (start >= 0 && end > start) {
             trimmed.substring(start, end + 1)
         } else {
             trimmed
         }
+        return raw.map { c -> if (c < ' ') ' ' else c }.joinToString("")
     }
 
     private fun mapHttpError(e: HttpException): String {
