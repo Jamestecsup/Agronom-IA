@@ -21,7 +21,7 @@ object Constants {
     val PLANTNET_LANG: String = BuildConfig.PLANTNET_LANG
 
     /** Número máximo de especies candidatas a pedir a Pl@ntNet. */
-    const val PLANTNET_MAX_RESULTS = 5
+    const val PLANTNET_MAX_RESULTS = 10
 
     /**
      * Timeouts de red. Subir la imagen y esperar a la IA puede tardar, por eso
@@ -38,12 +38,12 @@ object Constants {
     const val PLANTNET_MIN_CONFIDENCE = 0.2f
 
     /**
-     * En el respaldo con Gemini (visión) exigimos certeza total (100 %).
+     * En el respaldo con IA de visión exigimos certeza total (100 %).
      * Si no la alcanza, se pide al usuario que envíe más imágenes de la planta
      * (flor, hoja, tallo) para una mejor verificación.
      * Baja este valor (p. ej. 0.9f) si quieres ser menos estricto.
      */
-    const val GEMINI_FALLBACK_MIN_CONFIDENCE = 1.0f
+    const val AI_FALLBACK_MIN_CONFIDENCE = 1.0f
 
     /** Cabecera de autorización enviada a la API de IA (Gemini/OpenAI). */
     const val AUTH_HEADER_PREFIX = "Bearer"
@@ -73,16 +73,17 @@ object Constants {
     """.trimIndent()
 
     /**
-     * Prompt paso 1 de la cadena (Gemini texto): recibe la ficha de Pl@ntNet y
-     * genera un prompt optimizado para investigar ESA planta concreta.
-     * El prompt generado es interno (no se muestra al usuario).
+     * Prompt paso 1 de la cadena (IA de texto): recibe la ficha extendida de
+     * Pl@ntNet y genera un prompt optimizado para investigar ESA planta concreta.
+     * El prompt generado es interno (no se muestra al usuario): alimenta los 8
+     * prompts por categoría del paso 2.
      */
     val REFINE_PROMPT: String = """
         Actúa como experto en botánica y jardinería. Te doy la ficha de
         identificación de una planta (datos de Pl@ntNet). Genera un prompt
-        optimizado, en español, para investigar ESA planta concreta: información
-        general, cuidados, luz, riego, floración, usos y cualquier dato importante
-        para alguien que la tiene o quiere cultivarla.
+        optimizado, en español, para investigar ESA planta concreta: descripción,
+        luz, riego, suelo, clima, floración, usos y cuidados; incluye cualquier
+        dato importante para alguien que la tiene o quiere cultivarla.
 
         Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
         bloques de código Markdown, con exactamente esta clave:
@@ -91,26 +92,109 @@ object Constants {
     """.trimIndent()
 
     /**
-     * Prompt paso 2 de la cadena (Gemini texto): ejecuta el prompt de
-     * investigación y devuelve el JSON final con la información a mostrar.
+     * Paso 2 de la cadena (IA de texto): un prompt independiente POR CATEGORÍA
+     * de cuidado. Cada uno se ejecuta en paralelo con la ficha extendida de
+     * Pl@ntNet + el prompt de investigación del paso 1, y devuelve SOLO su
+     * categoría en JSON {"text": "..."} con texto extenso (no una frase corta).
      */
-    val INFO_PROMPT: String = """
-        Actúa como botánico experto. Ejecuta el prompt de investigación que te dan
-        sobre una planta y responde ÚNICAMENTE con un objeto JSON válido, sin texto
-        adicional y sin bloques de código Markdown, con exactamente estas claves:
-        {
-          "family": "familia botánica",
-          "description": "descripción breve de la planta (2 o 3 frases)",
-          "light": "requisitos de luz",
-          "watering": "requisitos de riego",
-          "flowering": "floración (época y características)",
-          "uses": "usos principales",
-          "care": "cuidados básicos y recomendaciones",
-          "confidence": 0.0
-        }
-        "confidence" es un número entre 0 y 1 que indica tu certeza sobre la información.
-        Si no conoces la planta, usa "unknown" en los textos y 0 en confidence.
-    """.trimIndent()
+    val CATEGORY_ORDER: List<String> = listOf(
+        "description", "light", "watering", "soil",
+        "climate", "flowering", "uses", "care"
+    )
+
+    /** Título mostrado en pantalla para cada categoría. */
+    val CATEGORY_TITLES: Map<String, String> = mapOf(
+        "description" to "Descripción",
+        "light" to "Luz",
+        "watering" to "Riego",
+        "soil" to "Suelo",
+        "climate" to "Clima",
+        "flowering" to "Floración",
+        "uses" to "Usos",
+        "care" to "Cuidados"
+    )
+
+    val CATEGORY_PROMPTS: Map<String, String> = mapOf(
+        "description" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, describe EN EXTENSO la planta: qué es, porte,
+            tallos, hojas, flores/frutos y rasgos para reconocerla (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "descripción extensa de la planta"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent(),
+        "light" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, explica EN EXTENSO los requisitos de luz de
+            la planta: sol directo/semisombra/sombra, horas al día, orientación y
+            qué pasa con luz insuficiente o excesiva (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "requisitos de luz en extenso"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent(),
+        "watering" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, explica EN EXTENSO el riego de la planta:
+            frecuencia por estación, cantidad, método, drenaje y señales de exceso
+            o falta de agua (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "requisitos de riego en extenso"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent(),
+        "soil" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, explica EN EXTENSO el suelo ideal de la planta:
+            tipo, textura, pH, materia orgánica, drenaje y maceta o sustrato
+            recomendado (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "suelo y sustrato ideales en extenso"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent(),
+        "climate" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, explica EN EXTENSO el clima de la planta:
+            temperatura ideal y límites, humedad, resistencia al frío/calor y
+            época de siembra o trasplante (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "clima y temperatura en extenso"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent(),
+        "flowering" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, explica EN EXTENSO la floración de la planta:
+            época, duración, características de flores/frutos y cómo favorecerla
+            (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "floración en extenso"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent(),
+        "uses" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, explica EN EXTENSO los usos de la planta:
+            ornamental, alimenticio, medicinal, ecológico u otros, con ejemplos
+            concretos (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "usos principales en extenso"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent(),
+        "care" to """
+            Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
+            investigación que te dan, explica EN EXTENSO los cuidados de la planta:
+            fertilización, poda, trasplante, plagas y enfermedades comunes y cómo
+            prevenirlas (4 a 6 frases).
+            Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+            bloques de código Markdown, con exactamente esta clave:
+            {"text": "cuidados básicos en extenso"}
+            Si no conoces la planta, responde {"text":"unknown"}.
+        """.trimIndent()
+    )
 
     /**
      * Construye la URL completa del endpoint de IA (texto/visión) a partir de

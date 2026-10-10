@@ -28,7 +28,12 @@ data class PlantNetResponse(
 data class PlantNetResult(
     /** Confianza de esta especie, entre 0 y 1. */
     val score: Double = 0.0,
-    val species: PlantNetSpecies? = null
+    val species: PlantNetSpecies? = null,
+    // OJO: la API devuelve estas referencias a nivel de RESULTADO, no dentro
+    // de "species". Antes estaban en PlantNetSpecies y siempre llegaban vacías.
+    val gbif: PlantNetRef? = null,
+    val powo: PlantNetRef? = null,
+    val iucn: PlantNetIucn? = null
 )
 
 @Serializable
@@ -42,10 +47,7 @@ data class PlantNetSpecies(
     @SerialName("commonNames")
     val commonNames: List<String> = emptyList(),
     val genus: PlantNetTaxon? = null,
-    val family: PlantNetTaxon? = null,
-    val gbif: PlantNetRef? = null,
-    val powo: PlantNetRef? = null,
-    val iucn: PlantNetIucn? = null
+    val family: PlantNetTaxon? = null
 )
 
 @Serializable

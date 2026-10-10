@@ -1,5 +1,6 @@
 package com.agronomia.data.repository
 
+import com.agronomia.data.remote.CategoryInfoDto
 import com.agronomia.data.remote.ChatCompletionRequest
 import com.agronomia.data.remote.ChatMessage
 import com.agronomia.data.remote.ContentPart
@@ -17,6 +18,8 @@ import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -38,12 +41,15 @@ interface PlantRepository {
      * Identifica una planta y obtiene información sobre ella.
      *
      * Flujo:
-     *  1. Pl@ntNet identifica la especie y devuelve su ficha (nombre, familia, IDs).
-     *  2. Gemini genera un prompt optimizado a partir de esa ficha.
-     *  3. Gemini ejecuta ese prompt y devuelve el JSON final con la información.
+     *  1. Pl@ntNet identifica la especie y devuelve su ficha extendida
+     *     (mejor coincidencia + candidatas alternativas, GBIF/POWO/IUCN).
+     *  2. La IA genera un prompt optimizado de investigación a partir de esa ficha.
+     *  3. La IA ejecuta UN prompt por categoría de cuidado (descripción, luz,
+     *     riego, suelo, clima, floración, usos, cuidados), en paralelo, y cada
+     *     uno devuelve el texto extenso de su categoría.
      *
-     * Si Pl@ntNet no identifica con confianza suficiente, se usa Gemini (visión)
-     * como respaldo (la cadena de prompts se aplica igual con lo que se tenga).
+     * Si Pl@ntNet no identifica con confianza suficiente, se usa la IA de visión
+     * como respaldo (la cadena se aplica igual con lo que se tenga).
      *
      * @return [Result.success] con [PlantResult] o [Result.failure] con
      *         [PlantIdentificationException] cuyo mensaje es apto para UI.
@@ -57,7 +63,8 @@ class PlantRepositoryImpl(
 
     // Resolución perezosa: si la URL no está configurada preferimos devolver un
     // error legible en [identifyPlant] en lugar de lanzar al construir la clase.
-    private val geminiService: PlantApiService by lazy { NetworkModule.plantApiService }
+    // Es genérico OpenAI-compatible: sirve para Gemini, Qwen 3.6 local, etc.
+    private val aiService: PlantApiService by lazy { NetworkModule.plantApiService }
     private val plantNetService: PlantNetApiService by lazy { NetworkModule.plantNetApiService }
 
     override suspend fun identifyPlant(imageBytes: ByteArray): Result<PlantResult> =
@@ -123,7 +130,7 @@ class PlantRepositoryImpl(
 
     /**
      * Identifica la especie: primero Pl@ntNet; si no da una coincidencia confiable,
-     * cae al respaldo con Gemini visión (que exige la certeza configurada).
+     * cae al respaldo con IA de visión (que exige la certeza configurada).
      */
     private suspend fun identifySpecies(imageBytes: ByteArray): SpeciesMatch {
         val plantNetMatch = try {
@@ -138,22 +145,23 @@ class PlantRepositoryImpl(
             return plantNetMatch
         }
 
-        // Respaldo: Gemini visión.
-        val geminiMatch = identifyWithGeminiVision(imageBytes)
-        val hasName = geminiMatch.scientificName.isNotBlank() &&
-            !geminiMatch.scientificName.equals("unknown", true)
-        if (!hasName || geminiMatch.confidence < Constants.GEMINI_FALLBACK_MIN_CONFIDENCE) {
+        // Respaldo: IA de visión (misma imagen ya preparada en JPEG).
+        val visionMatch = identifyWithAiVision(imageBytes)
+        val hasName = visionMatch.scientificName.isNotBlank() &&
+            !visionMatch.scientificName.equals("unknown", true)
+        if (!hasName || visionMatch.confidence < Constants.AI_FALLBACK_MIN_CONFIDENCE) {
             throw PlantIdentificationException(
                 "No se pudo verificar la planta con certeza. Envía más imágenes " +
                     "(flor, hoja o tallo) para una mejor identificación."
             )
         }
-        return geminiMatch
+        return visionMatch
     }
 
     /**
-     * Llama a Pl@ntNet y devuelve la mejor coincidencia con su ficha completa
-     * (o null si no hay resultados).
+     * Llama a Pl@ntNet y devuelve la mejor coincidencia con su ficha extendida
+     * (o null si no hay resultados). Guarda también las candidatas alternativas
+     * para enriquecer la ficha que alimenta a la IA.
      */
     private suspend fun identifyWithPlantNet(imageBytes: ByteArray): SpeciesMatch? {
         val imagePart = MultipartBody.Part.createFormData(
@@ -164,10 +172,22 @@ class PlantRepositoryImpl(
         val organs = "auto".toRequestBody("text/plain".toMediaType())
 
         val response = plantNetService.identify(Constants.plantNetIdentifyUrl(), imagePart, organs)
-        val best = response.results.maxByOrNull { it.score } ?: return null
+        val ranked = response.results.sortedByDescending { it.score }
+        val best = ranked.firstOrNull() ?: return null
         val species = best.species ?: return null
         val scientificName = species.scientificNameWithoutAuthor.ifBlank { species.scientificName }
         if (scientificName.isBlank()) return null
+
+        // Candidatas alternativas (hasta 3, sin repetir la mejor) para la ficha.
+        val candidates = ranked.drop(1).mapNotNull { result ->
+            val name = result.species?.scientificNameWithoutAuthor
+                ?.ifBlank { result.species?.scientificName }.orEmpty()
+            if (name.isBlank()) null else PlantCandidate(
+                scientificName = name,
+                score = result.score.coerceIn(0.0, 1.0).toFloat(),
+                commonName = result.species?.commonNames?.firstOrNull().orEmpty()
+            )
+        }.take(3)
 
         return SpeciesMatch(
             commonName = species.commonNames.firstOrNull().orEmpty(),
@@ -175,13 +195,17 @@ class PlantRepositoryImpl(
             family = species.family?.scientificNameWithoutAuthor.orEmpty(),
             confidence = best.score.coerceIn(0.0, 1.0).toFloat(),
             plantNetSpecies = species,
-            bestMatch = response.bestMatch.orEmpty()
+            bestMatch = response.bestMatch.orEmpty(),
+            candidates = candidates,
+            gbifId = best.gbif?.id.orEmpty(),
+            powoId = best.powo?.id.orEmpty(),
+            iucnCategory = best.iucn?.category.orEmpty()
         )
     }
 
-    /** Respaldo: pide a Gemini que identifique la planta en la imagen. */
-    private suspend fun identifyWithGeminiVision(imageBytes: ByteArray): SpeciesMatch {
-        val response = geminiService.identifyPlant(
+    /** Respaldo: pide a la IA de visión que identifique la planta en la imagen. */
+    private suspend fun identifyWithAiVision(imageBytes: ByteArray): SpeciesMatch {
+        val response = aiService.identifyPlant(
             url = Constants.identifyEndpointUrl(),
             authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
             request = buildVisionRequest(imageBytes)
@@ -210,22 +234,37 @@ class PlantRepositoryImpl(
     }
 
     /**
-     * Cadena de información: Gemini paso 1 genera un prompt optimizado a partir
-     * de la ficha; Gemini paso 2 ejecuta ese prompt y devuelve el JSON final.
-     * Es "best-effort": si algún paso falla, se devuelve la identificación sin
-     * información extra (o la información parcial).
+     * Cadena de información:
+     *  1. La IA genera un prompt optimizado de investigación (contexto base).
+     *  2. La IA ejecuta UN prompt por categoría de cuidado, en paralelo, cada
+     *     uno con la ficha extendida + el prompt de investigación.
+     * Es "best-effort" por categoría: si una falla, esa sección queda vacía
+     * pero las demás se muestran igual.
      */
-    private suspend fun runInfoChain(species: SpeciesMatch): PlantInfoDto {
+    private suspend fun runInfoChain(species: SpeciesMatch): PlantInfoDto = coroutineScope {
         val refinedPrompt = generateRefinedPrompt(species)
-        if (refinedPrompt.isBlank()) return PlantInfoDto()
-        return generatePlantInfo(refinedPrompt)
+        val ficha = buildPlantNetFicha(species)
+        val deferred = Constants.CATEGORY_ORDER.associateWith { category ->
+            async { generateCategoryInfo(category, ficha, refinedPrompt) }
+        }
+        val texts = deferred.mapValues { (_, job) -> job.await() }
+        PlantInfoDto(
+            description = texts["description"].orEmpty(),
+            light = texts["light"].orEmpty(),
+            watering = texts["watering"].orEmpty(),
+            soil = texts["soil"].orEmpty(),
+            climate = texts["climate"].orEmpty(),
+            flowering = texts["flowering"].orEmpty(),
+            uses = texts["uses"].orEmpty(),
+            care = texts["care"].orEmpty()
+        )
     }
 
-    /** Paso 1: pide a Gemini que refine la ficha en un prompt de investigación. */
+    /** Paso 1: pide a la IA que refine la ficha en un prompt de investigación. */
     private suspend fun generateRefinedPrompt(species: SpeciesMatch): String {
         return try {
             val message = Constants.REFINE_PROMPT + "\n\n" + buildPlantNetFicha(species)
-            val response = geminiService.identifyPlant(
+            val response = aiService.identifyPlant(
                 url = Constants.identifyEndpointUrl(),
                 authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
                 request = buildTextRequest(message)
@@ -240,29 +279,47 @@ class PlantRepositoryImpl(
         }
     }
 
-    /** Paso 2: pide a Gemini la información final (JSON estructurado). */
-    private suspend fun generatePlantInfo(refinedPrompt: String): PlantInfoDto {
+    /**
+     * Paso 2: ejecuta el prompt de UNA categoría (ver [Constants.CATEGORY_PROMPTS])
+     * y devuelve su texto extenso (o "" si falla: best-effort por categoría).
+     */
+    private suspend fun generateCategoryInfo(
+        category: String,
+        ficha: String,
+        refinedPrompt: String
+    ): String {
+        val categoryPrompt = Constants.CATEGORY_PROMPTS[category] ?: return ""
         return try {
-            val message = Constants.INFO_PROMPT + "\n\nPrompt de investigación:\n" + refinedPrompt
-            val response = geminiService.identifyPlant(
+            val message = buildString {
+                append(categoryPrompt)
+                append("\n\nFicha extendida de Pl@ntNet:\n").append(ficha)
+                if (refinedPrompt.isNotBlank()) {
+                    append("\n\nPrompt de investigación:\n").append(refinedPrompt)
+                }
+            }
+            val response = aiService.identifyPlant(
                 url = Constants.identifyEndpointUrl(),
                 authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
                 request = buildTextRequest(message)
             )
-            val content = response.choices.firstOrNull()?.message?.content ?: return PlantInfoDto()
-            parseInfoDto(content)
+            val content = response.choices.firstOrNull()?.message?.content ?: return ""
+            parseCategoryDto(content).text.cleanInfo()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            PlantInfoDto()
+            ""
         }
     }
 
-    /** Construye un texto legible con la ficha de Pl@ntNet para alimentar el prompt. */
+    /**
+     * Construye la ficha extendida de Pl@ntNet: mejor coincidencia con todos sus
+     * datos (nombres comunes completos, autoría, género, familia, GBIF/POWO/IUCN)
+     * más las especies candidatas alternativas con su score.
+     */
     private fun buildPlantNetFicha(species: SpeciesMatch): String {
         val sp = species.plantNetSpecies
         return buildString {
-            append("Ficha de la planta:\n")
+            append("Ficha de la planta (mejor coincidencia):\n")
             if (species.scientificName.isNotBlank()) {
                 append("- Nombre científico: ").append(species.scientificName)
                 sp?.scientificNameAuthorship?.takeIf { it.isNotBlank() }?.let {
@@ -271,7 +328,7 @@ class PlantRepositoryImpl(
                 append("\n")
             }
             sp?.commonNames?.takeIf { it.isNotEmpty() }?.let {
-                append("- Nombres comunes: ").append(it.joinToString(", ")).append("\n")
+                append("- Nombres comunes (todos): ").append(it.joinToString(", ")).append("\n")
             }
             sp?.genus?.scientificNameWithoutAuthor?.takeIf { it.isNotBlank() }?.let {
                 append("- Género: ").append(it).append("\n")
@@ -282,23 +339,29 @@ class PlantRepositoryImpl(
             append("- Similitud (score Pl@ntNet): ")
                 .append((species.confidence * 100).toInt())
                 .append("%\n")
-            sp?.gbif?.id?.takeIf { it.isNotBlank() }?.let {
+            species.gbifId.takeIf { it.isNotBlank() }?.let {
                 append("- GBIF ID: ").append(it).append("\n")
             }
-            sp?.powo?.id?.takeIf { it.isNotBlank() }?.let {
+            species.powoId.takeIf { it.isNotBlank() }?.let {
                 append("- POWO ID: ").append(it).append("\n")
             }
-            sp?.iucn?.let { iucn ->
-                val parts = listOfNotNull(
-                    iucn.id?.takeIf { it.isNotBlank() },
-                    iucn.category?.takeIf { it.isNotBlank() }
-                )
-                if (parts.isNotEmpty()) {
-                    append("- IUCN: ").append(parts.joinToString(" | ")).append("\n")
-                }
+            species.iucnCategory.takeIf { it.isNotBlank() }?.let {
+                append("- IUCN: ").append(it).append("\n")
             }
             if (species.bestMatch.isNotBlank()) {
                 append("- Mejor coincidencia (bestMatch): ").append(species.bestMatch).append("\n")
+            }
+            if (species.candidates.isNotEmpty()) {
+                append("Especies candidatas alternativas:\n")
+                species.candidates.forEachIndexed { index, candidate ->
+                    append("  ").append(index + 1).append(". ")
+                        .append(candidate.scientificName)
+                        .append(" (").append((candidate.score * 100).toInt()).append("%)")
+                    if (candidate.commonName.isNotBlank()) {
+                        append(" — ").append(candidate.commonName)
+                    }
+                    append("\n")
+                }
             }
             if (sp == null) {
                 append("(Identificada por IA de visión; no hay ficha completa de Pl@ntNet.)\n")
@@ -366,13 +429,14 @@ class PlantRepositoryImpl(
         }
     }
 
-    private fun parseInfoDto(rawContent: String): PlantInfoDto {
+    /** Parsea la respuesta JSON {"text": "..."} de un prompt por categoría. */
+    private fun parseCategoryDto(rawContent: String): CategoryInfoDto {
         val jsonText = extractJsonObject(rawContent)
-        if (jsonText.isBlank()) return PlantInfoDto()
+        if (jsonText.isBlank()) return CategoryInfoDto()
         return try {
-            json.decodeFromString<PlantInfoDto>(jsonText)
+            json.decodeFromString<CategoryInfoDto>(jsonText)
         } catch (_: SerializationException) {
-            PlantInfoDto()
+            CategoryInfoDto()
         }
     }
 
@@ -432,8 +496,8 @@ class PlantRepositoryImpl(
             ?.getOrNull(1)
 
     /**
-     * Coincidencia de especie (identificación) con la ficha de Pl@ntNet cuando
-     * está disponible; se usa para alimentar la cadena de información.
+     * Coincidencia de especie (identificación) con la ficha extendida de Pl@ntNet
+     * cuando está disponible; se usa para alimentar la cadena por categorías.
      */
     private data class SpeciesMatch(
         val commonName: String,
@@ -441,7 +505,11 @@ class PlantRepositoryImpl(
         val family: String,
         val confidence: Float,
         val plantNetSpecies: PlantNetSpecies? = null,
-        val bestMatch: String = ""
+        val bestMatch: String = "",
+        val candidates: List<PlantCandidate> = emptyList(),
+        val gbifId: String = "",
+        val powoId: String = "",
+        val iucnCategory: String = ""
     ) {
         fun toPlantResult(info: PlantInfoDto): PlantResult = PlantResult(
             commonName = commonName.trim(),
@@ -451,11 +519,20 @@ class PlantRepositoryImpl(
             description = info.description.cleanInfo(),
             light = info.light.cleanInfo(),
             watering = info.watering.cleanInfo(),
+            soil = info.soil.cleanInfo(),
+            climate = info.climate.cleanInfo(),
             flowering = info.flowering.cleanInfo(),
             uses = info.uses.cleanInfo(),
             care = info.care.cleanInfo()
         )
     }
+
+    /** Especie candidata alternativa de Pl@ntNet (para la ficha extendida). */
+    private data class PlantCandidate(
+        val scientificName: String,
+        val score: Float,
+        val commonName: String = ""
+    )
 }
 
 /** Normaliza un texto devuelto por la IA: sin espacios y tratando "unknown" como vacío. */

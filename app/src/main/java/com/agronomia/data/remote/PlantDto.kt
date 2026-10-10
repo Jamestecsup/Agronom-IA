@@ -89,7 +89,7 @@ data class PlantResultDto(
     val confidence: Double = 0.0
 )
 
-// ---------- Información textual de la planta (Gemini) ----------
+// ---------- Información textual de la planta (IA, por categorías) ----------
 
 @Serializable
 data class PlantInfoDto(
@@ -97,10 +97,21 @@ data class PlantInfoDto(
     val description: String = "",
     val light: String = "",
     val watering: String = "",
+    val soil: String = "",
+    val climate: String = "",
     val flowering: String = "",
     val uses: String = "",
     val care: String = "",
     val confidence: Double = 0.0
+)
+
+/**
+ * Respuesta de UN prompt por categoría: solo el texto extenso de esa categoría.
+ * Se usa en las 8 llamadas en paralelo del paso 2 de la cadena.
+ */
+@Serializable
+data class CategoryInfoDto(
+    val text: String = ""
 )
 
 /** Prompt de investigación que Gemini genera a partir de la ficha de Pl@ntNet. */

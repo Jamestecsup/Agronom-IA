@@ -165,6 +165,8 @@ private fun SuccessContent(
     InfoSection("Descripción", plant.description)
     InfoSection("Luz", plant.light)
     InfoSection("Riego", plant.watering)
+    InfoSection("Suelo", plant.soil)
+    InfoSection("Clima", plant.climate)
     InfoSection("Floración", plant.flowering)
     InfoSection("Usos", plant.uses)
     InfoSection("Cuidados", plant.care)
