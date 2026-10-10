@@ -27,6 +27,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -246,6 +247,33 @@ class PlantRepositoryImpl(
     }
 
     /**
+     * Reintenta una llamada a la IA ante errores transitorios (429 por
+     * rate-limit/cuota o 5xx del servidor), con espera creciente y un poco de
+     * azar para no reintentar todas las categorías a la vez. Si se agotan los
+     * intentos, propaga la última excepción (el llamador la trata best-effort).
+     */
+    private suspend fun <T> withAiRetry(
+        attempts: Int = 3,
+        initialDelayMs: Long = 2000L,
+        block: suspend () -> T
+    ): T {
+        var delayMs = initialDelayMs
+        repeat(attempts) { attempt ->
+            try {
+                return block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: HttpException) {
+                val retryable = e.code() == 429 || e.code() in 500..599
+                if (!retryable || attempt == attempts - 1) throw e
+            }
+            delay(delayMs + (0..500).random())
+            delayMs *= 2
+        }
+        error("Reintentos de IA agotados")
+    }
+
+    /**
      * Cadena de información:
      *  1. La IA genera un prompt optimizado de investigación (contexto base).
      *  2. La IA ejecuta UN prompt por categoría de cuidado, en paralelo, cada
@@ -301,11 +329,13 @@ class PlantRepositoryImpl(
     private suspend fun generateRefinedPrompt(species: SpeciesMatch): String {
         return try {
             val message = Constants.REFINE_PROMPT + "\n\n" + buildPlantNetFicha(species)
-            val response = aiService.identifyPlant(
-                url = Constants.identifyEndpointUrl(),
-                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
-                request = buildTextRequest(message)
-            )
+            val response = withAiRetry {
+                aiService.identifyPlant(
+                    url = Constants.identifyEndpointUrl(),
+                    authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                    request = buildTextRequest(message)
+                )
+            }
             val content = response.choices.firstOrNull()?.message?.content ?: return ""
             val dto = parseRefinedPromptDto(content) ?: return ""
             dto.prompt.cleanInfo()
@@ -334,11 +364,13 @@ class PlantRepositoryImpl(
                     append("\n\nPrompt de investigación:\n").append(refinedPrompt)
                 }
             }
-            val response = aiService.identifyPlant(
-                url = Constants.identifyEndpointUrl(),
-                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
-                request = buildTextRequest(message)
-            )
+            val response = withAiRetry {
+                aiService.identifyPlant(
+                    url = Constants.identifyEndpointUrl(),
+                    authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                    request = buildTextRequest(message)
+                )
+            }
             val content = response.choices.firstOrNull()?.message?.content ?: return ""
             parseCategoryDto(content).text.cleanInfo()
         } catch (e: CancellationException) {
@@ -371,11 +403,13 @@ class PlantRepositoryImpl(
                 append("\nCategoría: ").append(title)
                 append("\n\nTexto de la categoría:\n").append(categoryText)
             }
-            val response = aiService.identifyPlant(
-                url = Constants.identifyEndpointUrl(),
-                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
-                request = buildTextRequest(message)
-            )
+            val response = withAiRetry {
+                aiService.identifyPlant(
+                    url = Constants.identifyEndpointUrl(),
+                    authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                    request = buildTextRequest(message)
+                )
+            }
             val content = response.choices.firstOrNull()?.message?.content ?: return emptyList()
             parseGlossaryDto(content).terms.mapNotNull { term ->
                 val word = term.word.cleanInfo()
@@ -412,11 +446,13 @@ class PlantRepositoryImpl(
                 append("\nCategoría: ").append(title)
                 append("\n\nTexto de la categoría:\n").append(categoryText)
             }
-            val response = aiService.identifyPlant(
-                url = Constants.identifyEndpointUrl(),
-                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
-                request = buildTextRequest(message)
-            )
+            val response = withAiRetry {
+                aiService.identifyPlant(
+                    url = Constants.identifyEndpointUrl(),
+                    authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                    request = buildTextRequest(message)
+                )
+            }
             val content = response.choices.firstOrNull()?.message?.content ?: return emptyList()
             parseMaterialsDto(content).items.mapNotNull { item ->
                 val name = item.name.cleanInfo()
