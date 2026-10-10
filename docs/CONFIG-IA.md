@@ -11,7 +11,13 @@ La app identifica plantas con este flujo:
 3. **La IA (paso 2)** ejecuta **UN prompt por categoría de cuidado, en paralelo**
    (descripción, luz, riego, suelo, clima, floración, usos, cuidados). Cada uno
    recibe la ficha extendida + el prompt de investigación y devuelve el texto
-   extenso de SU categoría en JSON `{"text": "..."}`.
+   extenso de SU categoría en JSON `{"text": "..."}`, con datos concretos
+   (horarios, frecuencias, cantidades, medidas). Nada de consejos vagos.
+4. **La IA (paso 3)** genera el **glosario contextual** de cada categoría, en
+   paralelo: con el texto ya generado elige las palabras difíciles y explica
+   cada una de forma sencilla DENTRO DEL CONTEXTO (`{"terms": [{"word",
+   "meaning"}]}`). En la app esas palabras salen resaltadas y al tocarlas se
+   abre su significado.
 
 Si Pl@ntNet no da una coincidencia confiable, se usa **la IA de visión** como
 respaldo (la cadena se aplica igual, con la información disponible).

@@ -118,7 +118,7 @@ object Constants {
         "description" to """
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, describe EN EXTENSO la planta: qué es, porte,
-            tallos, hojas, flores/frutos y rasgos para reconocerla (4 a 6 frases).
+            tallos, hojas, flores/frutos y rasgos para reconocerla (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "descripción extensa de la planta"}
@@ -128,7 +128,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO los requisitos de luz de
             la planta: sol directo/semisombra/sombra, horas al día, orientación y
-            qué pasa con luz insuficiente o excesiva (4 a 6 frases).
+            qué pasa con luz insuficiente o excesiva (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "requisitos de luz en extenso"}
@@ -138,7 +138,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO el riego de la planta:
             frecuencia por estación, cantidad, método, drenaje y señales de exceso
-            o falta de agua (4 a 6 frases).
+            o falta de agua (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "requisitos de riego en extenso"}
@@ -148,7 +148,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO el suelo ideal de la planta:
             tipo, textura, pH, materia orgánica, drenaje y maceta o sustrato
-            recomendado (4 a 6 frases).
+            recomendado (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "suelo y sustrato ideales en extenso"}
@@ -158,7 +158,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO el clima de la planta:
             temperatura ideal y límites, humedad, resistencia al frío/calor y
-            época de siembra o trasplante (4 a 6 frases).
+            época de siembra o trasplante (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "clima y temperatura en extenso"}
@@ -168,7 +168,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO la floración de la planta:
             época, duración, características de flores/frutos y cómo favorecerla
-            (4 a 6 frases).
+            (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "floración en extenso"}
@@ -178,7 +178,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO los usos de la planta:
             ornamental, alimenticio, medicinal, ecológico u otros, con ejemplos
-            concretos (4 a 6 frases).
+            concretos (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "usos principales en extenso"}
@@ -188,13 +188,33 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO los cuidados de la planta:
             fertilización, poda, trasplante, plagas y enfermedades comunes y cómo
-            prevenirlas (4 a 6 frases).
+            prevenirlas (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "cuidados básicos en extenso"}
             Si no conoces la planta, responde {"text":"unknown"}.
         """.trimIndent()
     )
+
+    /**
+     * Paso 3 de la cadena (IA de texto): con la planta, la categoría y el texto
+     * ya generado, elige las palabras difíciles y explica cada una DE FORMA
+     * SENCILLA y DENTRO DEL CONTEXTO de la categoría, para un agricultor sin
+     * conocimiento previo. Se ejecuta en paralelo, una vez por categoría.
+     */
+    val GLOSSARY_PROMPT: String = """
+        Actúas dentro de una app que explica plantas a agricultores y personas sin
+        conocimiento previo. Te doy la planta, la categoría de cuidado y el texto
+        ya generado para esa categoría. Elige de 3 a 8 palabras difíciles de ese
+        texto y explica cada una de forma sencilla y DENTRO DEL CONTEXTO de la
+        categoría (qué significa ahí, no una definición genérica de diccionario),
+        en 1 o 2 frases cortas por palabra.
+
+        Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+        bloques de código Markdown, con exactamente esta forma:
+        {"terms": [{"word": "palabra tal como aparece en el texto", "meaning": "significado sencillo en contexto"}]}
+        Si no hay palabras difíciles, responde {"terms": []}.
+    """.trimIndent()
 
     /**
      * Construye la URL completa del endpoint de IA (texto/visión) a partir de
