@@ -23,6 +23,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -433,8 +435,21 @@ class PlantRepositoryImpl(
     private fun parseCategoryDto(rawContent: String): CategoryInfoDto {
         val jsonText = extractJsonObject(rawContent)
         if (jsonText.isBlank()) return CategoryInfoDto()
+        try {
+            val dto = json.decodeFromString<CategoryInfoDto>(jsonText)
+            if (dto.text.isNotBlank()) return dto
+        } catch (_: SerializationException) {
+            // Se intenta el respaldo tolerante de abajo.
+        }
+        // Respaldo tolerante: la IA a veces devuelve otra clave
+        // (p. ej. {"flowering": "..."}); se toma el primer texto no vacío.
         return try {
-            json.decodeFromString<CategoryInfoDto>(jsonText)
+            val map = json.decodeFromString<Map<String, JsonElement>>(jsonText)
+            val first = map.values
+                .filterIsInstance<JsonPrimitive>()
+                .firstOrNull { it.isString && it.content.isNotBlank() }
+                ?.content.orEmpty()
+            CategoryInfoDto(first)
         } catch (_: SerializationException) {
             CategoryInfoDto()
         }
