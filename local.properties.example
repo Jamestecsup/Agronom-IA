@@ -27,9 +27,9 @@ PLANTNET_LANG=es
 # AI_MODEL=gpt-4o-mini
 # AI_IDENTIFY_PATH=v1/chat/completions
 
-# --- Alternativa: servidor local (Ollama / LM Studio) ---
+# --- Alternativa: servidor local (Ollama / LM Studio / Qwen 3.6) ---
 # AI_BASE_URL=http://192.168.1.10:11434/v1/
-# AI_MODEL=llama3.2-vision
+# AI_MODEL=qwen-3.6 (o el nombre que exponga tu servidor)
 # AI_IDENTIFY_PATH=chat/completions
 
 # --- IA ORIGINAL (institucional, red privada) ---

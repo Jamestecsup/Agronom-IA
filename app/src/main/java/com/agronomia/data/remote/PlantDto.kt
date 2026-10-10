@@ -7,8 +7,9 @@ import kotlinx.serialization.Serializable
  * DTOs para una API de IA tipo chat/visión (OpenAI-compatible):
  *   POST {AI_BASE_URL}{AI_IDENTIFY_PATH}
  *
- * Se usan con Gemini/OpenAI (identificación de respaldo por visión e información
- * textual). Pl@ntNet tiene sus propios DTOs en PlantNetDto.kt.
+ * Se usan con la IA (Gemini, Qwen 3.6 local, OpenAI...): identificación de
+ * respaldo por visión e información textual por categorías.
+ * Pl@ntNet tiene sus propios DTOs en PlantNetDto.kt.
  */
 
 // ---------- Request ----------
