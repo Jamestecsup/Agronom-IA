@@ -209,7 +209,17 @@ fun CaptureScreen(
 
     Scaffold(
         topBar = {
-            AgronomIaTopBar()
+            AgronomIaTopBar(
+                onContrastClick = {
+                    Toast.makeText(context, "Modo Alto Contraste (HU-4)", Toast.LENGTH_SHORT).show()
+                },
+                onFontSizeClick = {
+                    Toast.makeText(context, "Ajuste de tamaño de fuente (HU-4)", Toast.LENGTH_SHORT).show()
+                },
+                onProfileClick = {
+                    Toast.makeText(context, "Perfil de usuario TECSUP", Toast.LENGTH_SHORT).show()
+                }
+            )
         },
         bottomBar = {
             // Barra de israel: solo Escáner existe (nuestras 2 rutas); el resto
