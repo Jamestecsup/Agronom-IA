@@ -516,6 +516,15 @@ private fun CandidateCard(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    if (candidate.hint.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = candidate.hint,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))

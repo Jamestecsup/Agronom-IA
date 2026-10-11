@@ -18,5 +18,10 @@ data class SpeciesCandidate(
      * Foto de referencia de internet (Wikimedia Commons) para reconocerla.
      * Vacía si no se encontró; nunca bloquea.
      */
-    val imageUrl: String = ""
+    val imageUrl: String = "",
+    /**
+     * Rasgos únicos para reconocerla frente a las otras candidatas
+     * (color/forma de flor y hoja, tamaño). Vacío si no se generó.
+     */
+    val hint: String = ""
 )

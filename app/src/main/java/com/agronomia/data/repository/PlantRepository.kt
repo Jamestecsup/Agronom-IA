@@ -155,7 +155,7 @@ class PlantRepositoryImpl(
                     val candidates = plantNetMatch?.toCandidates().orEmpty()
                     if (candidates.isNotEmpty()) {
                         return@withContext AnalysisResult.Ambiguous(
-                            enrichWithReferenceImages(candidates)
+                            generateCandidateHints(enrichWithReferenceImages(candidates))
                         )
                     }
                 }
@@ -238,6 +238,73 @@ class PlantRepositoryImpl(
                 )
             }
         }
+
+    /**
+     * Genera los rasgos distintivos de cada candidata (una sola llamada que las
+     * contrasta entre sí). Best-effort: si falla, vuelven sin hint.
+     */
+    private suspend fun generateCandidateHints(
+        candidates: List<SpeciesCandidate>
+    ): List<SpeciesCandidate> {
+        if (candidates.isEmpty()) return candidates
+        return try {
+            val message = buildString {
+                append(Constants.HINTS_PROMPT)
+                append("\n\nPlantas candidatas:\n")
+                candidates.forEach { candidate ->
+                    append("- ").append(candidate.scientificName)
+                    val commons = candidate.commonNames.take(2).joinToString(", ")
+                    if (commons.isNotBlank()) append(" (").append(commons).append(")")
+                    if (candidate.family.isNotBlank()) {
+                        append(", familia ").append(candidate.family)
+                    }
+                    append("\n")
+                }
+            }
+            val response = withAiRetry {
+                aiService.identifyPlant(
+                    url = Constants.identifyEndpointUrl(),
+                    authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                    request = buildTextRequest(message)
+                )
+            }
+            val content = response.choices.firstOrNull()?.message?.content
+                ?: return candidates
+            val hints = parseHintsDto(content)
+            if (hints.isEmpty()) return candidates
+            candidates.map { candidate ->
+                candidate.copy(
+                    hint = hints[candidate.scientificName.lowercase()].orEmpty()
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            candidates
+        }
+    }
+
+    /**
+     * Parsea {"hints": [{"name": "...", "hint": "..."}]} a mapa
+     * nombre-en-minúsculas → hint (tolerante con la clave y vacíos).
+     */
+    private fun parseHintsDto(rawContent: String): Map<String, String> {
+        val jsonText = extractJsonObject(rawContent)
+        if (jsonText.isBlank()) return emptyMap()
+        return try {
+            val root = json.parseToJsonElement(jsonText) as? JsonObject ?: return emptyMap()
+            val array = (root["hints"] ?: root["items"]) as? JsonArray ?: return emptyMap()
+            array.mapNotNull { element ->
+                val obj = element as? JsonObject ?: return@mapNotNull null
+                val name = (obj["name"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+                val hint = (obj["hint"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+                if (name.isBlank() || hint.isBlank() || hint.equals("unknown", true)) null
+                else name.lowercase() to hint
+            }.toMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
 
     /**
      * Busca una foto de referencia por candidata en Wikimedia Commons (sin

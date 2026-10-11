@@ -127,22 +127,22 @@ AI_IDENTIFY_PATH=v1/chat/completions
 
 ---
 
-## Mejoras de detección (pendiente, para después)
+## Mejoras de detección (implementadas)
 
-Ideas acordadas para cuando Pl@ntNet no identifica con certeza:
-
-1. **Top-3 elegible**: si hay 2-3 especies cercanas en score, mostrarlas para
+1. **Top-3 elegible**: en dudas (21% a 49%) se muestran las similares para
    que el agricultor elija (con foto y score).
    Cada candidata trae foto de referencia de internet (Wikimedia Commons, sin
    clave, vía Coil) y hasta 3 nombres comunes de ejemplo. Wikimedia exige
    `User-Agent` identificatorio: la app envía `Agronom-IA/1.0 (Android)` tanto
    al buscar la foto como al descargarla (sin él responde 403 y sale en blanco).
-2. **Chequeo de calidad previo**: avisar antes de enviar si la foto está
-   oscura o movida, y guiar (más luz, acercarse).
-3. **Selector de órgano**: elegir hoja/flor/fruto por foto en vez de `auto`
-   (implementado: una tarjeta de órgano con su descripción por cada foto).
-4. **Ajustar umbrales**: bajar el umbral del respaldo o votar entre candidatas.
-5. **Guía ligada**: las opciones del top-3 van ligadas al chequeo de calidad y
+   Además cada similar trae 1-2 frases con sus rasgos únicos (color/forma de
+   flor y hoja, tamaño) para distinguirlas.
+2. **Chequeo de calidad previo** (implementado): avisa antes de enviar si la
+   foto está oscura o movida, con opción de continuar.
+3. **Selector de órgano** (implementado): elegir hoja/flor/fruto por foto en
+   vez de `auto` (una tarjeta de órgano con su descripción por cada foto).
+4. **Umbrales por niveles** (implementado): ver regla abajo.
+5. **Guía ligada** (implementada): el top-3 va ligado al chequeo de calidad y
    al selector de órgano, explicando QUÉ foto tomar (flor, hoja, tallo) con
    palabras resaltadas y significado en contexto, como el glosario — para
    subir la chance de detectar bien.
@@ -155,11 +155,8 @@ Regla acordada:
 - **21% a 49%** = dudas: similares con foto y nombres para elegir.
 - **50% o más** = validada: ficha completa con su % visible.
 
-- `PLANTNET_MIN_CONFIDENCE` (0.2): si la mejor coincidencia de Pl@ntNet queda por
-  debajo, se usa el respaldo con IA de visión.
-  Regla acordada: **20% o menos = error o desambiguación** (visión → candidatas
-  para elegir → error pidiendo más fotos); **21% o más = resultado con su %
-  visible** (el % muestra si está validada o con dudas).
+- `PLANTNET_MIN_CONFIDENCE` (0.2): por debajo se usa el respaldo con IA de visión.
+- `PLANTNET_CONFIDENT_CONFIDENCE` (0.5): 50% o más = validada directa.
 - `AI_FALLBACK_MIN_CONFIDENCE` (1.0 = 100 %): en el respaldo, si la IA no
   llega a esta certeza, se pide al usuario más imágenes.
 

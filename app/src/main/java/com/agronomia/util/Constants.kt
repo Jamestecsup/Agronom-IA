@@ -308,6 +308,24 @@ object Constants {
     )
 
     /**
+     * Paso extra solo en dudas: con la lista de candidatas, la IA escribe para
+     * CADA una 1 o 2 frases con sus rasgos ÚNICOS frente a las otras (color y
+     * forma de flor/hoja, tamaño), para que el agricultor las distinga.
+     */
+    val HINTS_PROMPT: String = """
+        Actúas dentro de una app que ayuda a agricultores sin conocimiento previo.
+        Te doy una lista de plantas parecidas entre las que el usuario debe elegir
+        la suya. Para CADA una escribe 1 o 2 frases cortas con sus rasgos ÚNICOS
+        para reconocerla frente a las otras: color y forma de flor y hoja, tamaño,
+        tallo. Nada de tecnicismos sin explicar.
+
+        Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
+        bloques de código Markdown, con exactamente esta forma:
+        {"hints": [{"name": "nombre científico tal cual te lo dan", "hint": "rasgos distintivos"}]}
+        Si de alguna no sabes, omítela.
+    """.trimIndent()
+
+    /**
      * Construye la URL completa del endpoint de IA (texto/visión) a partir de
      * [BASE_URL] y [IDENTIFY_PATH]. Evita duplicar o perder barras.
      */
