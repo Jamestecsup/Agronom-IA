@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -455,7 +456,15 @@ private fun CandidateCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (candidate.imageUrl.isNotBlank()) {
                     AsyncImage(
-                        model = candidate.imageUrl,
+                        // Wikimedia exige User-Agent identificatorio (sin él responde 403).
+                        model = coil.request.ImageRequest.Builder(LocalContext.current)
+                            .data(candidate.imageUrl)
+                            .headers(
+                                okhttp3.Headers.Builder()
+                                    .add("User-Agent", "Agronom-IA/1.0 (Android)")
+                                    .build()
+                            )
+                            .build(),
                         contentDescription = "Foto de referencia: $displayName",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

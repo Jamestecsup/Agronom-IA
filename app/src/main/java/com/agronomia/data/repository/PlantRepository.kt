@@ -288,6 +288,8 @@ class PlantRepositoryImpl(
             connection = URL(apiUrl).openConnection() as HttpURLConnection
             connection.connectTimeout = 10000
             connection.readTimeout = 10000
+            // Wikimedia exige User-Agent identificatorio (sin él responde 403).
+            connection.setRequestProperty("User-Agent", "Agronom-IA/1.0 (Android)")
             val text = connection.inputStream.bufferedReader().use { it.readText() }
             val root = json.parseToJsonElement(text) as? JsonObject ?: return ""
             val pages = root["query"]?.jsonObject?.get("pages")?.jsonObject ?: return ""
