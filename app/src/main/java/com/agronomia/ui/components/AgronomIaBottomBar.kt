@@ -1,10 +1,9 @@
 package com.agronomia.ui.components
 
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
@@ -12,13 +11,12 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -26,7 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.agronomia.ui.theme.AgronomIaTheme
 
 /** Ícono de Jardín / Planta (Filled) */
 private val GardenFilledIcon: ImageVector
@@ -133,12 +133,12 @@ val bottomNavItems = listOf(
 )
 
 /**
- * Barra de navegación inferior flotante personalizada estilo Material Design 3 Expressive.
+ * Barra de navegación inferior flotante tipo píldora (pill-shaped) para Agronom-IA.
  *
  * Características:
- * - Flotante: separada de los bordes con padding exterior (16.dp).
- * - Bordes muy redondeados (`RoundedCornerShape(100.dp)` / Píldora) y elevación con sombra.
- * - Indicador activo estilo píldora verde claro con texto e ícono verde oscuro (`#1B5E20`).
+ * - Contenedor externo transparente con padding lateral de 24.dp y vertical de 16.dp.
+ * - Respeta los gestos del sistema Android con `navigationBarsPadding()`.
+ * - Forma de píldora tipo `CircleShape` / `RoundedCornerShape(100.dp)` con sombra y superficie clara.
  */
 @Composable
 fun AgronomIaBottomBar(
@@ -146,21 +146,18 @@ fun AgronomIaBottomBar(
     selectedIndex: Int = 0,
     onItemSelected: (Int) -> Unit = {}
 ) {
-    Card(
+    Surface(
         modifier = modifier
             .navigationBarsPadding()
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
-        shape = RoundedCornerShape(100.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 6.dp,
+        shadowElevation = 8.dp
     ) {
         NavigationBar(
             containerColor = Color.Transparent,
-            windowInsets = WindowInsets(0, 0, 0, 0),
-            modifier = Modifier.fillMaxWidth()
+            windowInsets = WindowInsets(0, 0, 0, 0)
         ) {
             bottomNavItems.forEachIndexed { index, item ->
                 val isSelected = selectedIndex == index
@@ -192,11 +189,10 @@ fun AgronomIaBottomBar(
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Preview(showBackground = true)
 @Composable
 private fun AgronomIaBottomBarPreview() {
-    com.agronomia.ui.theme.AgronomIaTheme {
+    AgronomIaTheme {
         AgronomIaBottomBar()
     }
 }
-
