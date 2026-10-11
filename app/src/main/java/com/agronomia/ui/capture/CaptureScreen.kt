@@ -38,10 +38,12 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.agronomia.ui.components.AgronomIaBottomBar
 import com.agronomia.ui.components.AgronomIaTopBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -84,6 +86,7 @@ fun CaptureScreen(
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var showCameraRationale by remember { mutableStateOf(false) }
+    var selectedNavIndex by remember { mutableIntStateOf(0) }
 
     /** Agrega fotos avisando si se topó el máximo. */
     fun addUrisWithFeedback(picked: List<Uri>) {
@@ -207,6 +210,12 @@ fun CaptureScreen(
     Scaffold(
         topBar = {
             AgronomIaTopBar()
+        },
+        bottomBar = {
+            AgronomIaBottomBar(
+                selectedIndex = selectedNavIndex,
+                onItemSelected = { selectedNavIndex = it }
+            )
         },
         modifier = modifier
     ) { innerPadding ->
