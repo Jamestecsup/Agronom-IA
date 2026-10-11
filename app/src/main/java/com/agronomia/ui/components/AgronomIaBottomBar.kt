@@ -171,3 +171,12 @@ fun AgronomIaBottomBar(
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+private fun AgronomIaBottomBarPreview() {
+    com.agronomia.ui.theme.AgronomIaTheme {
+        AgronomIaBottomBar()
+    }
+}
+

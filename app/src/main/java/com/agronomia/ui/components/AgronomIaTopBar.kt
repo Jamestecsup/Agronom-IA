@@ -211,3 +211,12 @@ fun AgronomIaTopBar(
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+private fun AgronomIaTopBarPreview() {
+    com.agronomia.ui.theme.AgronomIaTheme {
+        AgronomIaTopBar()
+    }
+}
+
