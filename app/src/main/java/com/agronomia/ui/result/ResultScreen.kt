@@ -19,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -48,9 +49,11 @@ import coil.compose.AsyncImage
 import com.agronomia.domain.model.MaterialItem
 import com.agronomia.domain.model.PlantResult
 import com.agronomia.domain.model.PlantSection
+import com.agronomia.domain.model.SpeciesCandidate
 import com.agronomia.domain.model.WordMeaning
 import com.agronomia.ui.capture.CaptureViewModel
 import com.agronomia.ui.capture.IdentificationUiState
+import com.agronomia.util.Constants
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,6 +120,18 @@ fun ResultScreen(
                         imageUri = imageUri,
                         onTakeAnotherPhoto = takeAnotherPhoto
                     )
+
+                is IdentificationUiState.QualityWarning -> QualityContent(
+                    issues = state.issues,
+                    onTakeAnotherPhoto = takeAnotherPhoto,
+                    onContinue = { viewModel.proceedDespiteQuality() }
+                )
+
+                is IdentificationUiState.Disambiguation -> DisambiguationContent(
+                    candidates = state.candidates,
+                    onChoose = { viewModel.chooseCandidate(it) },
+                    onTakeAnotherPhoto = takeAnotherPhoto
+                )
 
                 is IdentificationUiState.Error -> MessageContent(
                     title = "No se pudo identificar la planta",
@@ -232,6 +247,219 @@ private val CATEGORY_ACCENTS: Map<String, Color> = mapOf(
 private fun categoryAccent(key: String): Color =
     CATEGORY_ACCENTS[key] ?: Color(0xFF616161)
 
+/**
+ * Aviso de calidad previo: lista qué mejorar en las fotos, con opción de
+ * tomar otras o continuar de todos modos.
+ */
+@Composable
+private fun QualityContent(
+    issues: List<String>,
+    onTakeAnotherPhoto: () -> Unit,
+    onContinue: () -> Unit
+) {
+    Text(
+        text = "Revisa tus fotos",
+        style = MaterialTheme.typography.titleLarge,
+        textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = "Antes de identificar, mejora esto para una mejor detección:",
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    issues.forEach { issue ->
+        Text(
+            text = "• $issue",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Start,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+    Spacer(modifier = Modifier.height(16.dp))
+    Button(
+        onClick = onContinue,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Continuar de todos modos")
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    OutlinedButton(
+        onClick = onTakeAnotherPhoto,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Tomar otra foto")
+    }
+}
+
+/**
+ * Desambiguación: la app encontró varias plantas parecidas. Muestra la guía
+ * de qué fotos tomar (con palabras resaltadas) y las candidatas para elegir.
+ */
+@Composable
+private fun DisambiguationContent(
+    candidates: List<SpeciesCandidate>,
+    onChoose: (SpeciesCandidate) -> Unit,
+    onTakeAnotherPhoto: () -> Unit
+) {
+    var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
+
+    Text(
+        text = "¿Cuál es tu planta?",
+        style = MaterialTheme.typography.titleLarge,
+        textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = "Se parecen mucho. Elige la tuya o toma mejores fotos:",
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center
+    )
+
+    // Guía ligada: qué fotos tomar, con significados en contexto.
+    Spacer(modifier = Modifier.height(12.dp))
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Cómo tomar una mejor foto",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            val guideStyle = SpanStyle(
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+                textDecoration = TextDecoration.Underline
+            )
+            val annotated = remember {
+                buildAnnotatedText(
+                    Constants.DISAMBIGUATION_GUIDE_TEXT,
+                    Constants.DISAMBIGUATION_GUIDE_TERMS,
+                    guideStyle
+                )
+            }
+            val terms = Constants.DISAMBIGUATION_GUIDE_TERMS
+            ClickableText(
+                text = annotated,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                onClick = { offset ->
+                    annotated.getStringAnnotations("term", offset, offset)
+                        .firstOrNull()?.let { annotation ->
+                            terms.find { it.word == annotation.item }
+                                ?.let { selectedTerm = it }
+                        }
+                }
+            )
+        }
+    }
+
+    selectedTerm?.let { term ->
+        AlertDialog(
+            onDismissRequest = { selectedTerm = null },
+            title = { Text(term.word) },
+            text = { Text(term.meaning) },
+            confirmButton = {
+                TextButton(onClick = { selectedTerm = null }) {
+                    Text("Entendido")
+                }
+            }
+        )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+    candidates.forEach { candidate ->
+        CandidateCard(
+            candidate = candidate,
+            onChoose = { onChoose(candidate) }
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+    OutlinedButton(
+        onClick = onTakeAnotherPhoto,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Tomar otra foto")
+    }
+}
+
+/** Tarjeta de una especie candidata con su similitud y botón para elegirla. */
+@Composable
+private fun CandidateCard(
+    candidate: SpeciesCandidate,
+    onChoose: () -> Unit
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = candidate.commonNames.firstOrNull().orEmpty()
+                    .ifBlank { candidate.scientificName },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (candidate.scientificName.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = buildString {
+                        append(candidate.scientificName)
+                        if (candidate.authorship.isNotBlank()) {
+                            append(" ").append(candidate.authorship)
+                        }
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontStyle = FontStyle.Italic,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (candidate.family.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Familia: ${candidate.family}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { candidate.confidence.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Similitud: ${(candidate.confidence * 100).roundToInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onChoose,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Elegir esta planta")
+            }
+        }
+    }
+}
 /**
  * Bloque de una categoría en tarjeta delineada con su color esencial, con las
  * palabras difíciles resaltadas y (en categorías de cuidado) sus materiales y

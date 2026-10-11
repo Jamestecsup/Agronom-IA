@@ -4,9 +4,11 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.agronomia.data.repository.AnalysisResult
 import com.agronomia.data.repository.PlantRepository
 import com.agronomia.data.repository.PlantRepositoryImpl
 import com.agronomia.domain.model.PlantResult
+import com.agronomia.domain.model.SpeciesCandidate
 import com.agronomia.util.ImageUtils
 import com.agronomia.util.Resource
 import kotlinx.coroutines.Job
@@ -25,6 +27,18 @@ sealed interface IdentificationUiState {
 
     /** Se obtuvo una identificación con su información. */
     data class Success(val plant: PlantResult) : IdentificationUiState
+
+    /**
+     * Las fotos tienen problemas de calidad (oscuras o movidas): se muestra
+     * qué mejorar, con opción de continuar de todos modos.
+     */
+    data class QualityWarning(val issues: List<String>) : IdentificationUiState
+
+    /**
+     * Sin certeza suficiente: el agricultor elige entre estas candidatas
+     * (con guía de qué fotos tomar para afinar).
+     */
+    data class Disambiguation(val candidates: List<SpeciesCandidate>) : IdentificationUiState
 
     /** Ocurrió un error (red, formato, sin certeza, etc.). */
     data class Error(val message: String) : IdentificationUiState
@@ -46,6 +60,23 @@ class CaptureViewModel @JvmOverloads constructor(
 
     /** Fotos elegidas para identificar, en orden. Vacía = sin imagen. */
     val imageUris: StateFlow<List<Uri>> = _imageUris.asStateFlow()
+
+    /** Órgano elegido para Pl@ntNet (auto/flower/leaf/fruit/bark). */
+    private val _selectedOrgan = MutableStateFlow("auto")
+    val selectedOrgan: StateFlow<String> = _selectedOrgan.asStateFlow()
+
+    /** Candidatas de la última desambiguación (para confirmar la elegida). */
+    private var lastCandidates: List<SpeciesCandidate> = emptyList()
+
+    /** Permite saltar el chequeo de calidad una vez ("continuar de todos modos"). */
+    private var skipQualityOnce = false
+
+    fun setOrgan(organ: String) {
+        if (organ != _selectedOrgan.value) {
+            _selectedOrgan.value = organ
+            resetIdentification()
+        }
+    }
 
     private val _uiState = MutableStateFlow<IdentificationUiState>(IdentificationUiState.Idle)
     val uiState: StateFlow<IdentificationUiState> = _uiState.asStateFlow()
@@ -85,6 +116,8 @@ class CaptureViewModel @JvmOverloads constructor(
     fun clearImages() {
         resetIdentification()
         _imageUris.value = emptyList()
+        lastCandidates = emptyList()
+        skipQualityOnce = false
     }
 
     /** Reinicia el estado para permitir una nueva identificación. */
@@ -100,9 +133,10 @@ class CaptureViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Procesa cada imagen (fuera del hilo principal, vía [ImageUtils]) y envía
-     * todas al repositorio. Es idempotente mientras hay una identificación en
-     * curso, para evitar envíos duplicados si se pulsa "Identificar" varias veces.
+     * Procesa cada imagen (fuera del hilo principal, vía [ImageUtils]), revisa
+     * su calidad y la envía al repositorio. Es idempotente mientras hay una
+     * identificación en curso, para evitar envíos duplicados si se pulsa
+     * "Identificar" varias veces.
      */
     fun identify(uris: List<Uri>) {
         if (_uiState.value is IdentificationUiState.Loading) return
@@ -112,7 +146,7 @@ class CaptureViewModel @JvmOverloads constructor(
         identifyJob = viewModelScope.launch {
             _uiState.value = IdentificationUiState.Loading
 
-            // Se procesan en orden; si una falla se informa cuál (1-based).
+            // 1. Procesar en orden; si una falla se informa cuál (1-based).
             val bytesList = mutableListOf<ByteArray>()
             for ((index, uri) in uris.withIndex()) {
                 when (val processed = ImageUtils.uriToJpegBytes(getApplication(), uri)) {
@@ -126,7 +160,50 @@ class CaptureViewModel @JvmOverloads constructor(
                     Resource.Loading -> Unit // No aplica: uriToJpegBytes no emite Loading.
                 }
             }
-            _uiState.value = mapResult(repository.identifyPlant(bytesList))
+
+            // 2. Chequeo de calidad previo (se puede saltar una vez).
+            if (!skipQualityOnce) {
+                val issues = bytesList.flatMapIndexed { index, bytes ->
+                    ImageUtils.qualityIssues(bytes).map { "Foto ${index + 1} $it" }
+                }
+                if (issues.isNotEmpty()) {
+                    _uiState.value = IdentificationUiState.QualityWarning(issues)
+                    return@launch
+                }
+            }
+            skipQualityOnce = false
+
+            // 3. Análisis: identificación, desambiguación o fallo.
+            when (val result = repository.analyze(bytesList, _selectedOrgan.value)) {
+                is AnalysisResult.Identified -> {
+                    _uiState.value = IdentificationUiState.Success(result.plant)
+                }
+                is AnalysisResult.Ambiguous -> {
+                    lastCandidates = result.candidates
+                    _uiState.value = IdentificationUiState.Disambiguation(result.candidates)
+                }
+                is AnalysisResult.Failed -> {
+                    _uiState.value = IdentificationUiState.Error(result.message)
+                }
+            }
+        }
+    }
+
+    /** Continúa la identificación aunque haya aviso de calidad. */
+    fun proceedDespiteQuality() {
+        skipQualityOnce = true
+        identify(_imageUris.value)
+    }
+
+    /** Genera la información completa de la candidata elegida. */
+    fun chooseCandidate(candidate: SpeciesCandidate) {
+        if (_uiState.value is IdentificationUiState.Loading) return
+        identifyJob?.cancel()
+        identifyJob = viewModelScope.launch {
+            _uiState.value = IdentificationUiState.Loading
+            _uiState.value = mapResult(
+                repository.confirmCandidate(candidate, lastCandidates)
+            )
         }
     }
 

@@ -20,6 +20,7 @@ import com.agronomia.data.remote.ResponseFormat
 import com.agronomia.domain.model.PlantResult
 import com.agronomia.domain.model.PlantSection
 import com.agronomia.domain.model.MaterialItem
+import com.agronomia.domain.model.SpeciesCandidate
 import com.agronomia.domain.model.WordMeaning
 import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
@@ -51,25 +52,36 @@ class PlantIdentificationException(message: String, cause: Throwable? = null) :
 
 interface PlantRepository {
     /**
-     * Identifica una planta y obtiene información sobre ella.
-     *
-     * Flujo:
-     *  1. Pl@ntNet identifica la especie con TODAS las fotos (ideal: flor,
-     *     hoja, tallo) y devuelve su ficha extendida (mejor coincidencia +
-     *     candidatas alternativas, GBIF/POWO/IUCN).
-     *  2. La IA genera un prompt optimizado de investigación a partir de esa ficha.
-     *  3. La IA ejecuta UN prompt por categoría de cuidado (descripción, luz,
-     *     riego, suelo, clima, floración, usos, cuidados), en paralelo, y cada
-     *     uno devuelve el texto extenso de su categoría.
-     *
-     * Si Pl@ntNet no identifica con confianza suficiente, se usa la IA de visión
-     * como respaldo con la PRIMERA foto (la cadena se aplica igual).
+     * Analiza las fotos y decide el camino:
+     * [AnalysisResult.Identified] (con toda la cadena de información),
+     * [AnalysisResult.Ambiguous] (el agricultor elige entre candidatas) o
+     * [AnalysisResult.Failed] (mensaje apto para UI).
      *
      * @param images JPEGs ya preparados (1 a [ImageUtils.MAX_IMAGES]).
-     * @return [Result.success] con [PlantResult] o [Result.failure] con
-     *         [PlantIdentificationException] cuyo mensaje es apto para UI.
+     * @param organ órgano elegido (auto/flower/leaf/fruit/bark).
      */
-    suspend fun identifyPlant(images: List<ByteArray>): Result<PlantResult>
+    suspend fun analyze(images: List<ByteArray>, organ: String): AnalysisResult
+
+    /**
+     * Genera la información completa para la candidata elegida por el
+     * agricultor. [siblings] son las otras candidatas (dan contexto).
+     */
+    suspend fun confirmCandidate(
+        candidate: SpeciesCandidate,
+        siblings: List<SpeciesCandidate>
+    ): Result<PlantResult>
+}
+
+/** Resultado del análisis: identificación, desambiguación o fallo. */
+sealed interface AnalysisResult {
+    /** Identificación confiable, con toda la información. */
+    data class Identified(val plant: PlantResult) : AnalysisResult
+
+    /** Sin certeza: el agricultor elige entre estas candidatas. */
+    data class Ambiguous(val candidates: List<SpeciesCandidate>) : AnalysisResult
+
+    /** No se pudo identificar (mensaje apto para UI). */
+    data class Failed(val message: String) : AnalysisResult
 }
 
 class PlantRepositoryImpl(
@@ -82,63 +94,115 @@ class PlantRepositoryImpl(
     private val aiService: PlantApiService by lazy { NetworkModule.plantApiService }
     private val plantNetService: PlantNetApiService by lazy { NetworkModule.plantNetApiService }
 
-    override suspend fun identifyPlant(images: List<ByteArray>): Result<PlantResult> =
+    override suspend fun analyze(images: List<ByteArray>, organ: String): AnalysisResult =
         withContext(Dispatchers.IO) {
             if (images.isEmpty() || images.all { it.isEmpty() }) {
-                return@withContext Result.failure(
-                    PlantIdentificationException("No hay imágenes para identificar. Vuelve a capturarla.")
+                return@withContext AnalysisResult.Failed(
+                    "No hay imágenes para identificar. Vuelve a capturarla."
                 )
             }
             // Se descartan bytes vacíos sin romper el orden del resto.
             val validImages = images.filter { it.isNotEmpty() }
 
             try {
-                val species = identifySpecies(validImages)
-                val chain = runInfoChain(species)
-                Result.success(species.toPlantResult(chain.info, chain.sections))
-            } catch (e: PlantIdentificationException) {
-                Result.failure(e)
-            } catch (e: HttpException) {
-                Result.failure(PlantIdentificationException(mapHttpError(e), e))
-            } catch (e: SocketTimeoutException) {
-                Result.failure(
-                    PlantIdentificationException(
-                        "La solicitud tardó demasiado (timeout). Revisa tu conexión e inténtalo de nuevo.",
-                        e
+                // 1. Pl@ntNet con todas las fotos y el órgano elegido.
+                val plantNetMatch = identifyWithPlantNetOrNull(validImages, organ)
+                if (plantNetMatch != null &&
+                    plantNetMatch.confidence >= Constants.PLANTNET_MIN_CONFIDENCE
+                ) {
+                    val chain = runInfoChain(plantNetMatch)
+                    return@withContext AnalysisResult.Identified(
+                        plantNetMatch.toPlantResult(chain.info, chain.sections)
                     )
+                }
+
+                // 2. Respaldo con IA de visión (primera foto).
+                val visionMatch = identifyWithVisionOrNull(validImages.first())
+                if (visionMatch != null) {
+                    val chain = runInfoChain(visionMatch)
+                    return@withContext AnalysisResult.Identified(
+                        visionMatch.toPlantResult(chain.info, chain.sections)
+                    )
+                }
+
+                // 3. Sin certeza: el agricultor elige entre las candidatas.
+                val candidates = plantNetMatch?.toCandidates().orEmpty()
+                if (candidates.isNotEmpty()) {
+                    return@withContext AnalysisResult.Ambiguous(candidates)
+                }
+                AnalysisResult.Failed(
+                    "No se pudo verificar la planta con certeza. Envía más imágenes " +
+                        "(flor, hoja o tallo) para una mejor identificación."
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: HttpException) {
+                AnalysisResult.Failed(mapHttpError(e))
+            } catch (e: SocketTimeoutException) {
+                AnalysisResult.Failed(
+                    "La solicitud tardó demasiado (timeout). Revisa tu conexión e inténtalo de nuevo."
                 )
             } catch (e: UnknownHostException) {
-                Result.failure(
-                    PlantIdentificationException(
-                        "Sin conexión a internet. Verifica tu red e inténtalo de nuevo.",
-                        e
-                    )
+                AnalysisResult.Failed(
+                    "Sin conexión a internet. Verifica tu red e inténtalo de nuevo."
                 )
             } catch (e: ConnectException) {
-                Result.failure(
-                    PlantIdentificationException(
-                        "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.",
-                        e
-                    )
+                AnalysisResult.Failed(
+                    "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo."
                 )
             } catch (e: SerializationException) {
-                Result.failure(
-                    PlantIdentificationException(
-                        "La respuesta del servidor no es un JSON válido o no tiene el formato esperado.",
-                        e
-                    )
+                AnalysisResult.Failed(
+                    "La respuesta del servidor no es un JSON válido o no tiene el formato esperado."
                 )
             } catch (e: IOException) {
-                Result.failure(
-                    PlantIdentificationException(
-                        "Sin conexión a internet o error de red. Verifica tu red e inténtalo de nuevo.",
-                        e
-                    )
+                AnalysisResult.Failed(
+                    "Sin conexión a internet o error de red. Verifica tu red e inténtalo de nuevo."
                 )
+            } catch (e: Exception) {
+                AnalysisResult.Failed(
+                    "Error inesperado al identificar la planta: ${e.message ?: "inténtalo de nuevo"}."
+                )
+            }
+        }
+
+    /**
+     * Ejecuta la cadena completa de información para la candidata elegida por
+     * el agricultor. [siblings] son las otras candidatas (dan contexto).
+     */
+    override suspend fun confirmCandidate(
+        candidate: SpeciesCandidate,
+        siblings: List<SpeciesCandidate>
+    ): Result<PlantResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                val species = SpeciesMatch(
+                    commonName = candidate.commonNames.firstOrNull().orEmpty(),
+                    scientificName = candidate.scientificName,
+                    family = candidate.family,
+                    confidence = candidate.confidence,
+                    plantNetSpecies = null,
+                    bestMatch = "",
+                    candidates = siblings
+                        .filter { it.scientificName != candidate.scientificName }
+                        .take(3).map {
+                            PlantCandidate(
+                                scientificName = it.scientificName,
+                                score = it.confidence,
+                                commonName = it.commonNames.firstOrNull().orEmpty()
+                            )
+                        },
+                    gbifId = candidate.gbifId,
+                    powoId = candidate.powoId,
+                    iucnCategory = candidate.iucnCategory
+                )
+                val chain = runInfoChain(species)
+                Result.success(species.toPlantResult(chain.info, chain.sections))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(
                     PlantIdentificationException(
-                        "Error inesperado al identificar la planta: ${e.message ?: "inténtalo de nuevo"}.",
+                        "No se pudo generar la información. Revisa tu conexión e inténtalo de nuevo.",
                         e
                     )
                 )
@@ -146,33 +210,33 @@ class PlantRepositoryImpl(
         }
 
     /**
-     * Identifica la especie: primero Pl@ntNet; si no da una coincidencia confiable,
-     * cae al respaldo con IA de visión (que exige la certeza configurada).
+     * Pl@ntNet sin lanzar: devuelve null ante cualquier fallo para intentar el
+     * respaldo con visión.
      */
-    private suspend fun identifySpecies(images: List<ByteArray>): SpeciesMatch {
-        val plantNetMatch = try {
-            identifyWithPlantNet(images)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            null // Cualquier fallo de Pl@ntNet → se intenta el respaldo.
-        }
+    private suspend fun identifyWithPlantNetOrNull(
+        images: List<ByteArray>,
+        organ: String
+    ): SpeciesMatch? = try {
+        identifyWithPlantNet(images, organ)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
 
-        if (plantNetMatch != null && plantNetMatch.confidence >= Constants.PLANTNET_MIN_CONFIDENCE) {
-            return plantNetMatch
-        }
-
-        // Respaldo: IA de visión con la PRIMERA foto (ya preparada en JPEG).
-        val visionMatch = identifyWithAiVision(images.first())
-        val hasName = visionMatch.scientificName.isNotBlank() &&
-            !visionMatch.scientificName.equals("unknown", true)
-        if (!hasName || visionMatch.confidence < Constants.AI_FALLBACK_MIN_CONFIDENCE) {
-            throw PlantIdentificationException(
-                "No se pudo verificar la planta con certeza. Envía más imágenes " +
-                    "(flor, hoja o tallo) para una mejor identificación."
-            )
-        }
-        return visionMatch
+    /**
+     * Respaldo con IA de visión sin lanzar: devuelve null si no alcanza la
+     * certeza exigida, para pasar a la desambiguación con candidatas.
+     */
+    private suspend fun identifyWithVisionOrNull(imageBytes: ByteArray): SpeciesMatch? = try {
+        val match = identifyWithAiVision(imageBytes)
+        val hasName = match.scientificName.isNotBlank() &&
+            !match.scientificName.equals("unknown", true)
+        if (!hasName || match.confidence < Constants.AI_FALLBACK_MIN_CONFIDENCE) null else match
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     /**
@@ -180,8 +244,9 @@ class PlantRepositoryImpl(
      * (o null si no hay resultados). Guarda también las candidatas alternativas
      * para enriquecer la ficha que alimenta a la IA.
      */
-    private suspend fun identifyWithPlantNet(images: List<ByteArray>): SpeciesMatch? {
-        // Una parte "images" + una parte "organs=auto" por cada foto, en orden.
+    private suspend fun identifyWithPlantNet(images: List<ByteArray>, organ: String): SpeciesMatch? {
+        // Una parte "images" + una parte "organs" por cada foto, en orden.
+        // El órgano lo elige el usuario (auto/flor/hoja/fruto/corteza).
         val imageParts = images.mapIndexed { index, bytes ->
             MultipartBody.Part.createFormData(
                 "images",
@@ -190,7 +255,7 @@ class PlantRepositoryImpl(
             )
         }
         val organParts = images.map {
-            MultipartBody.Part.createFormData("organs", "auto")
+            MultipartBody.Part.createFormData("organs", organ.ifBlank { "auto" })
         }
 
         val response = plantNetService.identify(
@@ -751,6 +816,32 @@ class PlantRepositoryImpl(
                 confidence = confidence,
                 sections = sections
             )
+
+        /**
+         * Candidatas para desambiguación: la mejor primero y luego las
+         * alternativas, con los datos disponibles de cada una.
+         */
+        fun toCandidates(): List<SpeciesCandidate> {
+            val best = SpeciesCandidate(
+                scientificName = scientificName,
+                authorship = plantNetSpecies?.scientificNameAuthorship.orEmpty(),
+                commonNames = plantNetSpecies?.commonNames.orEmpty(),
+                genus = plantNetSpecies?.genus?.scientificNameWithoutAuthor.orEmpty(),
+                family = family,
+                confidence = confidence,
+                gbifId = gbifId,
+                powoId = powoId,
+                iucnCategory = iucnCategory
+            )
+            val rest = candidates.map {
+                SpeciesCandidate(
+                    scientificName = it.scientificName,
+                    commonNames = listOf(it.commonName).filter { name -> name.isNotBlank() },
+                    confidence = it.score
+                )
+            }
+            return (listOf(best) + rest).filter { it.scientificName.isNotBlank() }
+        }
     }
 
     /** Especie candidata alternativa de Pl@ntNet (para la ficha extendida). */
