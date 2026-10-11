@@ -535,7 +535,7 @@ private fun CandidateCard(
                             .data(candidate.imageUrl)
                             .headers(
                                 okhttp3.Headers.Builder()
-                                    .add("User-Agent", "Agronom-IA/1.0 (Android)")
+                                    .add("User-Agent", Constants.WIKIMEDIA_USER_AGENT)
                                     .build()
                             )
                             .build(),
@@ -629,7 +629,8 @@ private fun CandidateCard(
         FullscreenImageDialog(
             image = candidate.imageUrl,
             contentDescription = "Foto de referencia ampliada: $displayName",
-            onDismiss = { expandedImage = false }
+            onDismiss = { expandedImage = false },
+            userAgent = Constants.WIKIMEDIA_USER_AGENT
         )
     }
 }

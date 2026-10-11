@@ -326,6 +326,12 @@ object Constants {
     """.trimIndent()
 
     /**
+     * User-Agent identificatorio exigido por Wikimedia (sin él responde 403):
+     * se envía tanto al buscar fotos como al descargarlas con Coil.
+     */
+    const val WIKIMEDIA_USER_AGENT = "Agronom-IA/1.0 (Android)"
+
+    /**
      * Construye la URL completa del endpoint de IA (texto/visión) a partir de
      * [BASE_URL] y [IDENTIFY_PATH]. Evita duplicar o perder barras.
      */

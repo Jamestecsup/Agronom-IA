@@ -24,25 +24,46 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import okhttp3.Headers
 
 /**
  * Muestra una imagen a pantalla completa para verla de cerca: admite pellizco
  * para acercar/alejar y moverla ampliada. Se cierra con la X o con atrás.
  *
  * @param image modelo de Coil ([android.net.Uri], URL, etc.).
+ * @param userAgent si no es nulo, se envía como cabecera `User-Agent` al
+ * descargar (Wikimedia lo exige; sin él responde 403).
  */
 @Composable
 fun FullscreenImageDialog(
     image: Any,
     contentDescription: String?,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    userAgent: String? = null
 ) {
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    val context = LocalContext.current
+    val request = remember(image, userAgent) {
+        ImageRequest.Builder(context)
+            .data(image)
+            .apply {
+                if (userAgent != null) {
+                    headers(
+                        Headers.Builder()
+                            .add("User-Agent", userAgent)
+                            .build()
+                    )
+                }
+            }
+            .build()
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -54,7 +75,7 @@ fun FullscreenImageDialog(
                 .background(Color.Black.copy(alpha = 0.92f))
         ) {
             AsyncImage(
-                model = image,
+                model = request,
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
