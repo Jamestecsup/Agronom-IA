@@ -38,7 +38,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.agronomia.ui.components.AgronomIaTopBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -206,9 +206,7 @@ fun CaptureScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Agronom-IA - Captura") }
-            )
+            AgronomIaTopBar()
         },
         modifier = modifier
     ) { innerPadding ->
