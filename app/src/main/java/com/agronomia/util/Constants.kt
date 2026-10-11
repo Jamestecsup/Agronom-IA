@@ -1,6 +1,7 @@
 package com.agronomia.util
 
 import com.agronomia.BuildConfig
+import com.agronomia.domain.model.WordMeaning
 
 object Constants {
     // ---------------- Proveedor de IA de texto/visión (compatible con OpenAI) ----------------
@@ -22,6 +23,18 @@ object Constants {
 
     /** Número máximo de especies candidatas a pedir a Pl@ntNet. */
     const val PLANTNET_MAX_RESULTS = 10
+
+    /**
+     * Órganos que Pl@ntNet acepta (se envía uno por foto). El usuario lo elige
+     * en la pantalla de captura para subir la precisión.
+     */
+    val ORGAN_OPTIONS: List<Pair<String, String>> = listOf(
+        "auto" to "Auto",
+        "flower" to "Flor",
+        "leaf" to "Hoja",
+        "fruit" to "Fruto",
+        "bark" to "Corteza"
+    )
 
     /**
      * Timeouts de red. Subir la imagen y esperar a la IA puede tardar, por eso
@@ -245,6 +258,33 @@ object Constants {
         {"items": [{"name": "nombre del material o alternativa", "detail": "para qué sirve y ejemplo de uso"}]}
         Si no hay materiales, responde {"items": []}.
     """.trimIndent()
+
+    /**
+     * Guía ligada a la desambiguación: explica QUÉ fotos tomar para identificar
+     * mejor (qué órgano y cómo), con palabras resaltadas como el glosario.
+     */
+    val DISAMBIGUATION_GUIDE_TEXT: String = """
+        La app encontró varias plantas parecidas. Para afinar, toma estas fotos:
+        1) la flor en plano detalle y con buena luz; 2) una hoja sola, sin contraluz;
+        3) el tallo o el fruto si los tiene. Evita fotos movidas o muy oscuras:
+        con 2 o 3 fotos de órganos distintos la identificación mejora mucho.
+    """.trimIndent()
+
+    /** Términos resaltados de la guía, con su significado en este contexto. */
+    val DISAMBIGUATION_GUIDE_TERMS: List<WordMeaning> = listOf(
+        WordMeaning(
+            "plano detalle",
+            "Foto tomada muy de cerca, donde la flor o la hoja llena casi toda la imagen."
+        ),
+        WordMeaning(
+            "órgano",
+            "Cada parte de la planta: flor, hoja, fruto o tallo. Fotografiar varios órganos ayuda a identificar."
+        ),
+        WordMeaning(
+            "contraluz",
+            "Cuando la luz viene de frente a la cámara y la planta sale oscura. Ponte de espaldas al sol."
+        )
+    )
 
     /**
      * Construye la URL completa del endpoint de IA (texto/visión) a partir de

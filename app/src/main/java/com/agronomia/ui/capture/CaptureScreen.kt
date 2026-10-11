@@ -33,6 +33,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +59,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
 import java.io.File
 
@@ -81,6 +83,7 @@ fun CaptureScreen(
     val context = LocalContext.current
     val imageUris by viewModel.imageUris.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val selectedOrgan by viewModel.selectedOrgan.collectAsState()
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var showCameraRationale by remember { mutableStateOf(false) }
@@ -327,6 +330,32 @@ fun CaptureScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Cámara")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Órgano fotografiado: ayuda a Pl@ntNet a identificar mejor.
+            Text(
+                text = "¿Qué fotografiaste?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(
+                    Constants.ORGAN_OPTIONS,
+                    key = { it.first }
+                ) { (value, label) ->
+                    FilterChip(
+                        selected = selectedOrgan == value,
+                        onClick = { viewModel.setOrgan(value) },
+                        label = { Text(label) }
+                    )
                 }
             }
 
