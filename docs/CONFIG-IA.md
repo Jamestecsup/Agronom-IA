@@ -149,6 +149,9 @@ Ideas acordadas para cuando Pl@ntNet no identifica con certeza:
 
 - `PLANTNET_MIN_CONFIDENCE` (0.2): si la mejor coincidencia de Pl@ntNet queda por
   debajo, se usa el respaldo con IA de visión.
+  Regla acordada: **20% o menos = error o desambiguación** (visión → candidatas
+  para elegir → error pidiendo más fotos); **21% o más = resultado con su %
+  visible** (el % muestra si está validada o con dudas).
 - `AI_FALLBACK_MIN_CONFIDENCE` (1.0 = 100 %): en el respaldo, si la IA no
   llega a esta certeza, se pide al usuario más imágenes.
 
