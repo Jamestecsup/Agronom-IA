@@ -147,6 +147,12 @@ Ideas acordadas para cuando Pl@ntNet no identifica con certeza:
 
 ## Umbrales (en `Constants.kt`)
 
+Regla acordada:
+
+- **20% o menos** = sin detección: guía de fotos + tomar otra foto.
+- **21% a 49%** = dudas: similares con foto y nombres para elegir.
+- **50% o más** = validada: ficha completa con su % visible.
+
 - `PLANTNET_MIN_CONFIDENCE` (0.2): si la mejor coincidencia de Pl@ntNet queda por
   debajo, se usa el respaldo con IA de visión.
   Regla acordada: **20% o menos = error o desambiguación** (visión → candidatas

@@ -40,6 +40,12 @@ sealed interface IdentificationUiState {
      */
     data class Disambiguation(val candidates: List<SpeciesCandidate>) : IdentificationUiState
 
+    /**
+     * Sin detección (20% o menos): solo la guía de cómo tomar mejores fotos,
+     * sin lista de candidatas.
+     */
+    data class Unidentified(val message: String) : IdentificationUiState
+
     /** Ocurrió un error (red, formato, sin certeza, etc.). */
     data class Error(val message: String) : IdentificationUiState
 }
@@ -179,7 +185,7 @@ class CaptureViewModel @JvmOverloads constructor(
             }
             skipQualityOnce = false
 
-            // 3. Análisis: identificación, desambiguación o fallo.
+            // 3. Análisis: identificación, desambiguación, guía o fallo.
             // Cada foto aporta su órgano elegido, en el mismo orden.
             val organs = uris.map { organFor(it) }
             when (val result = repository.analyze(bytesList, organs)) {
@@ -189,6 +195,9 @@ class CaptureViewModel @JvmOverloads constructor(
                 is AnalysisResult.Ambiguous -> {
                     lastCandidates = result.candidates
                     _uiState.value = IdentificationUiState.Disambiguation(result.candidates)
+                }
+                is AnalysisResult.Unidentified -> {
+                    _uiState.value = IdentificationUiState.Unidentified(result.message)
                 }
                 is AnalysisResult.Failed -> {
                     _uiState.value = IdentificationUiState.Error(result.message)

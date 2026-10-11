@@ -135,6 +135,11 @@ fun ResultScreen(
                     onTakeAnotherPhoto = takeAnotherPhoto
                 )
 
+                is IdentificationUiState.Unidentified -> UnidentifiedContent(
+                    message = state.message,
+                    onTakeAnotherPhoto = takeAnotherPhoto
+                )
+
                 is IdentificationUiState.Error -> MessageContent(
                     title = "No se pudo identificar la planta",
                     message = state.message,
@@ -297,30 +302,13 @@ private fun QualityContent(
 }
 
 /**
- * Desambiguación: la app encontró varias plantas parecidas. Muestra la guía
- * de qué fotos tomar (con palabras resaltadas) y las candidatas para elegir.
+ * Tarjeta con la guía de cómo tomar mejores fotos (pasos ordenados y palabras
+ * resaltadas con su significado). Se usa en desambiguación y en no-detección.
  */
 @Composable
-private fun DisambiguationContent(
-    candidates: List<SpeciesCandidate>,
-    onChoose: (SpeciesCandidate) -> Unit,
-    onTakeAnotherPhoto: () -> Unit
-) {
+private fun GuideCard() {
     var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
 
-    Text(
-        text = "¿Cuál es tu planta?",
-        style = MaterialTheme.typography.titleLarge,
-        textAlign = TextAlign.Center
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(
-        text = "Se parecen mucho. Elige la tuya o toma mejores fotos:",
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center
-    )
-
-    // Guía ligada: qué fotos tomar, con significados en contexto.
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -376,6 +364,60 @@ private fun DisambiguationContent(
             }
         )
     }
+}
+
+/**
+ * Sin detección (20% o menos): mensaje + solo la guía, sin candidatas.
+ */
+@Composable
+private fun UnidentifiedContent(
+    message: String,
+    onTakeAnotherPhoto: () -> Unit
+) {
+    Text(
+        text = "No se pudo identificar",
+        style = MaterialTheme.typography.titleLarge,
+        textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center
+    )
+    GuideCard()
+    Spacer(modifier = Modifier.height(16.dp))
+    OutlinedButton(
+        onClick = onTakeAnotherPhoto,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Tomar otra foto")
+    }
+}
+
+/**
+ * Desambiguación: la app encontró varias plantas parecidas. Muestra la guía
+ * de qué fotos tomar (con palabras resaltadas) y las candidatas para elegir.
+ */
+@Composable
+private fun DisambiguationContent(
+    candidates: List<SpeciesCandidate>,
+    onChoose: (SpeciesCandidate) -> Unit,
+    onTakeAnotherPhoto: () -> Unit
+) {
+    Text(
+        text = "¿Cuál es tu planta?",
+        style = MaterialTheme.typography.titleLarge,
+        textAlign = TextAlign.Center
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = "Se parecen mucho. Elige la tuya o toma mejores fotos:",
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center
+    )
+
+    GuideCard()
 
     Spacer(modifier = Modifier.height(12.dp))
     candidates.forEach { candidate ->

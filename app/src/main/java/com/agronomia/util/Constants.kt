@@ -63,6 +63,12 @@ object Constants {
     const val PLANTNET_MIN_CONFIDENCE = 0.2f
 
     /**
+     * Regla acordada: 20% o menos = error o guía; 21% a 49% = dudas (el
+     * agricultor elige entre similares); 50% o más = validada.
+     */
+    const val PLANTNET_CONFIDENT_CONFIDENCE = 0.5f
+
+    /**
      * En el respaldo con IA de visión exigimos certeza total (100 %).
      * Si no la alcanza, se pide al usuario que envíe más imágenes de la planta
      * (flor, hoja, tallo) para una mejor verificación.

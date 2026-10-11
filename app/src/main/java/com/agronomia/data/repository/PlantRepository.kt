@@ -58,8 +58,9 @@ class PlantIdentificationException(message: String, cause: Throwable? = null) :
 interface PlantRepository {
     /**
      * Analiza las fotos y decide el camino:
-     * [AnalysisResult.Identified] (con toda la cadena de información),
-     * [AnalysisResult.Ambiguous] (el agricultor elige entre candidatas) o
+     * [AnalysisResult.Identified] (50% o más, con toda la cadena),
+     * [AnalysisResult.Ambiguous] (21% a 49%: el agricultor elige),
+     * [AnalysisResult.Unidentified] (20% o menos: solo la guía) o
      * [AnalysisResult.Failed] (mensaje apto para UI).
      *
      * @param images JPEGs ya preparados (1 a [ImageUtils.MAX_IMAGES]).
@@ -77,15 +78,21 @@ interface PlantRepository {
     ): Result<PlantResult>
 }
 
-/** Resultado del análisis: identificación, desambiguación o fallo. */
+/** Resultado del análisis: identificación, desambiguación, guía o fallo. */
 sealed interface AnalysisResult {
-    /** Identificación confiable, con toda la información. */
+    /** Identificación confiable (50% o más, o visión al 100%), con toda la información. */
     data class Identified(val plant: PlantResult) : AnalysisResult
 
-    /** Sin certeza: el agricultor elige entre estas candidatas. */
+    /** Con dudas (21% a 49%): el agricultor elige entre estas candidatas. */
     data class Ambiguous(val candidates: List<SpeciesCandidate>) : AnalysisResult
 
-    /** No se pudo identificar (mensaje apto para UI). */
+    /**
+     * Sin detección (20% o menos y sin respaldo): solo la guía de cómo tomar
+     * mejores fotos, sin lista de candidatas.
+     */
+    data class Unidentified(val message: String) : AnalysisResult
+
+    /** No se pudo identificar por un error (mensaje apto para UI). */
     data class Failed(val message: String) : AnalysisResult
 }
 
@@ -122,8 +129,11 @@ class PlantRepositoryImpl(
             try {
                 // 1. Pl@ntNet con todas las fotos, cada una con su órgano.
                 val plantNetMatch = identifyWithPlantNetOrNull(validImages, validOrgans)
+                val plantNetScore = plantNetMatch?.confidence ?: 0f
+
+                // 50% o más: validada, cadena completa.
                 if (plantNetMatch != null &&
-                    plantNetMatch.confidence >= Constants.PLANTNET_MIN_CONFIDENCE
+                    plantNetScore >= Constants.PLANTNET_CONFIDENT_CONFIDENCE
                 ) {
                     val chain = runInfoChain(plantNetMatch)
                     return@withContext AnalysisResult.Identified(
@@ -140,16 +150,19 @@ class PlantRepositoryImpl(
                     )
                 }
 
-                // 3. Sin certeza: el agricultor elige entre las candidatas.
-                val candidates = plantNetMatch?.toCandidates().orEmpty()
-                if (candidates.isNotEmpty()) {
-                    return@withContext AnalysisResult.Ambiguous(
-                        enrichWithReferenceImages(candidates)
-                    )
+                // 21% a 49%: con dudas, el agricultor elige entre similares.
+                if (plantNetScore >= Constants.PLANTNET_MIN_CONFIDENCE) {
+                    val candidates = plantNetMatch?.toCandidates().orEmpty()
+                    if (candidates.isNotEmpty()) {
+                        return@withContext AnalysisResult.Ambiguous(
+                            enrichWithReferenceImages(candidates)
+                        )
+                    }
                 }
-                AnalysisResult.Failed(
-                    "No se pudo verificar la planta con certeza. Envía más imágenes " +
-                        "(flor, hoja o tallo) para una mejor identificación."
+
+                // 20% o menos: solo la guía de cómo tomar mejores fotos.
+                AnalysisResult.Unidentified(
+                    "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo."
                 )
             } catch (e: CancellationException) {
                 throw e
