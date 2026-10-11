@@ -209,12 +209,33 @@ fun CaptureScreen(
 
     Scaffold(
         topBar = {
-            AgronomIaTopBar()
+            AgronomIaTopBar(
+                onContrastClick = {
+                    Toast.makeText(context, "Modo Alto Contraste (HU-4)", Toast.LENGTH_SHORT).show()
+                },
+                onFontSizeClick = {
+                    Toast.makeText(context, "Ajuste de tamaño de fuente (HU-4)", Toast.LENGTH_SHORT).show()
+                },
+                onProfileClick = {
+                    Toast.makeText(context, "Perfil de usuario TECSUP", Toast.LENGTH_SHORT).show()
+                }
+            )
         },
         bottomBar = {
             AgronomIaBottomBar(
                 selectedIndex = selectedNavIndex,
-                onItemSelected = { selectedNavIndex = it }
+                onItemSelected = { index ->
+                    selectedNavIndex = index
+                    if (index != 0) {
+                        val sectionName = when (index) {
+                            1 -> "Mi Jardín"
+                            2 -> "Calendario"
+                            3 -> "Ajustes"
+                            else -> ""
+                        }
+                        Toast.makeText(context, "Sección: $sectionName", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
         },
         modifier = modifier
