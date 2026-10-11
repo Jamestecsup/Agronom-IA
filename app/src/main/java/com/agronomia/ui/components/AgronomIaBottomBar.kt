@@ -2,6 +2,7 @@ package com.agronomia.ui.components
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -129,8 +130,9 @@ fun AgronomIaBottomBar(
 ) {
     Card(
         modifier = modifier
+            .navigationBarsPadding()
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
         shape = RoundedCornerShape(100.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         colors = CardDefaults.cardColors(
