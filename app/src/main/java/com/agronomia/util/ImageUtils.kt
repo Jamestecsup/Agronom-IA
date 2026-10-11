@@ -16,6 +16,18 @@ object ImageUtils {
     const val MAX_SIDE_PX = 1024
     const val JPEG_QUALITY = 80
 
+    /**
+     * Máximo de imágenes por identificación (límite de Pl@ntNet: hasta 5
+     * fotos de la misma planta: flor, hoja, tallo...).
+     */
+    const val MAX_IMAGES = 5
+
+    /**
+     * Lado mayor mínimo aceptado: por debajo la foto es demasiado pequeña
+     * para identificar con fiabilidad.
+     */
+    const val MIN_SIDE_PX = 128
+
     private val ALLOWED_MIME_TYPES = setOf(
         "image/jpeg",
         "image/jpg",
@@ -29,6 +41,7 @@ object ImageUtils {
      * Convierte un [Uri] de imagen a **bytes JPEG** listos para subir.
      *
      * - Valida que sea JPG, PNG o WEBP.
+     * - Rechaza imágenes enanas (lado mayor menor que MIN_SIDE_PX).
      * - Corrige la orientación según la etiqueta EXIF (fotos de cámara rotadas).
      * - Reduce el lado mayor a un máximo de 1024 px manteniendo la proporción.
      * - Recomprime a JPEG con calidad 80.
@@ -99,6 +112,14 @@ object ImageUtils {
                             "No se pudo decodificar la imagen. El archivo podría estar dañado o no ser " +
                                 "una imagen válida."
                         }
+                    )
+                }
+
+                // 3b. Validar tamaño mínimo: muy pequeña no sirve para identificar.
+                if (maxOf(boundsOptions.outWidth, boundsOptions.outHeight) < MIN_SIDE_PX) {
+                    return@withContext Resource.Error(
+                        "La imagen es muy pequeña (menos de $MIN_SIDE_PX px). " +
+                            "Usa una foto más grande o acércate a la planta."
                     )
                 }
 

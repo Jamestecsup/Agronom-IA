@@ -60,7 +60,9 @@ PLANTNET_LANG=es
 
 - Endpoint: `POST {PLANTNET_BASE_URL}v2/identify/{project}?api-key=...&lang=...&nb-results=...`
   (`nb-results=10`; la app usa la mejor + hasta 3 alternativas para la ficha).
-- Cuerpo **multipart**: `images` (JPEG) + `organs=auto`.
+- Cuerpo **multipart**: UNA parte `images` (JPEG) + UNA parte `organs=auto` POR
+  CADA foto (hasta 5 de la misma planta: flor, hoja, tallo), emparejadas por orden.
+  El respaldo con IA de visión usa solo la primera foto.
 - Genera/consulta tu key en https://my.plantnet.org/settings/api-key
 - **La api-key viaja en la URL**, por eso Pl@ntNet usa un cliente OkHttp **sin
   logging** (ver `NetworkModule`) para no filtrarla en logcat.

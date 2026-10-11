@@ -33,33 +33,58 @@ sealed interface IdentificationUiState {
 /**
  * ViewModel de captura e identificación.
  *
- * Mantiene la imagen seleccionada y el estado de la identificación. Toda la
- * lógica de red vive en [PlantRepository]; la UI solo observa [uiState].
+ * Mantiene las imágenes seleccionadas (hasta [ImageUtils.MAX_IMAGES]: ideal
+ * flor, hoja y tallo) y el estado de la identificación. Toda la lógica de red
+ * vive en [PlantRepository]; la UI solo observa [uiState].
  */
 class CaptureViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: PlantRepository = PlantRepositoryImpl()
 ) : AndroidViewModel(application) {
 
-    private val _imageUri = MutableStateFlow<Uri?>(null)
-    val imageUri: StateFlow<Uri?> = _imageUri.asStateFlow()
+    private val _imageUris = MutableStateFlow<List<Uri>>(emptyList())
+
+    /** Fotos elegidas para identificar, en orden. Vacía = sin imagen. */
+    val imageUris: StateFlow<List<Uri>> = _imageUris.asStateFlow()
 
     private val _uiState = MutableStateFlow<IdentificationUiState>(IdentificationUiState.Idle)
     val uiState: StateFlow<IdentificationUiState> = _uiState.asStateFlow()
 
     private var identifyJob: Job? = null
 
-    fun onImageSelected(uri: Uri?) {
-        if (uri != null) {
-            _imageUri.value = uri
-            // Al elegir una imagen nueva se descarta el resultado anterior.
+    /**
+     * Agrega fotos a la selección (galería múltiple o cámara), sin duplicados
+     * y hasta [ImageUtils.MAX_IMAGES]. Al cambiar la selección se descarta el
+     * resultado anterior.
+     *
+     * @return cuántas se agregaron realmente (0 si ya estaba llena).
+     */
+    fun onImagesAdded(uris: List<Uri>): Int {
+        val fresh = uris.filter { it !in _imageUris.value }
+        if (fresh.isEmpty()) return 0
+        val room = ImageUtils.MAX_IMAGES - _imageUris.value.size
+        if (room <= 0) return 0
+        _imageUris.value = _imageUris.value + fresh.take(room)
+        // Al elegir imágenes nuevas se descarta el resultado anterior.
+        resetIdentification()
+        return minOf(fresh.size, room)
+    }
+
+    /** Agrega la foto recién tomada con la cámara. */
+    fun onCameraPhotoTaken(uri: Uri): Int = onImagesAdded(listOf(uri))
+
+    /** Quita una foto de la selección. */
+    fun removeImage(uri: Uri) {
+        if (uri in _imageUris.value) {
+            _imageUris.value = _imageUris.value - uri
             resetIdentification()
         }
     }
 
-    fun clearImage() {
+    /** Limpia la selección para tomar/elegir otras fotos. */
+    fun clearImages() {
         resetIdentification()
-        _imageUri.value = null
+        _imageUris.value = emptyList()
     }
 
     /** Reinicia el estado para permitir una nueva identificación. */
@@ -69,32 +94,39 @@ class CaptureViewModel @JvmOverloads constructor(
         _uiState.value = IdentificationUiState.Idle
     }
 
-    /** Lanza la identificación de la imagen actualmente seleccionada. */
+    /** Lanza la identificación de las imágenes actualmente seleccionadas. */
     fun identifyCurrentImage() {
-        _imageUri.value?.let(::identify)
+        identify(_imageUris.value)
     }
 
     /**
-     * Procesa la imagen (fuera del hilo principal, vía [ImageUtils]) y la envía
-     * al repositorio. Es idempotente mientras hay una identificación en curso,
-     * para evitar envíos duplicados si se pulsa "Identificar" varias veces.
+     * Procesa cada imagen (fuera del hilo principal, vía [ImageUtils]) y envía
+     * todas al repositorio. Es idempotente mientras hay una identificación en
+     * curso, para evitar envíos duplicados si se pulsa "Identificar" varias veces.
      */
-    fun identify(uri: Uri) {
+    fun identify(uris: List<Uri>) {
         if (_uiState.value is IdentificationUiState.Loading) return
+        if (uris.isEmpty()) return
 
         identifyJob?.cancel()
         identifyJob = viewModelScope.launch {
             _uiState.value = IdentificationUiState.Loading
 
-            when (val processed = ImageUtils.uriToJpegBytes(getApplication(), uri)) {
-                is Resource.Error -> {
-                    _uiState.value = IdentificationUiState.Error(processed.message)
+            // Se procesan en orden; si una falla se informa cuál (1-based).
+            val bytesList = mutableListOf<ByteArray>()
+            for ((index, uri) in uris.withIndex()) {
+                when (val processed = ImageUtils.uriToJpegBytes(getApplication(), uri)) {
+                    is Resource.Error -> {
+                        _uiState.value = IdentificationUiState.Error(
+                            "Imagen ${index + 1}: ${processed.message}"
+                        )
+                        return@launch
+                    }
+                    is Resource.Success -> bytesList.add(processed.data)
+                    Resource.Loading -> Unit // No aplica: uriToJpegBytes no emite Loading.
                 }
-                is Resource.Success -> {
-                    _uiState.value = mapResult(repository.identifyPlant(processed.data))
-                }
-                Resource.Loading -> Unit // No aplica: uriToJpegBytes no emite Loading.
             }
+            _uiState.value = mapResult(repository.identifyPlant(bytesList))
         }
     }
 

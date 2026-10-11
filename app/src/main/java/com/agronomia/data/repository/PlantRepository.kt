@@ -54,20 +54,22 @@ interface PlantRepository {
      * Identifica una planta y obtiene información sobre ella.
      *
      * Flujo:
-     *  1. Pl@ntNet identifica la especie y devuelve su ficha extendida
-     *     (mejor coincidencia + candidatas alternativas, GBIF/POWO/IUCN).
+     *  1. Pl@ntNet identifica la especie con TODAS las fotos (ideal: flor,
+     *     hoja, tallo) y devuelve su ficha extendida (mejor coincidencia +
+     *     candidatas alternativas, GBIF/POWO/IUCN).
      *  2. La IA genera un prompt optimizado de investigación a partir de esa ficha.
      *  3. La IA ejecuta UN prompt por categoría de cuidado (descripción, luz,
      *     riego, suelo, clima, floración, usos, cuidados), en paralelo, y cada
      *     uno devuelve el texto extenso de su categoría.
      *
      * Si Pl@ntNet no identifica con confianza suficiente, se usa la IA de visión
-     * como respaldo (la cadena se aplica igual con lo que se tenga).
+     * como respaldo con la PRIMERA foto (la cadena se aplica igual).
      *
+     * @param images JPEGs ya preparados (1 a [ImageUtils.MAX_IMAGES]).
      * @return [Result.success] con [PlantResult] o [Result.failure] con
      *         [PlantIdentificationException] cuyo mensaje es apto para UI.
      */
-    suspend fun identifyPlant(imageBytes: ByteArray): Result<PlantResult>
+    suspend fun identifyPlant(images: List<ByteArray>): Result<PlantResult>
 }
 
 class PlantRepositoryImpl(
@@ -80,16 +82,18 @@ class PlantRepositoryImpl(
     private val aiService: PlantApiService by lazy { NetworkModule.plantApiService }
     private val plantNetService: PlantNetApiService by lazy { NetworkModule.plantNetApiService }
 
-    override suspend fun identifyPlant(imageBytes: ByteArray): Result<PlantResult> =
+    override suspend fun identifyPlant(images: List<ByteArray>): Result<PlantResult> =
         withContext(Dispatchers.IO) {
-            if (imageBytes.isEmpty()) {
+            if (images.isEmpty() || images.all { it.isEmpty() }) {
                 return@withContext Result.failure(
-                    PlantIdentificationException("La imagen está vacía. Vuelve a capturarla.")
+                    PlantIdentificationException("No hay imágenes para identificar. Vuelve a capturarla.")
                 )
             }
+            // Se descartan bytes vacíos sin romper el orden del resto.
+            val validImages = images.filter { it.isNotEmpty() }
 
             try {
-                val species = identifySpecies(imageBytes)
+                val species = identifySpecies(validImages)
                 val chain = runInfoChain(species)
                 Result.success(species.toPlantResult(chain.info, chain.sections))
             } catch (e: PlantIdentificationException) {
@@ -145,9 +149,9 @@ class PlantRepositoryImpl(
      * Identifica la especie: primero Pl@ntNet; si no da una coincidencia confiable,
      * cae al respaldo con IA de visión (que exige la certeza configurada).
      */
-    private suspend fun identifySpecies(imageBytes: ByteArray): SpeciesMatch {
+    private suspend fun identifySpecies(images: List<ByteArray>): SpeciesMatch {
         val plantNetMatch = try {
-            identifyWithPlantNet(imageBytes)
+            identifyWithPlantNet(images)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -158,8 +162,8 @@ class PlantRepositoryImpl(
             return plantNetMatch
         }
 
-        // Respaldo: IA de visión (misma imagen ya preparada en JPEG).
-        val visionMatch = identifyWithAiVision(imageBytes)
+        // Respaldo: IA de visión con la PRIMERA foto (ya preparada en JPEG).
+        val visionMatch = identifyWithAiVision(images.first())
         val hasName = visionMatch.scientificName.isNotBlank() &&
             !visionMatch.scientificName.equals("unknown", true)
         if (!hasName || visionMatch.confidence < Constants.AI_FALLBACK_MIN_CONFIDENCE) {
@@ -176,15 +180,22 @@ class PlantRepositoryImpl(
      * (o null si no hay resultados). Guarda también las candidatas alternativas
      * para enriquecer la ficha que alimenta a la IA.
      */
-    private suspend fun identifyWithPlantNet(imageBytes: ByteArray): SpeciesMatch? {
-        val imagePart = MultipartBody.Part.createFormData(
-            "images",
-            "plant.jpg",
-            imageBytes.toRequestBody("image/jpeg".toMediaType())
-        )
-        val organs = "auto".toRequestBody("text/plain".toMediaType())
+    private suspend fun identifyWithPlantNet(images: List<ByteArray>): SpeciesMatch? {
+        // Una parte "images" + una parte "organs=auto" por cada foto, en orden.
+        val imageParts = images.mapIndexed { index, bytes ->
+            MultipartBody.Part.createFormData(
+                "images",
+                "plant$index.jpg",
+                bytes.toRequestBody("image/jpeg".toMediaType())
+            )
+        }
+        val organParts = images.map {
+            MultipartBody.Part.createFormData("organs", "auto")
+        }
 
-        val response = plantNetService.identify(Constants.plantNetIdentifyUrl(), imagePart, organs)
+        val response = plantNetService.identify(
+            Constants.plantNetIdentifyUrl(), imageParts, organParts
+        )
         val ranked = response.results.sortedByDescending { it.score }
         val best = ranked.firstOrNull() ?: return null
         val species = best.species ?: return null

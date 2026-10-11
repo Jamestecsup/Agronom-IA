@@ -61,11 +61,13 @@ fun ResultScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val imageUri by viewModel.imageUri.collectAsState()
+    val imageUris by viewModel.imageUris.collectAsState()
+    // En el resultado se muestra la primera foto (la identificación usó todas).
+    val imageUri = imageUris.firstOrNull()
 
-    // Descarta la imagen y vuelve a la pantalla de captura.
+    // Descarta las imágenes y vuelve a la pantalla de captura.
     val takeAnotherPhoto: () -> Unit = {
-        viewModel.clearImage()
+        viewModel.clearImages()
         onNavigateBack()
     }
 
