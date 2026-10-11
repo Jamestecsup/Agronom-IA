@@ -21,6 +21,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -50,6 +51,7 @@ import coil.compose.AsyncImage
 import com.agronomia.domain.model.MaterialItem
 import com.agronomia.domain.model.PlantResult
 import com.agronomia.domain.model.PlantSection
+import com.agronomia.domain.model.SpeciesCandidate
 import com.agronomia.domain.model.WordMeaning
 import com.agronomia.ui.capture.CaptureViewModel
 import com.agronomia.ui.capture.IdentificationUiState
@@ -128,6 +130,8 @@ fun ResultScreen(
                 )
 
                 is IdentificationUiState.Disambiguation -> DisambiguationContent(
+                    candidates = state.candidates,
+                    onChoose = { viewModel.chooseCandidate(it) },
                     onTakeAnotherPhoto = takeAnotherPhoto
                 )
 
@@ -293,24 +297,25 @@ private fun QualityContent(
 }
 
 /**
- * Desambiguación: la app encontró varias plantas parecidas pero con poca
- * certeza. Muestra SOLO la guía de qué fotos tomar (con palabras resaltadas);
- * las candidatas con foto quedan reservadas y no se listan.
+ * Desambiguación: la app encontró varias plantas parecidas. Muestra la guía
+ * de qué fotos tomar (con palabras resaltadas) y las candidatas para elegir.
  */
 @Composable
 private fun DisambiguationContent(
+    candidates: List<SpeciesCandidate>,
+    onChoose: (SpeciesCandidate) -> Unit,
     onTakeAnotherPhoto: () -> Unit
 ) {
     var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
 
     Text(
-        text = "No se pudo identificar",
+        text = "¿Cuál es tu planta?",
         style = MaterialTheme.typography.titleLarge,
         textAlign = TextAlign.Center
     )
     Spacer(modifier = Modifier.height(8.dp))
     Text(
-        text = "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo:",
+        text = "Se parecen mucho. Elige la tuya o toma mejores fotos:",
         style = MaterialTheme.typography.bodyMedium,
         textAlign = TextAlign.Center
     )
@@ -373,6 +378,15 @@ private fun DisambiguationContent(
     }
 
     Spacer(modifier = Modifier.height(12.dp))
+    candidates.forEach { candidate ->
+        CandidateCard(
+            candidate = candidate,
+            onChoose = { onChoose(candidate) }
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
     OutlinedButton(
         onClick = onTakeAnotherPhoto,
         modifier = Modifier.fillMaxWidth()
@@ -381,6 +395,101 @@ private fun DisambiguationContent(
     }
 }
 
+/** Tarjeta de una especie candidata: foto de referencia de internet, nombres,
+ *  similitud y botón para elegirla. */
+@Composable
+private fun CandidateCard(
+    candidate: SpeciesCandidate,
+    onChoose: () -> Unit
+) {
+    val displayName = candidate.commonNames.firstOrNull().orEmpty()
+        .ifBlank { candidate.scientificName }
+    val extraNames = candidate.commonNames.drop(1).take(2)
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (candidate.imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = candidate.imageUrl,
+                        contentDescription = "Foto de referencia: $displayName",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(96.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                    Spacer(modifier = Modifier.size(12.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (extraNames.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "También: ${extraNames.joinToString(", ")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (candidate.scientificName.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = buildString {
+                                append(candidate.scientificName)
+                                if (candidate.authorship.isNotBlank()) {
+                                    append(" ").append(candidate.authorship)
+                                }
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontStyle = FontStyle.Italic,
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (candidate.family.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Familia: ${candidate.family}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { candidate.confidence.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Similitud: ${(candidate.confidence * 100).roundToInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onChoose,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Elegir esta planta")
+            }
+        }
+    }
+}
 /**
  * Bloque de una categoría en tarjeta delineada con su color esencial, con las
  * palabras difíciles resaltadas y (en categorías de cuidado) sus materiales y

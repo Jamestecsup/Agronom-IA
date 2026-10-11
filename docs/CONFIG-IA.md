@@ -131,9 +131,10 @@ AI_IDENTIFY_PATH=v1/chat/completions
 
 Ideas acordadas para cuando Pl@ntNet no identifica con certeza:
 
-1. **Sin lista de candidatas bajo 20%** (decisión vigente): solo se muestra la
-   guía de fotos. El repositorio aún calcula el top-3 con foto de referencia
-   (Wikimedia, sin clave) por si se reactiva la elección manual.
+1. **Top-3 elegible**: si hay 2-3 especies cercanas en score, mostrarlas para
+   que el agricultor elija (con foto y score).
+   Cada candidata trae foto de referencia de internet (Wikimedia Commons, sin
+   clave, vía Coil) y hasta 3 nombres comunes de ejemplo.
 2. **Chequeo de calidad previo**: avisar antes de enviar si la foto está
    oscura o movida, y guiar (más luz, acercarse).
 3. **Selector de órgano**: elegir hoja/flor/fruto por foto en vez de `auto`
