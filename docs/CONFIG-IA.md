@@ -126,6 +126,21 @@ AI_IDENTIFY_PATH=v1/chat/completions
 
 ---
 
+## Mejoras de detección (pendiente, para después)
+
+Ideas acordadas para cuando Pl@ntNet no identifica con certeza:
+
+1. **Top-3 elegible**: si hay 2-3 especies cercanas en score, mostrarlas para
+   que el agricultor elija (con foto y score).
+2. **Chequeo de calidad previo**: avisar antes de enviar si la foto está
+   oscura o movida, y guiar (más luz, acercarse).
+3. **Selector de órgano**: dejar elegir hoja/flor/fruto en vez de `auto`.
+4. **Ajustar umbrales**: bajar el umbral del respaldo o votar entre candidatas.
+5. **Guía ligada**: las opciones del top-3 van ligadas al chequeo de calidad y
+   al selector de órgano, explicando QUÉ foto tomar (flor, hoja, tallo) con
+   palabras resaltadas y significado en contexto, como el glosario — para
+   subir la chance de detectar bien.
+
 ## Umbrales (en `Constants.kt`)
 
 - `PLANTNET_MIN_CONFIDENCE` (0.2): si la mejor coincidencia de Pl@ntNet queda por
