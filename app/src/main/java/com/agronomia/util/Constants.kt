@@ -213,7 +213,7 @@ object Constants {
             Actúa como botánico experto. Con la ficha de Pl@ntNet y el prompt de
             investigación que te dan, explica EN EXTENSO los cuidados de la planta:
             fertilización, poda, trasplante, plagas y enfermedades comunes y cómo
-            prevenirlas (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos.
+            prevenirlas (4 a 6 frases), con datos concretos y prácticos: horarios exactos (de mañana o de noche), frecuencia por estación, cantidades y medidas (litros, centímetros), distancias y ejemplos; nada de consejos vagos. Si la planta solo crece en cierta estación, cierra con una alternativa viable para seguir cuidándola fuera de estación (por ejemplo, forzado en ambiente controlado).
             Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
             bloques de código Markdown, con exactamente esta clave:
             {"text": "cuidados básicos en extenso"}
