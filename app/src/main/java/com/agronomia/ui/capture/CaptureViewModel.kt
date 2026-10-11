@@ -61,9 +61,9 @@ class CaptureViewModel @JvmOverloads constructor(
     /** Fotos elegidas para identificar, en orden. Vacía = sin imagen. */
     val imageUris: StateFlow<List<Uri>> = _imageUris.asStateFlow()
 
-    /** Órgano elegido para Pl@ntNet (auto/flower/leaf/fruit/bark). */
-    private val _selectedOrgan = MutableStateFlow("auto")
-    val selectedOrgan: StateFlow<String> = _selectedOrgan.asStateFlow()
+    /** Órgano por foto (uri → auto/flower/leaf/fruit/bark). */
+    private val _organs = MutableStateFlow<Map<String, String>>(emptyMap())
+    val organs: StateFlow<Map<String, String>> = _organs.asStateFlow()
 
     /** Candidatas de la última desambiguación (para confirmar la elegida). */
     private var lastCandidates: List<SpeciesCandidate> = emptyList()
@@ -71,9 +71,13 @@ class CaptureViewModel @JvmOverloads constructor(
     /** Permite saltar el chequeo de calidad una vez ("continuar de todos modos"). */
     private var skipQualityOnce = false
 
-    fun setOrgan(organ: String) {
-        if (organ != _selectedOrgan.value) {
-            _selectedOrgan.value = organ
+    /** Órgano de una foto (auto si no se eligió). */
+    fun organFor(uri: Uri): String = _organs.value[uri.toString()] ?: "auto"
+
+    fun setOrgan(uri: Uri, organ: String) {
+        val key = uri.toString()
+        if (_organs.value[key] != organ) {
+            _organs.value = _organs.value + (key to organ)
             resetIdentification()
         }
     }
@@ -104,10 +108,11 @@ class CaptureViewModel @JvmOverloads constructor(
     /** Agrega la foto recién tomada con la cámara. */
     fun onCameraPhotoTaken(uri: Uri): Int = onImagesAdded(listOf(uri))
 
-    /** Quita una foto de la selección. */
+    /** Quita una foto de la selección (y su órgano elegido). */
     fun removeImage(uri: Uri) {
         if (uri in _imageUris.value) {
             _imageUris.value = _imageUris.value - uri
+            _organs.value = _organs.value - uri.toString()
             resetIdentification()
         }
     }
@@ -116,6 +121,7 @@ class CaptureViewModel @JvmOverloads constructor(
     fun clearImages() {
         resetIdentification()
         _imageUris.value = emptyList()
+        _organs.value = emptyMap()
         lastCandidates = emptyList()
         skipQualityOnce = false
     }
@@ -174,7 +180,9 @@ class CaptureViewModel @JvmOverloads constructor(
             skipQualityOnce = false
 
             // 3. Análisis: identificación, desambiguación o fallo.
-            when (val result = repository.analyze(bytesList, _selectedOrgan.value)) {
+            // Cada foto aporta su órgano elegido, en el mismo orden.
+            val organs = uris.map { organFor(it) }
+            when (val result = repository.analyze(bytesList, organs)) {
                 is AnalysisResult.Identified -> {
                     _uiState.value = IdentificationUiState.Success(result.plant)
                 }

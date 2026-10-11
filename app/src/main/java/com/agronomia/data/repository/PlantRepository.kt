@@ -58,9 +58,9 @@ interface PlantRepository {
      * [AnalysisResult.Failed] (mensaje apto para UI).
      *
      * @param images JPEGs ya preparados (1 a [ImageUtils.MAX_IMAGES]).
-     * @param organ órgano elegido (auto/flower/leaf/fruit/bark).
+     * @param organs órgano por foto, en el mismo orden (auto/flower/leaf/fruit/bark).
      */
-    suspend fun analyze(images: List<ByteArray>, organ: String): AnalysisResult
+    suspend fun analyze(images: List<ByteArray>, organs: List<String>): AnalysisResult
 
     /**
      * Genera la información completa para la candidata elegida por el
@@ -94,19 +94,29 @@ class PlantRepositoryImpl(
     private val aiService: PlantApiService by lazy { NetworkModule.plantApiService }
     private val plantNetService: PlantNetApiService by lazy { NetworkModule.plantNetApiService }
 
-    override suspend fun analyze(images: List<ByteArray>, organ: String): AnalysisResult =
+    override suspend fun analyze(images: List<ByteArray>, organs: List<String>): AnalysisResult =
         withContext(Dispatchers.IO) {
             if (images.isEmpty() || images.all { it.isEmpty() }) {
                 return@withContext AnalysisResult.Failed(
                     "No hay imágenes para identificar. Vuelve a capturarla."
                 )
             }
-            // Se descartan bytes vacíos sin romper el orden del resto.
-            val validImages = images.filter { it.isNotEmpty() }
+            // Se descartan bytes vacíos sin romper el orden (con su órgano).
+            val pairs = images.mapIndexedNotNull { index, bytes ->
+                if (bytes.isEmpty()) null
+                else bytes to organs.getOrElse(index) { "auto" }.ifBlank { "auto" }
+            }
+            if (pairs.isEmpty()) {
+                return@withContext AnalysisResult.Failed(
+                    "No hay imágenes para identificar. Vuelve a capturarla."
+                )
+            }
+            val validImages = pairs.map { it.first }
+            val validOrgans = pairs.map { it.second }
 
             try {
-                // 1. Pl@ntNet con todas las fotos y el órgano elegido.
-                val plantNetMatch = identifyWithPlantNetOrNull(validImages, organ)
+                // 1. Pl@ntNet con todas las fotos, cada una con su órgano.
+                val plantNetMatch = identifyWithPlantNetOrNull(validImages, validOrgans)
                 if (plantNetMatch != null &&
                     plantNetMatch.confidence >= Constants.PLANTNET_MIN_CONFIDENCE
                 ) {
@@ -215,9 +225,9 @@ class PlantRepositoryImpl(
      */
     private suspend fun identifyWithPlantNetOrNull(
         images: List<ByteArray>,
-        organ: String
+        organs: List<String>
     ): SpeciesMatch? = try {
-        identifyWithPlantNet(images, organ)
+        identifyWithPlantNet(images, organs)
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
@@ -244,9 +254,9 @@ class PlantRepositoryImpl(
      * (o null si no hay resultados). Guarda también las candidatas alternativas
      * para enriquecer la ficha que alimenta a la IA.
      */
-    private suspend fun identifyWithPlantNet(images: List<ByteArray>, organ: String): SpeciesMatch? {
+    private suspend fun identifyWithPlantNet(images: List<ByteArray>, organs: List<String>): SpeciesMatch? {
         // Una parte "images" + una parte "organs" por cada foto, en orden.
-        // El órgano lo elige el usuario (auto/flor/hoja/fruto/corteza).
+        // Cada foto aporta el órgano elegido por el usuario para ella.
         val imageParts = images.mapIndexed { index, bytes ->
             MultipartBody.Part.createFormData(
                 "images",
@@ -254,8 +264,11 @@ class PlantRepositoryImpl(
                 bytes.toRequestBody("image/jpeg".toMediaType())
             )
         }
-        val organParts = images.map {
-            MultipartBody.Part.createFormData("organs", organ.ifBlank { "auto" })
+        val organParts = images.mapIndexed { index, _ ->
+            MultipartBody.Part.createFormData(
+                "organs",
+                organs.getOrElse(index) { "auto" }.ifBlank { "auto" }
+            )
         }
 
         val response = plantNetService.identify(

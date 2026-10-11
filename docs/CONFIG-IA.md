@@ -60,8 +60,9 @@ PLANTNET_LANG=es
 
 - Endpoint: `POST {PLANTNET_BASE_URL}v2/identify/{project}?api-key=...&lang=...&nb-results=...`
   (`nb-results=10`; la app usa la mejor + hasta 3 alternativas para la ficha).
-- Cuerpo **multipart**: UNA parte `images` (JPEG) + UNA parte `organs=auto` POR
+- Cuerpo **multipart**: UNA parte `images` (JPEG) + UNA parte `organs` POR
   CADA foto (hasta 5 de la misma planta: flor, hoja, tallo), emparejadas por orden.
+  El órgano de cada foto lo elige el usuario en su tarjeta (auto por defecto).
   El respaldo con IA de visión usa solo la primera foto.
 - Genera/consulta tu key en https://my.plantnet.org/settings/api-key
 - **La api-key viaja en la URL**, por eso Pl@ntNet usa un cliente OkHttp **sin
@@ -134,7 +135,8 @@ Ideas acordadas para cuando Pl@ntNet no identifica con certeza:
    que el agricultor elija (con foto y score).
 2. **Chequeo de calidad previo**: avisar antes de enviar si la foto está
    oscura o movida, y guiar (más luz, acercarse).
-3. **Selector de órgano**: dejar elegir hoja/flor/fruto en vez de `auto`.
+3. **Selector de órgano**: elegir hoja/flor/fruto por foto en vez de `auto`
+   (implementado: una tarjeta de órgano con su descripción por cada foto).
 4. **Ajustar umbrales**: bajar el umbral del respaldo o votar entre candidatas.
 5. **Guía ligada**: las opciones del top-3 van ligadas al chequeo de calidad y
    al selector de órgano, explicando QUÉ foto tomar (flor, hoja, tallo) con

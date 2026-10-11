@@ -25,8 +25,8 @@ object Constants {
     const val PLANTNET_MAX_RESULTS = 10
 
     /**
-     * Órganos que Pl@ntNet acepta (se envía uno por foto). El usuario lo elige
-     * en la pantalla de captura para subir la precisión.
+     * Órganos que Pl@ntNet acepta (se envía uno por foto). El usuario elige uno
+     * por cada foto en la pantalla de captura para subir la precisión.
      */
     val ORGAN_OPTIONS: List<Pair<String, String>> = listOf(
         "auto" to "Auto",
@@ -34,6 +34,18 @@ object Constants {
         "leaf" to "Hoja",
         "fruit" to "Fruto",
         "bark" to "Corteza"
+    )
+
+    /**
+     * Qué significa cada órgano, en contexto de foto: se muestra bajo los
+     * chips de cada foto seleccionada.
+     */
+    val ORGAN_DESCRIPTIONS: Map<String, String> = mapOf(
+        "auto" to "La app detecta sola qué parte de la planta es.",
+        "flower" to "Foto de la flor, de cerca y con buena luz.",
+        "leaf" to "Foto de una hoja sola, sin contraluz.",
+        "fruit" to "Foto del fruto o de las semillas.",
+        "bark" to "Foto del tallo o tronco, de cerca."
     )
 
     /**
