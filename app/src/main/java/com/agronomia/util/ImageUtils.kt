@@ -28,6 +28,14 @@ object ImageUtils {
      */
     const val MIN_SIDE_PX = 128
 
+    /**
+     * Umbrales del chequeo de calidad previo (ver [qualityIssues]).
+     * Conservadores: solo avisan en casos claros. Se calibraron con fotos
+     * reales de prueba (girasol nítido ≈ 10× estos valores).
+     */
+    const val MIN_BRIGHTNESS = 35.0
+    const val MIN_SHARPNESS = 60.0
+
     private val ALLOWED_MIME_TYPES = setOf(
         "image/jpeg",
         "image/jpg",
@@ -224,8 +232,96 @@ object ImageUtils {
         false
     }
 
-    /** Lee la orientación EXIF de la imagen. Devuelve [ExifInterface.ORIENTATION_NORMAL] si no se puede leer. */
-    private fun readExifOrientation(context: Context, uri: Uri): Int =
+    /**
+     * Calidad de una foto ya preparada: brillo medio (0-255) y nitidez
+     * (varianza del laplaciano; mayor = más nítida). Valores negativos
+     * indican que no se pudo analizar.
+     */
+    data class PhotoQuality(val brightness: Double, val sharpness: Double)
+
+    /**
+     * Analiza la calidad con una versión pequeña (~192 px) para ir rápido.
+     * No bloquea: si algo falla devuelve valores negativos.
+     */
+    fun analyzeQuality(imageBytes: ByteArray): PhotoQuality {
+        if (imageBytes.isEmpty()) return PhotoQuality(-1.0, -1.0)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return PhotoQuality(-1.0, -1.0)
+        }
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 192) sample *= 2
+        val small = BitmapFactory.decodeByteArray(
+            imageBytes, 0, imageBytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sample }
+        ) ?: return PhotoQuality(-1.0, -1.0)
+        try {
+            val w = small.width
+            val h = small.height
+            if (w < 8 || h < 8) return PhotoQuality(-1.0, -1.0)
+            val pixels = IntArray(w * h)
+            small.getPixels(pixels, 0, w, 0, 0, w, h)
+            var sum = 0.0
+            val gray = DoubleArray(pixels.size)
+            for (i in pixels.indices) {
+                val p = pixels[i]
+                val lum = 0.299 * ((p shr 16) and 0xFF) +
+                    0.587 * ((p shr 8) and 0xFF) +
+                    0.114 * (p and 0xFF)
+                gray[i] = lum
+                sum += lum
+            }
+            val mean = sum / pixels.size
+            // Nitidez: varianza del laplaciano con paso 2 (rápido y suficiente).
+            val step = 2
+            var lapSum = 0.0
+            var lapSq = 0.0
+            var n = 0
+            for (y in step until h - step step step) {
+                for (x in step until w - step step step) {
+                    val c = gray[y * w + x]
+                    val lap = 4 * c -
+                        gray[(y - step) * w + x] - gray[(y + step) * w + x] -
+                        gray[y * w + (x - step)] - gray[y * w + (x + step)]
+                    lapSum += lap
+                    lapSq += lap * lap
+                    n++
+                }
+            }
+            if (n == 0) return PhotoQuality(mean, -1.0)
+            val meanLap = lapSum / n
+            return PhotoQuality(mean, lapSq / n - meanLap * meanLap)
+        } finally {
+            if (!small.isRecycled) small.recycle()
+        }
+    }
+
+    /**
+     * Problemas de calidad legibles para el agricultor (vacío = foto apta).
+     * Nunca lanza: si no se puede analizar, no bloquea la identificación.
+     */
+    fun qualityIssues(imageBytes: ByteArray): List<String> {
+        val quality = try {
+            analyzeQuality(imageBytes)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        if (quality.brightness < 0) return emptyList()
+        val issues = mutableListOf<String>()
+        if (quality.brightness < MIN_BRIGHTNESS) {
+            issues.add("está muy oscura (tómala con más luz, de día y sin contraluz)")
+        }
+        // La nitidez solo se evalúa con luz suficiente (a oscuras siempre sale baja).
+        if (quality.brightness >= MIN_BRIGHTNESS &&
+            quality.sharpness >= 0 && quality.sharpness < MIN_SHARPNESS
+        ) {
+            issues.add("se ve movida o desenfocada (apoya el celular y espera que enfoque)")
+        }
+        return issues
+    }
+
+    /** Lee la orientación EXIF de la imagen. Devuelve [ExifInterface.ORIENTATION_NORMAL] si no se puede leer. */    private fun readExifOrientation(context: Context, uri: Uri): Int =
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 ExifInterface(input).getAttributeInt(
