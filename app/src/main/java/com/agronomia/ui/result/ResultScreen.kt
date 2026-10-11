@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
@@ -127,18 +129,21 @@ fun ResultScreen(
                 is IdentificationUiState.QualityWarning -> QualityContent(
                     issues = state.issues,
                     onTakeAnotherPhoto = takeAnotherPhoto,
-                    onContinue = { viewModel.proceedDespiteQuality() }
+                    onContinue = { viewModel.proceedDespiteQuality() },
+                    imageUris = imageUris
                 )
 
                 is IdentificationUiState.Disambiguation -> DisambiguationContent(
                     candidates = state.candidates,
                     onChoose = { viewModel.chooseCandidate(it) },
-                    onTakeAnotherPhoto = takeAnotherPhoto
+                    onTakeAnotherPhoto = takeAnotherPhoto,
+                    imageUris = imageUris
                 )
 
                 is IdentificationUiState.Unidentified -> UnidentifiedContent(
                     message = state.message,
-                    onTakeAnotherPhoto = takeAnotherPhoto
+                    onTakeAnotherPhoto = takeAnotherPhoto,
+                    imageUris = imageUris
                 )
 
                 is IdentificationUiState.Error -> MessageContent(
@@ -263,7 +268,8 @@ private fun categoryAccent(key: String): Color =
 private fun QualityContent(
     issues: List<String>,
     onTakeAnotherPhoto: () -> Unit,
-    onContinue: () -> Unit
+    onContinue: () -> Unit,
+    imageUris: List<Uri>
 ) {
     Text(
         text = "Revisa tus fotos",
@@ -287,6 +293,8 @@ private fun QualityContent(
         Spacer(modifier = Modifier.height(4.dp))
     }
     Spacer(modifier = Modifier.height(16.dp))
+    UploadedPhotosStrip(imageUris)
+    Spacer(modifier = Modifier.height(16.dp))
     Button(
         onClick = onContinue,
         modifier = Modifier.fillMaxWidth()
@@ -299,6 +307,38 @@ private fun QualityContent(
         modifier = Modifier.fillMaxWidth()
     ) {
         Text("Tomar otra foto")
+    }
+}
+
+/**
+ * Tira con las fotos que subió el usuario, para verlas junto a la guía o el
+ * aviso. No muestra nada si no hay fotos.
+ */
+@Composable
+private fun UploadedPhotosStrip(imageUris: List<Uri>) {
+    if (imageUris.isEmpty()) return
+    Text(
+        text = "Tus fotos:",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Start,
+        modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(imageUris, key = { it.toString() }) { uri ->
+            AsyncImage(
+                model = uri,
+                contentDescription = "Tu foto",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(RoundedCornerShape(12.dp))
+            )
+        }
     }
 }
 
@@ -373,7 +413,8 @@ private fun GuideCard() {
 @Composable
 private fun UnidentifiedContent(
     message: String,
-    onTakeAnotherPhoto: () -> Unit
+    onTakeAnotherPhoto: () -> Unit,
+    imageUris: List<Uri>
 ) {
     Text(
         text = "No se pudo identificar",
@@ -387,6 +428,8 @@ private fun UnidentifiedContent(
         textAlign = TextAlign.Center
     )
     GuideCard()
+    Spacer(modifier = Modifier.height(4.dp))
+    UploadedPhotosStrip(imageUris)
     Spacer(modifier = Modifier.height(16.dp))
     OutlinedButton(
         onClick = onTakeAnotherPhoto,
@@ -404,7 +447,8 @@ private fun UnidentifiedContent(
 private fun DisambiguationContent(
     candidates: List<SpeciesCandidate>,
     onChoose: (SpeciesCandidate) -> Unit,
-    onTakeAnotherPhoto: () -> Unit
+    onTakeAnotherPhoto: () -> Unit,
+    imageUris: List<Uri>
 ) {
     Text(
         text = "¿Cuál es tu planta?",
@@ -419,6 +463,9 @@ private fun DisambiguationContent(
     )
 
     GuideCard()
+
+    Spacer(modifier = Modifier.height(4.dp))
+    UploadedPhotosStrip(imageUris)
 
     Spacer(modifier = Modifier.height(12.dp))
     candidates.forEach { candidate ->
