@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.agronomia.ui.components.FullscreenImageDialog
 import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
 import java.io.File
@@ -221,17 +223,21 @@ fun CaptureScreen(
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Vista previa con Coil: la primera foto en grande + miniaturas.
+            // Foto ampliada a pantalla completa al tocarla.
+            var expandedImage by remember { mutableStateOf<Uri?>(null) }
+
+            // Vista previa con Coil: la primera foto en grande + tarjetas por foto.
             val firstUri = imageUris.firstOrNull()
             if (firstUri != null) {
                 AsyncImage(
                     model = firstUri,
-                    contentDescription = "Foto seleccionada de la planta",
+                    contentDescription = "Foto seleccionada de la planta (toca para ampliar)",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(260.dp)
                         .clip(RoundedCornerShape(16.dp))
+                        .clickable { expandedImage = firstUri }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -336,6 +342,14 @@ fun CaptureScreen(
                 }
                 Text(if (imageUris.size > 1) "Identificar (${imageUris.size} fotos)" else "Identificar")
             }
+
+            expandedImage?.let { uri ->
+                FullscreenImageDialog(
+                    image = uri,
+                    contentDescription = "Foto ampliada",
+                    onDismiss = { expandedImage = null }
+                )
+            }
         }
     }
 }
@@ -352,6 +366,7 @@ private fun PhotoOrganCard(
     onOrganChange: (String) -> Unit,
     onRemove: () -> Unit
 ) {
+    var expandedImage by remember { mutableStateOf(false) }
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp)
@@ -362,11 +377,12 @@ private fun PhotoOrganCard(
         ) {
             AsyncImage(
                 model = uri,
-                contentDescription = "Foto ${index + 1}",
+                contentDescription = "Foto ${index + 1} (toca para ampliar)",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(8.dp))
+                    .clickable { expandedImage = true }
             )
             Spacer(modifier = Modifier.size(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -402,5 +418,13 @@ private fun PhotoOrganCard(
                 )
             }
         }
+    }
+
+    if (expandedImage) {
+        FullscreenImageDialog(
+            image = uri,
+            contentDescription = "Foto ${index + 1} ampliada",
+            onDismiss = { expandedImage = false }
+        )
     }
 }

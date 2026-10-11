@@ -2,6 +2,7 @@ package com.agronomia.ui.result
 
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,6 +59,7 @@ import com.agronomia.domain.model.SpeciesCandidate
 import com.agronomia.domain.model.WordMeaning
 import com.agronomia.ui.capture.CaptureViewModel
 import com.agronomia.ui.capture.IdentificationUiState
+import com.agronomia.ui.components.FullscreenImageDialog
 import com.agronomia.util.Constants
 import kotlin.math.roundToInt
 
@@ -163,15 +165,19 @@ private fun SuccessContent(
     imageUri: Uri?,
     onTakeAnotherPhoto: () -> Unit
 ) {
+    // Foto ampliada a pantalla completa (principal de esta pantalla).
+    var expandedImage by remember { mutableStateOf<Any?>(null) }
+
     if (imageUri != null) {
         AsyncImage(
             model = imageUri,
-            contentDescription = "Foto de la planta identificada",
+            contentDescription = "Foto de la planta identificada (toca para ampliar)",
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(220.dp)
                 .clip(RoundedCornerShape(16.dp))
+                .clickable { expandedImage = imageUri }
         )
         Spacer(modifier = Modifier.height(16.dp))
     }
@@ -229,6 +235,14 @@ private fun SuccessContent(
                     Text("Entendido")
                 }
             }
+        )
+    }
+
+    expandedImage?.let { image ->
+        FullscreenImageDialog(
+            image = image,
+            contentDescription = "Foto ampliada",
+            onDismiss = { expandedImage = null }
         )
     }
 
@@ -312,13 +326,16 @@ private fun QualityContent(
 
 /**
  * Tira con las fotos que subió el usuario, para verlas junto a la guía o el
- * aviso. No muestra nada si no hay fotos.
+ * aviso. Al tocar una se expande a pantalla completa. No muestra nada si no
+ * hay fotos.
  */
 @Composable
 private fun UploadedPhotosStrip(imageUris: List<Uri>) {
     if (imageUris.isEmpty()) return
+    var expandedImage by remember { mutableStateOf<Uri?>(null) }
+
     Text(
-        text = "Tus fotos:",
+        text = "Tus fotos (tócalas para ampliar):",
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold,
         textAlign = TextAlign.Start,
@@ -332,13 +349,22 @@ private fun UploadedPhotosStrip(imageUris: List<Uri>) {
         items(imageUris, key = { it.toString() }) { uri ->
             AsyncImage(
                 model = uri,
-                contentDescription = "Tu foto",
+                contentDescription = "Tu foto (toca para ampliar)",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(96.dp)
                     .clip(RoundedCornerShape(12.dp))
+                    .clickable { expandedImage = uri }
             )
         }
+    }
+
+    expandedImage?.let { uri ->
+        FullscreenImageDialog(
+            image = uri,
+            contentDescription = "Tu foto ampliada",
+            onDismiss = { expandedImage = null }
+        )
     }
 }
 
@@ -495,6 +521,7 @@ private fun CandidateCard(
     val displayName = candidate.commonNames.firstOrNull().orEmpty()
         .ifBlank { candidate.scientificName }
     val extraNames = candidate.commonNames.drop(1).take(2)
+    var expandedImage by remember { mutableStateOf(false) }
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp)
@@ -512,11 +539,12 @@ private fun CandidateCard(
                                     .build()
                             )
                             .build(),
-                        contentDescription = "Foto de referencia: $displayName",
+                        contentDescription = "Foto de referencia: $displayName (toca para ampliar)",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(96.dp)
                             .clip(RoundedCornerShape(12.dp))
+                            .clickable { expandedImage = true }
                     )
                     Spacer(modifier = Modifier.size(12.dp))
                 }
@@ -595,6 +623,14 @@ private fun CandidateCard(
                 Text("Elegir esta planta")
             }
         }
+    }
+
+    if (expandedImage && candidate.imageUrl.isNotBlank()) {
+        FullscreenImageDialog(
+            image = candidate.imageUrl,
+            contentDescription = "Foto de referencia ampliada: $displayName",
+            onDismiss = { expandedImage = false }
+        )
     }
 }
 /**
