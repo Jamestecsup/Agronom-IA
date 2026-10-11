@@ -10,10 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,8 +23,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.agronomia.ui.theme.AgronomIaTheme
 
 /** Ícono personalizado de Hoja/Eco */
 private val EcoLeafIcon: ImageVector
@@ -59,49 +57,14 @@ private val EcoLeafIcon: ImageVector
     }
 private var _ecoLeafIcon: ImageVector? = null
 
-/** Ícono personalizado de Contraste (mitad claro / mitad oscuro) */
-private val ContrastHalfIcon: ImageVector
-    get() {
-        if (_contrastHalfIcon != null) return _contrastHalfIcon!!
-        _contrastHalfIcon = ImageVector.Builder(
-            name = "ContrastHalf",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f
-        ).apply {
-            path(fill = SolidColor(Color.Unspecified)) {
-                moveTo(12f, 2f)
-                curveTo(6.48f, 2f, 2f, 6.48f, 2f, 12f)
-                curveTo(2f, 17.52f, 6.48f, 22f, 12f, 22f)
-                curveTo(17.52f, 22f, 22f, 17.52f, 22f, 12f)
-                curveTo(22f, 6.48f, 17.52f, 2f, 12f, 2f)
-                close()
-                moveTo(12f, 20f)
-                lineTo(12f, 4f)
-                curveTo(16.41f, 4f, 20f, 7.59f, 20f, 12f)
-                curveTo(20f, 16.41f, 16.41f, 20f, 12f, 20f)
-                close()
-            }
-        }.build()
-        return _contrastHalfIcon!!
-    }
-private var _contrastHalfIcon: ImageVector? = null
-
 /**
- * TopBar personalizada para Agronom-IA según especificaciones Material Design 3.
+ * TopBar personalizada simplificada para Agronom-IA.
  *
- * Incluye:
- * - Alineación Izquierda: Logo + Column ("Agronom-IA" en verde oscuro y "TECSUP" en azul institucional).
- * - Alineación Derecha: Controles de accesibilidad (Botón Contraste, Botón Tamaño de Fuente "TT")
- *   y Avatar circular de usuario (HU-4).
+ * Muestra el ícono/logo y la identificación de la aplicación e institución ("Agronom-IA" y "TECSUP").
  */
 @Composable
 fun AgronomIaTopBar(
-    modifier: Modifier = Modifier,
-    onContrastClick: () -> Unit = {},
-    onFontSizeClick: () -> Unit = {},
-    onProfileClick: () -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -114,14 +77,13 @@ fun AgronomIaTopBar(
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.Start
         ) {
-            // Alineación Izquierda: Logo Placeholder + Agronom-IA / TECSUP
+            // Alineación Izquierda: Logo + Agronom-IA / TECSUP
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Logo de Hoja / Planta con fondo verde suave
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -142,69 +104,13 @@ fun AgronomIaTopBar(
                         text = "Agronom-IA",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1B5E20) // Verde oscuro
+                        color = Color(0xFF1B5E20)
                     )
                     Text(
                         text = "TECSUP",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF003366) // Azul institucional TECSUP
-                    )
-                }
-            }
-
-            // Alineación Derecha: Controles de accesibilidad (Contraste, "TT") + Avatar
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Control de Accesibilidad 1: Contraste
-                IconButton(
-                    onClick = onContrastClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Icon(
-                        imageVector = ContrastHalfIcon,
-                        contentDescription = "Ajustar Contraste",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                // Control de Accesibilidad 2: Tamaño de Fuente "TT"
-                IconButton(
-                    onClick = onFontSizeClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Text(
-                        text = "TT",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Avatar Circular
-                IconButton(
-                    onClick = onProfileClick,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFE8F5E9))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "Perfil del usuario",
-                        tint = Color(0xFF1B5E20),
-                        modifier = Modifier.size(24.dp)
+                        color = Color(0xFF003366)
                     )
                 }
             }
@@ -212,11 +118,10 @@ fun AgronomIaTopBar(
     }
 }
 
-@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Preview(showBackground = true)
 @Composable
 private fun AgronomIaTopBarPreview() {
-    com.agronomia.ui.theme.AgronomIaTheme {
+    AgronomIaTheme {
         AgronomIaTopBar()
     }
 }
-
