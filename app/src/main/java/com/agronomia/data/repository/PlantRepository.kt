@@ -241,16 +241,36 @@ class PlantRepositoryImpl(
     }
 
     /**
-     * Primera foto del nombre científico en Wikimedia Commons (miniatura).
-     * No usa Pl@ntNet: es solo una referencia visual de internet.
+     * Foto de referencia del nombre científico en Wikimedia Commons (miniatura).
+     * No usa Pl@ntNet: es solo una referencia visual de internet. Reintenta una
+     * vez ante límites momentáneos; si no hay foto, devuelve "" sin bloquear.
      */
     private fun fetchCandidateImageUrl(scientificName: String): String {
         if (scientificName.isBlank()) return ""
+        repeat(2) { attempt ->
+            val url = tryFetchCandidateImageUrl(scientificName)
+            if (url.isNotBlank()) return url
+            // Una espera breve antes del segundo intento (límite momentáneo).
+            if (attempt == 0) {
+                try {
+                    Thread.sleep(2000)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return ""
+                }
+            }
+        }
+        return ""
+    }
+
+    private fun tryFetchCandidateImageUrl(scientificName: String): String {
         var connection: HttpURLConnection? = null
         return try {
             val query = URLEncoder.encode(scientificName, "UTF-8")
+            // Se piden varios resultados y se usa el primero CON miniatura:
+            // el primero no siempre trae imagen (y la API a veces limita).
             val apiUrl = "https://commons.wikimedia.org/w/api.php?action=query&format=json" +
-                "&generator=search&gsrsearch=$query&gsrlimit=1&gsrnamespace=6" +
+                "&generator=search&gsrsearch=$query&gsrlimit=5&gsrnamespace=6" +
                 "&prop=imageinfo&iiprop=url&iiurlwidth=400"
             connection = URL(apiUrl).openConnection() as HttpURLConnection
             connection.connectTimeout = 10000

@@ -277,9 +277,12 @@ object Constants {
      */
     val DISAMBIGUATION_GUIDE_TEXT: String = """
         La app encontró varias plantas parecidas. Para afinar, toma estas fotos:
-        1) la flor en plano detalle y con buena luz; 2) una hoja sola, sin contraluz;
-        3) el tallo o el fruto si los tiene. Evita fotos movidas o muy oscuras:
-        con 2 o 3 fotos de órganos distintos la identificación mejora mucho.
+
+        1) La flor en plano detalle y con buena luz.
+        2) Una hoja sola, sin contraluz.
+        3) El tallo o el fruto si los tiene.
+
+        Evita fotos movidas o muy oscuras: con 2 o 3 fotos de órganos distintos la identificación mejora mucho.
     """.trimIndent()
 
     /** Términos resaltados de la guía, con su significado en este contexto. */
