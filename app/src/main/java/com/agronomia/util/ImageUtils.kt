@@ -30,8 +30,8 @@ object ImageUtils {
 
     /**
      * Umbrales del chequeo de calidad previo (ver [qualityIssues]).
-     * Conservadores: solo avisan en casos claros. Se calibraron con fotos
-     * reales de prueba (girasol nítido ≈ 10× estos valores).
+     * Conservadores: solo avisan en casos claros y extremos. Una foto buena de
+     * referencia (girasol) mide brillo ≈100 y nitidez ≈3400, muy por encima.
      */
     const val MIN_BRIGHTNESS = 35.0
     const val MIN_SHARPNESS = 60.0
