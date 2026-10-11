@@ -39,15 +39,21 @@ private val GardenFilledIcon: ImageVector
             viewportWidth = 24f,
             viewportHeight = 24f
         ).apply {
-            path(fill = SolidColor(Color(0xFF1B5E20))) {
+            path(fill = SolidColor(Color.Black)) {
                 moveTo(12f, 3f)
-                curveTo(8f, 3f, 4f, 6f, 4f, 10f)
-                curveTo(4f, 13f, 6.5f, 15.5f, 9.5f, 16.5f)
+                curveTo(8f, 3f, 4f, 6.5f, 4f, 11f)
+                curveTo(4f, 14.5f, 6.5f, 17f, 9.5f, 18f)
                 lineTo(9.5f, 21f)
                 lineTo(14.5f, 21f)
-                lineTo(14.5f, 16.5f)
-                curveTo(17.5f, 15.5f, 20f, 13f, 20f, 10f)
-                curveTo(20f, 6f, 16f, 3f, 12f, 3f)
+                lineTo(14.5f, 18f)
+                curveTo(17.5f, 17f, 20f, 14.5f, 20f, 11f)
+                curveTo(20f, 6.5f, 16f, 3f, 12f, 3f)
+                close()
+                moveTo(12f, 15f)
+                curveTo(9.8f, 15f, 8f, 13.2f, 8f, 11f)
+                curveTo(8f, 8.8f, 9.8f, 7f, 12f, 7f)
+                curveTo(14.2f, 7f, 16f, 8.8f, 16f, 11f)
+                curveTo(16f, 13.2f, 14.2f, 15f, 12f, 15f)
                 close()
             }
         }.build()
@@ -66,17 +72,29 @@ private val GardenOutlinedIcon: ImageVector
             viewportWidth = 24f,
             viewportHeight = 24f
         ).apply {
-            path(fill = SolidColor(Color.Unspecified)) {
-                moveTo(12f, 5f)
-                curveTo(14.8f, 5f, 18f, 7.1f, 18f, 10f)
-                curveTo(18f, 12.1f, 16.2f, 14f, 13.8f, 14.7f)
-                lineTo(13.5f, 14.8f)
-                lineTo(13.5f, 19f)
-                lineTo(10.5f, 19f)
-                lineTo(10.5f, 14.8f)
-                lineTo(10.2f, 14.7f)
-                curveTo(7.8f, 14f, 6f, 12.1f, 6f, 10f)
-                curveTo(6f, 7.1f, 9.2f, 5f, 12f, 5f)
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(12f, 3f)
+                curveTo(8.5f, 3f, 5f, 6f, 5f, 10.5f)
+                curveTo(5f, 13.8f, 7.3f, 16.5f, 10.5f, 17.5f)
+                lineTo(10.5f, 21f)
+                lineTo(13.5f, 21f)
+                lineTo(13.5f, 17.5f)
+                curveTo(16.7f, 16.5f, 19f, 13.8f, 19f, 10.5f)
+                curveTo(19f, 6f, 15.5f, 3f, 12f, 3f)
+                close()
+                moveTo(12f, 15.5f)
+                curveTo(9.2f, 15.5f, 7f, 13.3f, 7f, 10.5f)
+                curveTo(7f, 7.7f, 9.2f, 5f, 12f, 5f)
+                curveTo(14.8f, 5f, 17f, 7.7f, 17f, 10.5f)
+                curveTo(17f, 13.3f, 14.8f, 15.5f, 12f, 15.5f)
+                close()
+            }
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(12f, 7f)
+                curveTo(10.1f, 7f, 8.5f, 8.6f, 8.5f, 10.5f)
+                lineTo(10.5f, 10.5f)
+                curveTo(10.5f, 9.7f, 11.2f, 9f, 12f, 9f)
+                lineTo(12f, 7f)
                 close()
             }
         }.build()
