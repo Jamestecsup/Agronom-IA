@@ -13,5 +13,10 @@ data class SpeciesCandidate(
     val confidence: Float = 0f,
     val gbifId: String = "",
     val powoId: String = "",
-    val iucnCategory: String = ""
+    val iucnCategory: String = "",
+    /**
+     * Foto de referencia de internet (Wikimedia Commons) para reconocerla.
+     * Vacía si no se encontró; nunca bloquea.
+     */
+    val imageUrl: String = ""
 )

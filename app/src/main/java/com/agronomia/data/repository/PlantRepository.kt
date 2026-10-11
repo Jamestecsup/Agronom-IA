@@ -30,6 +30,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.awaitAll
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -37,13 +38,17 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.io.IOException
 import java.net.ConnectException
+import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
+import java.net.URL
+import java.net.URLEncoder
 import java.net.UnknownHostException
 
 /** Error de identificación con mensaje claro para mostrar al usuario. */
@@ -138,7 +143,9 @@ class PlantRepositoryImpl(
                 // 3. Sin certeza: el agricultor elige entre las candidatas.
                 val candidates = plantNetMatch?.toCandidates().orEmpty()
                 if (candidates.isNotEmpty()) {
-                    return@withContext AnalysisResult.Ambiguous(candidates)
+                    return@withContext AnalysisResult.Ambiguous(
+                        enrichWithReferenceImages(candidates)
+                    )
                 }
                 AnalysisResult.Failed(
                     "No se pudo verificar la planta con certeza. Envía más imágenes " +
@@ -218,6 +225,54 @@ class PlantRepositoryImpl(
                 )
             }
         }
+
+    /**
+     * Busca una foto de referencia por candidata en Wikimedia Commons (sin
+     * clave, en paralelo). Best-effort: si no hay foto, la tarjeta sale igual.
+     */
+    private suspend fun enrichWithReferenceImages(
+        candidates: List<SpeciesCandidate>
+    ): List<SpeciesCandidate> = coroutineScope {
+        candidates.map { candidate ->
+            async {
+                candidate.copy(imageUrl = fetchCandidateImageUrl(candidate.scientificName))
+            }
+        }.awaitAll()
+    }
+
+    /**
+     * Primera foto del nombre científico en Wikimedia Commons (miniatura).
+     * No usa Pl@ntNet: es solo una referencia visual de internet.
+     */
+    private fun fetchCandidateImageUrl(scientificName: String): String {
+        if (scientificName.isBlank()) return ""
+        var connection: HttpURLConnection? = null
+        return try {
+            val query = URLEncoder.encode(scientificName, "UTF-8")
+            val apiUrl = "https://commons.wikimedia.org/w/api.php?action=query&format=json" +
+                "&generator=search&gsrsearch=$query&gsrlimit=1&gsrnamespace=6" +
+                "&prop=imageinfo&iiprop=url&iiurlwidth=400"
+            connection = URL(apiUrl).openConnection() as HttpURLConnection
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            val text = connection.inputStream.bufferedReader().use { it.readText() }
+            val root = json.parseToJsonElement(text) as? JsonObject ?: return ""
+            val pages = root["query"]?.jsonObject?.get("pages")?.jsonObject ?: return ""
+            for ((_, pageElement) in pages) {
+                val info = (pageElement as? JsonObject)?.get("imageinfo") as? JsonArray
+                    ?: continue
+                val first = info.firstOrNull() as? JsonObject ?: continue
+                val thumb = (first["thumburl"] as? JsonPrimitive)?.contentOrNull
+                    ?: (first["url"] as? JsonPrimitive)?.contentOrNull
+                if (!thumb.isNullOrBlank()) return thumb
+            }
+            ""
+        } catch (_: Exception) {
+            ""
+        } finally {
+            connection?.disconnect()
+        }
+    }
 
     /**
      * Pl@ntNet sin lanzar: devuelve null ante cualquier fallo para intentar el
