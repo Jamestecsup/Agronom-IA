@@ -30,7 +30,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,10 +38,10 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,6 +56,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.agronomia.ui.components.AgronomIaBottomBar
+import com.agronomia.ui.components.AgronomIaTopBar
 import com.agronomia.ui.components.FullscreenImageDialog
 import com.agronomia.util.Constants
 import com.agronomia.util.ImageUtils
@@ -72,7 +73,6 @@ private fun createCameraImageUri(context: Context): Uri {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CaptureScreen(
     viewModel: CaptureViewModel,
@@ -86,6 +86,7 @@ fun CaptureScreen(
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var showCameraRationale by remember { mutableStateOf(false) }
+    var selectedNavIndex by remember { mutableIntStateOf(0) }
 
     /** Agrega fotos avisando si se topó el máximo. */
     fun addUrisWithFeedback(picked: List<Uri>) {
@@ -208,8 +209,25 @@ fun CaptureScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Agronom-IA - Captura") }
+            AgronomIaTopBar()
+        },
+        bottomBar = {
+            // Barra de israel: solo Escáner existe (nuestras 2 rutas); el resto
+            // avisa por Toast sin cambiar la navegación (mismo backend).
+            AgronomIaBottomBar(
+                selectedIndex = selectedNavIndex,
+                onItemSelected = { index ->
+                    selectedNavIndex = index
+                    if (index != 0) {
+                        val sectionName = when (index) {
+                            1 -> "Mi Jardín"
+                            2 -> "Calendario"
+                            3 -> "Ajustes"
+                            else -> ""
+                        }
+                        Toast.makeText(context, "Sección: $sectionName", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
         },
         modifier = modifier
