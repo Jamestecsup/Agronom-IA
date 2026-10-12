@@ -273,7 +273,7 @@ class PlantRepositoryImpl(
             val hints = parseHintsDto(content)
             if (hints.isEmpty()) return candidates
             candidates.map { candidate ->
-                val info = hints[candidate.scientificName.lowercase()]
+                val info = hints[normalizeName(candidate.scientificName)]
                 candidate.copy(
                     hint = info?.text.orEmpty(),
                     hintTerms = info?.terms.orEmpty()
@@ -318,7 +318,7 @@ class PlantRepositoryImpl(
                                 WordMeaning(word, meaning)
                             }
                         }.orEmpty().take(6)
-                    name.lowercase() to CandidateHint(hint, terms)
+                    normalizeName(name) to CandidateHint(hint, terms)
                 }
             }.toMap()
         } catch (_: Exception) {
@@ -331,6 +331,19 @@ class PlantRepositoryImpl(
         val text: String,
         val terms: List<WordMeaning> = emptyList()
     )
+
+    /**
+     * Normaliza un nombre científico para emparejar: minúsculas, sin autoría
+     * entre paréntesis y solo género + especie. Así "X (Hedw.) Brid." coincide
+     * con "X" aunque la IA devuelva el nombre con autoría.
+     */
+    private fun normalizeName(name: String): String =
+        name.lowercase()
+            .replace(Regex("\\(.*?\\)"), " ")
+            .trim()
+            .split(Regex("\\s+"))
+            .take(2)
+            .joinToString(" ")
 
     /**
      * Busca una foto de referencia por candidata en Wikimedia Commons (sin

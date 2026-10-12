@@ -324,7 +324,8 @@ object Constants {
         Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
         bloques de código Markdown, con exactamente esta forma:
         {"hints": [{"name": "nombre científico tal cual te lo dan", "hint": "rasgos distintivos", "terms": [{"word": "palabra tal como aparece", "meaning": "significado sencillo en contexto"}]}]}
-        Si de alguna no sabes, omítela.
+        Incluye a TODAS las plantas de la lista, sin omitir ninguna: si de alguna
+        sabes poco, describe en 1 frase sus rasgos generales de familia o género.
     """.trimIndent()
 
     /**
