@@ -23,5 +23,10 @@ data class SpeciesCandidate(
      * Rasgos únicos para reconocerla frente a las otras candidatas
      * (color/forma de flor y hoja, tamaño). Vacío si no se generó.
      */
-    val hint: String = ""
+    val hint: String = "",
+    /**
+     * Palabras difíciles del hint con su significado en contexto
+     * (igual que el glosario de las categorías).
+     */
+    val hintTerms: List<WordMeaning> = emptyList()
 )

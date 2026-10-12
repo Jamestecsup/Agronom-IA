@@ -273,8 +273,10 @@ class PlantRepositoryImpl(
             val hints = parseHintsDto(content)
             if (hints.isEmpty()) return candidates
             candidates.map { candidate ->
+                val info = hints[candidate.scientificName.lowercase()]
                 candidate.copy(
-                    hint = hints[candidate.scientificName.lowercase()].orEmpty()
+                    hint = info?.text.orEmpty(),
+                    hintTerms = info?.terms.orEmpty()
                 )
             }
         } catch (e: CancellationException) {
@@ -285,10 +287,10 @@ class PlantRepositoryImpl(
     }
 
     /**
-     * Parsea {"hints": [{"name": "...", "hint": "..."}]} a mapa
-     * nombre-en-minúsculas → hint (tolerante con la clave y vacíos).
+     * Parsea {"hints": [{"name": "...", "hint": "...", "terms": [...]}]}
+     * a mapa nombre-en-minúsculas → texto + términos (tolerante con vacíos).
      */
-    private fun parseHintsDto(rawContent: String): Map<String, String> {
+    private fun parseHintsDto(rawContent: String): Map<String, CandidateHint> {
         val jsonText = extractJsonObject(rawContent)
         if (jsonText.isBlank()) return emptyMap()
         return try {
@@ -298,13 +300,37 @@ class PlantRepositoryImpl(
                 val obj = element as? JsonObject ?: return@mapNotNull null
                 val name = (obj["name"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
                 val hint = (obj["hint"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
-                if (name.isBlank() || hint.isBlank() || hint.equals("unknown", true)) null
-                else name.lowercase() to hint
+                if (name.isBlank() || hint.isBlank() || hint.equals("unknown", true)) {
+                    null
+                } else {
+                    val terms = ((obj["terms"] ?: obj["glossary"]) as? JsonArray)
+                        ?.mapNotNull { termElement ->
+                            val termObj = termElement as? JsonObject ?: return@mapNotNull null
+                            val word = (termObj["word"] as? JsonPrimitive)
+                                ?.contentOrNull?.trim().orEmpty()
+                            val meaning = (termObj["meaning"] as? JsonPrimitive)
+                                ?.contentOrNull?.trim().orEmpty()
+                            if (word.length < 3 || meaning.isBlank() ||
+                                meaning.equals("unknown", true)
+                            ) {
+                                null
+                            } else {
+                                WordMeaning(word, meaning)
+                            }
+                        }.orEmpty().take(6)
+                    name.lowercase() to CandidateHint(hint, terms)
+                }
             }.toMap()
         } catch (_: Exception) {
             emptyMap()
         }
     }
+
+    /** Hint de una candidata con sus términos resaltables. */
+    private data class CandidateHint(
+        val text: String,
+        val terms: List<WordMeaning> = emptyList()
+    )
 
     /**
      * Busca una foto de referencia por candidata en Wikimedia Commons (sin

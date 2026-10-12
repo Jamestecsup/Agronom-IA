@@ -519,6 +519,7 @@ private fun CandidateCard(
         .ifBlank { candidate.scientificName }
     val extraNames = candidate.commonNames.drop(1).take(2)
     var expandedImage by remember { mutableStateOf(false) }
+    var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp)
@@ -590,11 +591,26 @@ private fun CandidateCard(
                     }
                     if (candidate.hint.isNotBlank()) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = candidate.hint,
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Start,
-                            modifier = Modifier.fillMaxWidth()
+                        val hintStyle = SpanStyle(
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            textDecoration = TextDecoration.Underline
+                        )
+                        val annotatedHint = remember(candidate.hint, candidate.hintTerms) {
+                            buildAnnotatedText(candidate.hint, candidate.hintTerms, hintStyle)
+                        }
+                        ClickableText(
+                            text = annotatedHint,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            onClick = { offset ->
+                                annotatedHint.getStringAnnotations("term", offset, offset)
+                                    .firstOrNull()?.let { annotation ->
+                                        candidate.hintTerms.find { it.word == annotation.item }
+                                            ?.let { selectedTerm = it }
+                                    }
+                            }
                         )
                     }
                 }
@@ -628,6 +644,19 @@ private fun CandidateCard(
             contentDescription = "Foto de referencia ampliada: $displayName",
             onDismiss = { expandedImage = false },
             userAgent = Constants.WIKIMEDIA_USER_AGENT
+        )
+    }
+
+    selectedTerm?.let { term ->
+        AlertDialog(
+            onDismissRequest = { selectedTerm = null },
+            title = { Text(term.word) },
+            text = { Text(term.meaning) },
+            confirmButton = {
+                TextButton(onClick = { selectedTerm = null }) {
+                    Text("Entendido")
+                }
+            }
         )
     }
 }

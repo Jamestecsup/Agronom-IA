@@ -318,10 +318,12 @@ object Constants {
         la suya. Para CADA una escribe 1 o 2 frases cortas con sus rasgos ÚNICOS
         para reconocerla frente a las otras: color y forma de flor y hoja, tamaño,
         tallo. Nada de tecnicismos sin explicar.
+        Además marca de 2 a 4 palabras difíciles de ese texto, con su significado
+        sencillo DENTRO DEL CONTEXTO (qué significa ahí), en frases cortas.
 
         Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin
         bloques de código Markdown, con exactamente esta forma:
-        {"hints": [{"name": "nombre científico tal cual te lo dan", "hint": "rasgos distintivos"}]}
+        {"hints": [{"name": "nombre científico tal cual te lo dan", "hint": "rasgos distintivos", "terms": [{"word": "palabra tal como aparece", "meaning": "significado sencillo en contexto"}]}]}
         Si de alguna no sabes, omítela.
     """.trimIndent()
 
