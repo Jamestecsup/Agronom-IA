@@ -1,14 +1,9 @@
 package com.agronomia.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
     primary = Green80,
@@ -22,20 +17,21 @@ private val LightColorScheme = lightColorScheme(
     tertiary = LightGreen40
 )
 
+/**
+ * Tema principal de Agronom-IA.
+ *
+ * Se ha bloqueado la aplicación para forzar siempre el esquema de colores claros (LightColorScheme)
+ * e ignorar la configuración de modo oscuro del sistema (isSystemInDarkTheme), garantizando que el
+ * fondo permanezca claro y se respeten los colores de la marca en todo momento.
+ */
 @Composable
 fun AgronomIaTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    darkTheme: Boolean = false,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    // Forzado a utilizar siempre LightColorScheme
+    val colorScheme = LightColorScheme
 
     MaterialTheme(
         colorScheme = colorScheme,
