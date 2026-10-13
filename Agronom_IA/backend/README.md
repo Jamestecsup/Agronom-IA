@@ -21,7 +21,8 @@ Las instrucciones siguientes sirven para verificar la instalación o repetirla e
    SetEnv PLANT_DB_USER agronomia_api
    SetEnv PLANT_DB_PASSWORD "TU_CONTRASENA_LOCAL"
    SetEnv PLANT_UPLOAD_DIR "C:/xampp/plant-images"
-   SetEnv PLANT_AI_MODEL gpt-4.1-mini
+   SetEnv PLANT_AI_API_URL https://opencode.ai/inference/openai/v1/responses
+   SetEnv PLANT_AI_MODEL gpt-5.4-mini
    ```
 
    Protege ese archivo en el equipo y no lo copies al repositorio. Reinicia Apache desde el panel de XAMPP después de editarlo. Verifica que `mysqli`, `fileinfo` y GD estén activados; el PHP de XAMPP inspeccionado tiene esas extensiones.
@@ -30,17 +31,19 @@ Las instrucciones siguientes sirven para verificar la instalación o repetirla e
 
 Comprueba el endpoint con `http://127.0.0.1/agronomia-api/api/images.php` (GET debe responder 405 con JSON). Android Emulator usa `http://10.0.2.2/agronomia-api`; un teléfono en la misma Wi-Fi usa `http://IP_LAN_DEL_PC/agronomia-api` (consulta `ipconfig`). Android 17 / API 37 exige `ACCESS_LOCAL_NETWORK` para apps que apuntan a API 37; la app lo pide al guardar o analizar y solo inicia la operación si se concede. Para configurar el APK del teléfono: `gradlew.bat assembleDebug -PPLANT_API_BASE_URL=http://192.168.1.20/agronomia-api`. La URL predeterminada del proyecto es la del emulador. El tráfico HTTP sin TLS solo es aceptable durante desarrollo en una red privada.
 
-## Análisis de plantas con OpenAI
+## Análisis de plantas con OpenCode Zen
 
-El endpoint `POST /api/analyze.php` está implementado. Después de guardar el lote, la app permite solicitar el análisis. PHP carga solo los archivos asociados al lote, los envía a la Responses API con el modelo `gpt-4.1-mini` y salida JSON estructurada, actualiza el estado de procesamiento y devuelve la respuesta a Compose. La llamada ocurre únicamente tras pulsar **Analizar planta con IA**; requiere Internet y consume la cuota de la cuenta del proveedor. El parámetro `store=false` evita guardar la respuesta en el servicio.
+El endpoint `POST /api/analyze.php` está implementado. Después de guardar el lote, la app permite solicitar el análisis. PHP carga solo los archivos asociados al lote y los envía con salida JSON estructurada al endpoint Responses. Para OpenCode Zen configura `PLANT_AI_API_URL=https://opencode.ai/inference/openai/v1/responses` y `PLANT_AI_MODEL=gpt-5.4-mini`; el modelo admite entrada de imágenes. El backend conserva la clave como variable de Apache `PLANT_AI_API_KEY`, en el encabezado Bearer. La llamada ocurre únicamente tras pulsar **Analizar planta con IA**; necesita Internet y puede consumir créditos de OpenCode Zen. `store=false` solicita que la respuesta no se almacene.
 
-La clave no se encontró configurada en el equipo. Apache incluye el archivo privado `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf`, cuya ACL da control al usuario local, Administradores y SYSTEM. Para activarla, agrega allí esta línea con la clave de tu cuenta y reinicia Apache:
+Apache incluye el archivo privado `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf`, cuya ACL da control al usuario local, Administradores y SYSTEM. Para configurar OpenCode Zen, agrega allí estas líneas y reinicia Apache desde XAMPP:
 
 ```apache
-SetEnv PLANT_AI_API_KEY "TU_CLAVE_API"
+SetEnv PLANT_AI_API_KEY "TU_CLAVE_OPENCODE_ZEN"
+SetEnv PLANT_AI_API_URL https://opencode.ai/inference/openai/v1/responses
+SetEnv PLANT_AI_MODEL gpt-5.4-mini
 ```
 
-No la escribas en Android, notas versionadas ni el repositorio. El modelo informa confianza e incertidumbre; la salida sigue siendo una estimación visual, no una identificación botánica certificada.
+No pegues la clave en el chat, en Android, en notas versionadas ni en el repositorio. El modelo informa confianza e incertidumbre; la salida sigue siendo una estimación visual, no una identificación botánica certificada. OpenCode Zen puede cambiar los modelos y endpoints disponibles; consulta su [catálogo y guía de API](https://opencode.ai/v2/docs/console/models/) si `gpt-5.4-mini` deja de estar disponible.
 
 ## Recuperación
 

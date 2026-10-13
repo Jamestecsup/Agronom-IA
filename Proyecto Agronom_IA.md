@@ -12,9 +12,10 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - PHP/Apache funciona como puente local; Android nunca habla con MySQL. En emulador, Android accede al host con `10.0.2.2`; en teléfono usa la IP LAN del PC.
 - Imágenes en `C:\xampp\plant-images/<batch UUID>/<image UUID>.<ext>`, fuera del directorio público `htdocs`. MySQL guarda ruta relativa, UUID, lote, MIME, tamaño, dimensiones, estado mínimo y fecha. No se guardan BLOB.
 - PHP valida otra vez conteo, tamaño, contenido detectado (`fileinfo`), dimensiones (`getimagesize`) y decodificación GD. El lote es atómico a nivel lógico: staging, transacción SQL, limpieza de archivos si falla.
-- OpenAI Responses (`gpt-4.1-mini`) recibe imágenes solo tras la acción explícita del usuario. La respuesta estructurada incluye confianza y advertencias; el resultado no se trata como identificación botánica certificada.
+- El endpoint de análisis es configurable para OpenCode Zen Responses (`gpt-5.4-mini`) o OpenAI Responses; procesa imágenes solo tras la acción explícita del usuario. La respuesta estructurada incluye confianza y advertencias; el resultado no se trata como identificación botánica certificada.
 - HTTP y endpoint sin autenticación se limitan al desarrollo local en red privada; preparar TLS y autenticación antes de exponer.
 - Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, exige el permiso runtime `ACCESS_LOCAL_NETWORK` para sockets hacia la red local. El flujo lo solicita al guardar o analizar y continúa solo si el usuario lo concede.
+- El backend acepta `PLANT_AI_API_URL` y `PLANT_AI_MODEL`. Para OpenCode Zen usar `https://opencode.ai/inference/openai/v1/responses` y `gpt-5.4-mini`; falta guardar la clave del usuario en `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf` y reiniciar Apache para ejecutar una inferencia real.
 
 ## API y almacenamiento
 

@@ -40,6 +40,10 @@ if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 
 try {
     $apiKey = requiredEnv('PLANT_AI_API_KEY');
+    $apiUrl = getenv('PLANT_AI_API_URL') ?: 'https://api.openai.com/v1/responses';
+    if (!filter_var($apiUrl, FILTER_VALIDATE_URL) || !str_starts_with($apiUrl, 'https://')) {
+        throw new RuntimeException('PLANT_AI_API_URL debe ser una URL HTTPS válida.');
+    }
     $model = getenv('PLANT_AI_MODEL') ?: 'gpt-4.1-mini';
     $storage = requiredEnv('PLANT_UPLOAD_DIR');
     $db = new mysqli(requiredEnv('PLANT_DB_HOST'), requiredEnv('PLANT_DB_USER'), requiredEnv('PLANT_DB_PASSWORD'), requiredEnv('PLANT_DB_NAME'), (int)(getenv('PLANT_DB_PORT') ?: 3306));
@@ -108,7 +112,7 @@ try {
         'input' => [['role' => 'user', 'content' => $content]],
         'text' => ['format' => ['type' => 'json_schema', 'name' => 'plant_identification', 'strict' => true, 'schema' => $schema]]
     ];
-    $curl = curl_init('https://api.openai.com/v1/responses');
+    $curl = curl_init($apiUrl);
     curl_setopt_array($curl, [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
