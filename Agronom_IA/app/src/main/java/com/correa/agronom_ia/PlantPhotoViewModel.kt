@@ -36,19 +36,6 @@ data class PlantPhotoState(
     val batchId: String? = null,
     val analysis: PlantAnalysis? = null
 )
-data class PlantAnalysis(
-    val identified: Boolean,
-    val commonName: String,
-    val scientificName: String,
-    val confidence: String,
-    val description: String,
-    val watering: String,
-    val lighting: String,
-    val substrate: String,
-    val care: String,
-    val uncertainty: String
-)
-
 class PlantPhotoViewModel : ViewModel() {
     private val mutableState = MutableStateFlow(PlantPhotoState())
     val state: StateFlow<PlantPhotoState> = mutableState.asStateFlow()
@@ -141,17 +128,25 @@ class PlantPhotoViewModel : ViewModel() {
     }
 
     fun analyze() {
-        val batchId = mutableState.value.batchId ?: return
+        val photos = mutableState.value.photos
+        if (photos.isEmpty()) {
+            mutableState.value = mutableState.value.copy(error = "Selecciona al menos una imagen para identificar la planta.")
+            return
+        }
         if (mutableState.value.busy) return
         viewModelScope.launch {
-            mutableState.value = mutableState.value.copy(busy = true, progress = "Analizando las imágenes…", error = null)
+            mutableState.value = mutableState.value.copy(busy = true, progress = "Preparando identificación…", error = null, analysis = null)
             try {
-                val result = withContext(Dispatchers.IO) { PlantUploadApi.analyze(batchId) }
+                val result = withContext(Dispatchers.IO) {
+                    PlantAnalysisApi.analyze(photos.map { it.file }) { stage ->
+                        mutableState.value = mutableState.value.copy(progress = stage)
+                    }
+                }
                 mutableState.value = mutableState.value.copy(busy = false, progress = null, analysis = result)
             } catch (e: Exception) {
                 val message = when (e) {
-                    is UnknownHostException, is ConnectException -> "No se pudo conectar con el backend local. Comprueba Apache y la dirección de la API."
-                    is SocketTimeoutException -> "El análisis tardó demasiado. Comprueba la conexión e inténtalo de nuevo."
+                    is UnknownHostException, is ConnectException -> "No hay conexión con Pl@ntNet o Space Bunny. Comprueba Internet e inténtalo de nuevo."
+                    is SocketTimeoutException -> "El servicio tardó demasiado en responder. Comprueba Internet e inténtalo de nuevo."
                     else -> e.message ?: "No se pudo analizar la planta."
                 }
                 mutableState.value = mutableState.value.copy(busy = false, progress = null, error = message)
@@ -267,39 +262,4 @@ private object PlantUploadApi {
         } finally { connection.disconnect() }
     }
 
-    fun analyze(batchId: String): PlantAnalysis {
-        val endpoint = "${BuildConfig.PLANT_API_BASE_URL.trimEnd('/')}/api/analyze.php"
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 120_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty("Accept", "application/json")
-        }
-        try {
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
-                writer.write(JSONObject().put("batch_id", batchId).toString())
-            }
-            val responseCode = connection.responseCode
-            val body = (if (responseCode in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-            val json = runCatching { JSONObject(body) }.getOrNull()
-            if (responseCode !in 200..299 || json?.optBoolean("success") != true) {
-                throw IllegalStateException(json?.optString("error")?.takeIf { it.isNotBlank() && it != "null" } ?: "El análisis no terminó correctamente (HTTP $responseCode).")
-            }
-            val result = json.optJSONObject("analysis") ?: throw IllegalStateException("El servidor no devolvió un resultado de análisis.")
-            return PlantAnalysis(
-                identified = result.optBoolean("identified"),
-                commonName = result.optString("common_name"),
-                scientificName = result.optString("scientific_name"),
-                confidence = result.optString("confidence"),
-                description = result.optString("description"),
-                watering = result.optString("watering"),
-                lighting = result.optString("lighting"),
-                substrate = result.optString("substrate"),
-                care = result.optString("care"),
-                uncertainty = result.optString("uncertainty")
-            )
-        } finally { connection.disconnect() }
-    }
 }

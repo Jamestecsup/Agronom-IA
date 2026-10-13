@@ -12,29 +12,25 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - PHP/Apache funciona como puente local; Android nunca habla con MySQL. En emulador, Android accede al host con `10.0.2.2`; en teléfono usa la IP LAN del PC.
 - Imágenes en `C:\xampp\plant-images/<batch UUID>/<image UUID>.<ext>`, fuera del directorio público `htdocs`. MySQL guarda ruta relativa, UUID, lote, MIME, tamaño, dimensiones, estado mínimo y fecha. No se guardan BLOB.
 - PHP valida otra vez conteo, tamaño, contenido detectado (`fileinfo`), dimensiones (`getimagesize`) y decodificación GD. El lote es atómico a nivel lógico: staging, transacción SQL, limpieza de archivos si falla.
-- El endpoint de análisis es configurable para OpenCode Zen Responses (`gpt-5.4-mini`) o OpenAI Responses; procesa imágenes solo tras la acción explícita del usuario. La respuesta estructurada incluye confianza y advertencias; el resultado no se trata como identificación botánica certificada.
+- Flujo de identificación directa en Android: Pl@ntNet recibe las fotos y devuelve especies candidatas; la app envía solo los nombres/datos botánicos a Space Bunny (`space-bunny-free`) para generar cuidados. Las imágenes nunca se envían a Space Bunny.
 - HTTP y endpoint sin autenticación se limitan al desarrollo local en red privada; preparar TLS y autenticación antes de exponer.
-- Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, exige el permiso runtime `ACCESS_LOCAL_NETWORK` para sockets hacia la red local. El flujo lo solicita al guardar o analizar y continúa solo si el usuario lo concede.
-- El backend acepta `PLANT_AI_API_URL` y `PLANT_AI_MODEL`. Para OpenCode Zen usar `https://opencode.ai/inference/openai/v1/responses` y `gpt-5.4-mini`; falta guardar la clave del usuario en `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf` y reiniciar Apache para ejecutar una inferencia real.
+- Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, solicita `ACCESS_LOCAL_NETWORK` únicamente al guardar por HTTP en el backend local. El análisis remoto usa permiso `INTERNET`.
+- Configuración directa para desarrollo: `PLANTNET_API_KEY` es obligatoria y `OPENCODE_API_KEY` opcional en `%USERPROFILE%\.gradle\gradle.properties`. Estas claves quedan en BuildConfig/APK y son extraíbles; para producción se requiere un backend intermediario.
 
 ## API y almacenamiento
 
-`POST /agronomia-api/api/images.php` acepta `photos[]`, máximo cinco, JPEG/PNG/WebP válidos hasta 15 MiB cada uno. Devuelve `201` con `success`, `batch_id` y rutas relativas solo tras escribir y confirmar todas las filas. `POST /agronomia-api/api/analyze.php` recibe `batch_id` y devuelve JSON estructurado de la IA; requiere `PLANT_AI_API_KEY`. Consulta [[Agronom_IA/README]] y `Agronom_IA/backend/README.md`.
+`POST /agronomia-api/api/images.php` acepta `photos[]`, máximo cinco, JPEG/PNG/WebP decodificables hasta 15 MiB cada uno. Devuelve `201` con `success`, `batch_id` y rutas relativas solo tras escribir y confirmar todas las filas. La carpeta local continúa siendo `C:\xampp\plant-images`; MySQL conserva metadatos y rutas, no las imágenes.
+
+El análisis ya no usa `api/analyze.php` (endpoint anterior retirado del proyecto y de XAMPP). Pl@ntNet recibe multipart JPEG en `POST https://my-api.plantnet.org/v2/identify/all?api-key=...` (`lang=es`, 3 candidatos). Space Bunny recibe solo texto por `POST https://opencode.ai/inference/v1/chat/completions`, modelo `space-bunny-free`; el JSON de cuidados se valida antes de presentarlo. Consulta [[Agronom_IA/README]] y `Agronom_IA/backend/README.md`.
 
 ## Pruebas y pendientes
 
-- Verificado después de los cambios: `:app:assembleDebug`, `:app:assembleRelease` y `:app:testDebugUnitTest` pasan (la prueba unitaria preexistente es la prueba plantilla de suma).
-- `php -l backend/api/images.php`: sin errores de sintaxis; PHP local confirma GD con WebP y mysqli habilitados.
-- Smoke tests PHP locales: GET responde 405 JSON; archivo de texto enviado como JPEG responde 415; imagen válida sin configuración devuelve 500 por `PLANT_UPLOAD_DIR` ausente antes de crear archivos (comportamiento esperado).
-- Android Emulator Pixel 8 (API 37): se reprodujo el timeout inicial, se comprobó que expiraba al conectar al host antes del POST y se verificó el permiso nuevo con una carga real. Al conceder `ACCESS_LOCAL_NETWORK`, Apache respondió HTTP 201 y la pantalla confirmó el registro en servidor/MySQL.
-- Esta verificación dejó dos lotes de prueba (uno por cURL y otro desde la app) en `agronomia.plant_images` y sus archivos en `C:\xampp\plant-images`; identificadores `4b6c158c-2a91-4c1b-949a-551622095bcb` y `b2cc9326-549a-4460-bcd0-7e52bd2b78c2`.
-- En XAMPP ya se importó el esquema, se creó una cuenta API aleatoria de mínimo privilegio, se desplegó la API en `htdocs/agronomia-api`, se creó `C:\xampp\plant-images` con ACL restringida, se ajustó php.ini (16 MiB por archivo, 80 MiB POST) y Apache reinició con la configuración local protegida.
-- Verificación real contra Apache/MySQL: GET 405, texto disfrazado de imagen 415, lote de cinco PNG 201 con cinco filas y archivos correspondientes, lote de seis 422; se eliminaron los lotes de prueba y se verificó la limpieza. El endpoint de IA devuelve 503 hasta configurar la clave.
-- La selección interactiva y el permiso de red local se probaron en el emulador; la captura real mediante cámara todavía requiere verificación manual.
-- La integración de IA está implementada con OpenAI Responses, `gpt-4.1-mini`, JSON estructurado y respuesta en Compose. El modelo admite imágenes ([ficha oficial](https://developers.openai.com/api/docs/models/gpt-4.1-mini)). Apache incluye el archivo privado `C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf`; falta agregar allí `PLANT_AI_API_KEY`. La clave no estaba configurada y por eso no se ejecutó una inferencia real.
-- La regla de firewall de Windows para permitir Apache en el perfil privado y la subred local no se pudo crear: Windows respondió “Acceso denegado” sin elevación administrativa. Para usar un teléfono físico, agregar como administrador una regla TCP entrante puerto 80, perfil Private y dirección remota LocalSubnet.
-- La regla de firewall todavía requiere una consola administrativa: `New-NetFirewallRule -DisplayName "Agronomia local XAMPP API" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 -Profile Private -RemoteAddress LocalSubnet`.
+Las verificaciones históricas de XAMPP/MySQL anotadas abajo son del bloque anterior y no verifican las nuevas APIs remotas. En este bloque: `:app:assembleDebug`, `:app:assembleRelease`, `:app:testDebugUnitTest` y `:app:connectedDebugAndroidTest` pasan en Pixel_8 AVD/API 37 (9 pruebas instrumentadas y 1 unitaria plantilla). La prueba real con servicios sigue pendiente porque requiere una clave válida de Pl@ntNet y conexión a Internet. Space Bunny Free podría aceptarse sin token; su disponibilidad externa puede cambiar.
 
+- XAMPP: esquema importado, cuenta API de mínimo privilegio, endpoint de imágenes desplegado y carpeta con ACL restringida; PHP tiene GD, WebP y mysqli.
+- Smoke tests previos del backend: GET responde 405, texto disfrazado de JPEG 415, lote de cinco imágenes 201 y lote de seis 422; se limpió el lote de prueba.
+- En el emulador API 37 se probó la carga a Apache/MySQL y la concesión de permiso de red local. La captura real desde cámara aún requiere verificación manual.
+- Para usar teléfono físico, el firewall aún necesita regla TCP entrante puerto 80 para perfil Private y LocalSubnet: `New-NetFirewallRule -DisplayName "Agronomia local XAMPP API" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 -Profile Private -RemoteAddress LocalSubnet`.
 ## Commits
 
 - `635316e` — Implementa flujo móvil de imágenes y análisis.

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -67,32 +68,25 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
     val state by model.state.collectAsState()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
-    var pendingNetworkAction by remember { mutableStateOf<NetworkAction?>(null) }
+    var pendingUpload by remember { mutableStateOf(false) }
     val localNetworkPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        val action = pendingNetworkAction
-        pendingNetworkAction = null
-        if (granted) {
-            when (action) {
-                NetworkAction.UPLOAD -> model.upload()
-                NetworkAction.ANALYZE -> model.analyze()
-                null -> Unit
-            }
+        val shouldUpload = pendingUpload
+        pendingUpload = false
+        if (granted && shouldUpload) {
+            model.upload()
         } else {
-            model.reportError("Se necesita permiso de red local para comunicarse con el servidor de desarrollo.")
+            if (shouldUpload) model.reportError("Se necesita permiso de red local para guardar las imágenes en el servidor de desarrollo.")
         }
     }
-    fun runWithLocalNetworkPermission(action: NetworkAction) {
+    fun uploadWithLocalNetworkPermission() {
         val permission = "android.permission.ACCESS_LOCAL_NETWORK"
         if (Build.VERSION.SDK_INT >= 37 &&
             ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED
         ) {
-            pendingNetworkAction = action
+            pendingUpload = true
             localNetworkPermission.launch(permission)
         } else {
-            when (action) {
-                NetworkAction.UPLOAD -> model.upload()
-                NetworkAction.ANALYZE -> model.analyze()
-            }
+            model.upload()
         }
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> -> model.addUris(context, uris) }
@@ -111,7 +105,7 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("HERBARIO", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Text("Identifica tus plantas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Selecciona fotos claras de la planta. Puedes agregar hasta cinco imágenes.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Selecciona fotos claras de una misma planta. Puedes agregar hasta cinco imágenes.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             item {
@@ -137,8 +131,8 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
                 }
             } else {
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                        state.photos.forEach { photo ->
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        items(state.photos, key = { it.id }) { photo ->
                             Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.width(156.dp)) {
                                 Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     if (photo.preview != null) Image(photo.preview.asImageBitmap(), contentDescription = "Vista previa de ${photo.name}", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(11.dp)))
@@ -162,12 +156,14 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
                 }
             }
             item {
-                Button(onClick = { runWithLocalNetworkPermission(NetworkAction.UPLOAD) }, enabled = state.photos.isNotEmpty() && !state.busy && !state.uploaded, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Text(if (state.uploaded) "Guardadas correctamente" else "Guardar imágenes")
+                OutlinedButton(onClick = { model.analyze() }, enabled = state.photos.isNotEmpty() && !state.busy, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("Identificar y consultar cuidados")
                 }
             }
-            if (state.uploaded && state.analysis == null) item {
-                OutlinedButton(onClick = { runWithLocalNetworkPermission(NetworkAction.ANALYZE) }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Analizar planta con IA") }
+            item {
+                Button(onClick = { uploadWithLocalNetworkPermission() }, enabled = state.photos.isNotEmpty() && !state.busy && !state.uploaded, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text(if (state.uploaded) "Guardadas correctamente" else "Guardar imágenes")
+                }
             }
             state.analysis?.let { analysis -> item { AnalysisCard(analysis) } }
             item { Spacer(Modifier.height(4.dp)) }
@@ -175,23 +171,29 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
     }
 }
 
-private enum class NetworkAction { UPLOAD, ANALYZE }
-
 @Composable
 private fun AnalysisCard(analysis: PlantAnalysis) {
+    val identification = analysis.identification
+    val care = analysis.care
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Resultado del análisis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text(if (analysis.identified) analysis.commonName else "No se pudo identificar con seguridad", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
-            if (analysis.scientificName.isNotBlank()) Text(analysis.scientificName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Confianza estimada: ${analysis.confidence}", style = MaterialTheme.typography.labelLarge)
-            AnalysisDetail("Descripción", analysis.description)
-            AnalysisDetail("Riego", analysis.watering)
-            AnalysisDetail("Iluminación", analysis.lighting)
-            AnalysisDetail("Sustrato", analysis.substrate)
-            AnalysisDetail("Cuidados", analysis.care)
-            AnalysisDetail("Incertidumbre", analysis.uncertainty)
-            Text("La identificación es orientativa y puede ser incorrecta. Verifica especies tóxicas antes de manipularlas o consumirlas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Identificación · Pl@ntNet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(identification.scientificName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+            identification.commonName?.let { AnalysisDetail("Nombre común informado", it) }
+            identification.family?.let { AnalysisDetail("Familia", it) }
+            AnalysisDetail("Coincidencia del candidato", identification.scorePercent)
+            if (identification.uncertain) {
+                Text("La identificación es incierta. El porcentaje ordena candidatos y no garantiza que la especie sea correcta.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            } else {
+                Text("El porcentaje es una puntuación de coincidencia, no una garantía de identificación.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (identification.alternatives.isNotEmpty()) AnalysisDetail("Otros candidatos", identification.alternatives.joinToString())
+            Text("Cuidados · Space Bunny", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            AnalysisDetail("Riego", care.watering)
+            AnalysisDetail("Iluminación", care.lighting)
+            AnalysisDetail("Toxicidad para perros y gatos", care.petToxicity)
+            if (care.warnings.isNotBlank()) AnalysisDetail("Advertencias", care.warnings)
+            Text("Confirma la toxicidad con una fuente veterinaria fiable antes de permitir que una mascota consuma la planta.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

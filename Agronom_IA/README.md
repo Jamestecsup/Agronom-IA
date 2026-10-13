@@ -1,22 +1,39 @@
 # Agronom_IA
 
-Aplicación Android Kotlin/Jetpack Compose para seleccionar o capturar hasta cinco fotos de plantas, validar y normalizar archivos localmente y enviarlos al backend PHP/MySQL de desarrollo.
+Aplicación Android Kotlin con Jetpack Compose y MVVM para seleccionar o tomar hasta cinco fotos de una planta, validarlas, identificarlas con Pl@ntNet y pedir una guía textual a Space Bunny. El almacenamiento local opcional sigue conectado a PHP/MySQL en XAMPP.
 
 ## Arquitectura
 
-- UI: `MainActivity.kt` con Compose Material 3 y estados vacíos, selección, validación, envío y confirmación.
-- Estado y lógica: `PlantPhotoViewModel.kt`, `StateFlow` y corutinas; cámara del sistema vía `TakePicture` y `FileProvider`, galería vía selector de documentos.
-- Validación Android: copia acotada del URI al caché privado, límite de 15 MiB y dimensiones de 16 a 12 000 px; `ImageDecoder` en API 28+ permite formatos del dispositivo como HEIF cuando se pueden decodificar. Las imágenes se reducen a un máximo de 2048 px y se normalizan a JPEG en `files/images`. El backend decodifica además con GD y acepta hasta 4 096 px.
-- Persistencia servidor: API PHP en `backend/api/images.php`, transacción MySQL y almacenamiento fuera de `htdocs`. El APK no contiene credenciales MySQL.
+- UI: `app/src/main/java/com/correa/agronom_ia/MainActivity.kt` (Compose Material 3), con selección, vista previa horizontal desplazable, captura, estados y resultados separados por proveedor.
+- Estado y flujo: `PlantPhotoViewModel.kt` y `StateFlow`; las tareas de red/imagen se ejecutan fuera del hilo principal.
+- Validación local: copia limitada a 15 MiB, decodificación con dimensiones acotadas, normalización a JPEG (máximo 2048 px) en `files/images`; admite HEIF/HEIC si el decodificador Android del dispositivo puede abrirlos.
+- Integración: `PlantAnalysisApi.kt` envía multipart JPEG directamente a Pl@ntNet y luego solo texto a Space Bunny. No se envían imágenes a Space Bunny.
+- Persistencia opcional: la acción **Guardar imágenes** conserva el envío independiente al backend PHP/Apache y MySQL. Las imágenes quedan en `C:\xampp\plant-images`, y MySQL almacena rutas relativas y metadatos, no BLOB.
 
-## Ejecución
+## Configuración de APIs
 
-Abre `Agronom_IA` en Android Studio. La URL predeterminada `http://10.0.2.2/agronomia-api` sirve para Android Emulator con la API desplegada en XAMPP. En Android 17 / API 37, Android solicita permiso de red local al guardar o analizar por primera vez; es necesario concederlo. Para dispositivo físico usa la IP LAN del PC en una propiedad Gradle, por ejemplo `-PPLANT_API_BASE_URL=http://192.168.1.20/agronomia-api`. Sigue `backend/README.md` para la configuración local y firewall.
+Las solicitudes de análisis salen del dispositivo a Internet. En la documentación consultada, Pl@ntNet recibe `POST https://my-api.plantnet.org/v2/identify/all?api-key=...` con partes multipart repetidas `images`; admite hasta cinco JPEG/PNG (un mismo ejemplar) y 50 MB sumados. Space Bunny usa `POST https://opencode.ai/inference/v1/chat/completions` con modelo `space-bunny-free` y formato Chat Completions. Sus docs dicen que los modelos gratuitos pueden llamarse sin token; si deseas usar tu clave de OpenCode, se admite como configuración opcional.
 
-El tipo `debug` permite HTTP para el backend local; `release` desactiva tráfico sin cifrar. Antes de distribuir, configura HTTPS. El API local todavía no autentica clientes.
+Configura las propiedades en `%USERPROFILE%\.gradle\gradle.properties` (no en el repositorio):
 
-## IA
+```properties
+PLANTNET_API_KEY=tu_clave_de_plantnet
+# Opcional para Space Bunny Free:
+OPENCODE_API_KEY=tu_clave_de_opencode
+```
 
-El flujo de análisis está implementado en la app y en `backend/api/analyze.php`. El backend admite configurar proveedor, endpoint y modelo mediante variables de Apache. Para OpenCode Zen usa `https://opencode.ai/inference/openai/v1/responses` con `gpt-5.4-mini`, que admite imágenes y salida estructurada ([guía API de OpenCode](https://opencode.ai/v2/docs/console/api/inference/), [ficha del modelo](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [guía oficial de visión](https://developers.openai.com/api/docs/guides/images-vision)). El resultado incluye nombre, cuidados, confianza e incertidumbre.
+Reinicia/sincroniza Gradle y ejecuta la variante debug. También se aceptan las variables de entorno `PLANTNET_API_KEY` y `OPENCODE_API_KEY`. Si falta la clave de Pl@ntNet, la app mostrará un error de configuración y no iniciará la llamada.
 
-Falta agregar tu clave de OpenCode Zen y las variables `PLANT_AI_API_URL` / `PLANT_AI_MODEL` al archivo privado de Apache (`C:\Users\lenovo\AppData\Local\Agronomia\apache-ai.conf`) y reiniciar Apache. No incluyas la clave en el chat ni en el repositorio. El análisis usa Internet y puede consumir créditos de Zen; el guardado de fotos y MySQL permanece local. Encontrarás las instrucciones completas en `backend/README.md`.
+**Seguridad:** la clave de Pl@ntNet (y el token opcional de OpenCode) queda compilada en el APK y puede extraerse. Este modo directo cumple el flujo de desarrollo solicitado, pero no es adecuado para distribuir públicamente una app. Para producción, traslada las claves a un backend propio y rota cualquier clave que haya estado en un APK compartido. No pegues claves en el chat ni en archivos versionados.
+
+Space Bunny recibe únicamente nombre científico, familia/nombre común si Pl@ntNet los devuelve, puntuación de coincidencia y alternativas. El prompt solicita JSON para riego, iluminación, toxicidad para mascotas y advertencias. Se valida la respuesta antes de mostrarla. La disponibilidad gratuita del modelo puede cambiar.
+
+## Ejecución y backend local
+
+Abre `Agronom_IA` en Android Studio. Para el backend XAMPP, Android Emulator usa `http://10.0.2.2/agronomia-api`; un teléfono usa `http://IP_LAN_DEL_PC/agronomia-api` y necesita acceso al puerto Apache/firewall en la red privada. Esta URL solo afecta a **Guardar imágenes**. La identificación directa usa servicios externos y requiere Internet; no solicita permiso de red local. Sigue [`backend/README.md`](backend/README.md) para MySQL/PHP.
+
+El tipo `debug` permite HTTP para el backend local. `release` bloquea tráfico HTTP sin cifrar. La API local de desarrollo todavía no autentica clientes; limita su acceso a una red privada.
+
+## Verificación
+
+Pruebas automatizadas para los parsers de respuesta: `.\gradlew.bat :app:connectedDebugAndroidTest`. Compilación: `.\gradlew.bat :app:assembleDebug`. Las llamadas reales requieren una clave válida de Pl@ntNet y conectividad; Space Bunny Free puede no requerir token.
