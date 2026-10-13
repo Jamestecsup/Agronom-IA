@@ -1,9 +1,13 @@
 package com.agronomia.ui.theme
 
+import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
     primary = Green80,
@@ -32,6 +36,21 @@ fun AgronomIaTheme(
 ) {
     // Forzado a utilizar siempre LightColorScheme
     val colorScheme = LightColorScheme
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as? Activity)?.window
+            if (window != null) {
+                // Fuerza íconos oscuros en la barra de estado e inferior para que sean
+                // legibles sobre fondos claros, aun con el modo oscuro activado en el celular.
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = true
+                    isAppearanceLightNavigationBars = true
+                }
+            }
+        }
+    }
 
     MaterialTheme(
         colorScheme = colorScheme,
