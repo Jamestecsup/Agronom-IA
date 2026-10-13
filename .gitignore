@@ -6,6 +6,7 @@
 **/.idea/
 **/.gradle/
 **/build/
+**/target/
 **/local.properties
 **/.externalNativeBuild/
 **/.cxx/
@@ -14,3 +15,6 @@
 *.aab
 *.jks
 *.keystore
+.env
+.env.*
+/Agronom_IA/backend-spring/data/
