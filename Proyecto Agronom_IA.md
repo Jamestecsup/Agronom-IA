@@ -48,6 +48,32 @@ Las verificaciones históricas de XAMPP/MySQL anotadas abajo son del bloque ante
 - Smoke tests previos del backend: GET responde 405, texto disfrazado de JPEG 415, lote de cinco imágenes 201 y lote de seis 422; se limpió el lote de prueba.
 - En el emulador API 37 se probó la carga a Apache/MySQL y la concesión de permiso de red local. La captura real desde cámara aún requiere verificación manual.
 - Para usar teléfono físico, el firewall aún necesita regla TCP entrante puerto 80 para perfil Private y LocalSubnet: `New-NetFirewallRule -DisplayName "Agronomia local XAMPP API" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 -Profile Private -RemoteAddress LocalSubnet`.
+
+## Migración progresiva del backend a Spring Boot (2026-10-13)
+
+### Inspección e inventario
+
+- El repositorio versionado contiene un único endpoint PHP: `POST /agronomia-api/api/images.php`. No se encontraron rutas de usuarios, login, administración, análisis de IA ni otros módulos. No hay roles ni autenticación. React no forma parte del proyecto.
+- Android usa `photos[]`, entre 1 y 5 imágenes, y espera `201 { success, batch_id, images: [{ id, path, mime_type, size }] }`. El endpoint PHP acepta JPEG/PNG/WebP decodificables, 15 MiB por foto y 4096 px máximos; los guarda fuera de `htdocs` y registra metadatos en MySQL.
+- MariaDB 10.4.32 de XAMPP escucha localmente en 3306. `SHOW CREATE TABLE plant_images` coincide con `backend/schema.sql`; la tabla InnoDB no guarda BLOB y no tiene relaciones. La cuenta de API carece de permiso para consultar el DDL, por eso se verificó con consulta local solo lectura. No se modificó la base.
+- Apache no estaba escuchando en puerto 80 al revisar este bloque, así que el PHP desplegado no se verificó por HTTP ni se reemplazó.
+
+### Arquitectura migrada
+
+- Nuevo módulo `Agronom_IA/backend-spring`: Spring Boot 3.5.16, código Java con release 17 (JDK 24 local), MariaDB JDBC y monolito modular bajo `com.agronomia.backend.images`.
+- `POST /agronomia-api/api/images.php` conserva el path, multipart `photos[]`, DTO exitoso y límites del cliente. Acepta JPEG/PNG/WebP detectados por firma, comprueba decodificación y dimensiones, guarda por UUID en `C:\xampp\plant-images` y registra filas JDBC con `TransactionTemplate`. Si falla la transacción se limpia el directorio del lote.
+- Se eligió `JdbcTemplate`, no JPA/Hibernate: solo se inserta en una tabla simple sin relaciones ni lecturas; SQL explícito conserva el esquema legado. No se agrega Flyway porque no hay cambio de esquema. El DDL se deja intacto.
+- La API anterior no tenía autenticación; no se inventó un mecanismo que rompa el cliente. Spring escucha por defecto en `127.0.0.1:8081`. No exponerlo a LAN/Internet sin TLS, autenticación y firewall. Los secretos salen de variables de entorno.
+- PHP permanece como fallback en puerto 80; Android se puede dirigir al mismo path en Spring con `PLANT_API_BASE_URL=http://10.0.2.2:8081/agronomia-api`. El cambio del APK queda pendiente de aceptación end-to-end desde el emulador. PHP solo se retirará tras verificar el cliente.
+
+### Pruebas y pendientes
+
+- Pruebas del backend: `mvn test` en `Agronom_IA/backend-spring`; 14 correctas con H2 en memoria. Cubren contrato HTTP, 1/5/6 fotos, firma/MIME, JPEG/PNG/WebP, GIF, corrupción y rollback tras falla después de un INSERT con limpieza de archivos.
+- Integración real contra MariaDB/XAMPP usando la base nueva `agronomia_spring_migration_test_20261013`: GET 405 JSON; lote de cinco JPEG 201 con cinco filas/archivos; seis 422; GIF con MIME/extensión falsos 415. Los errores no añadieron filas. No se modificó la base `agronomia`.
+- La base aislada y cinco imágenes sintéticas permanecen en `%TEMP%\agronomia-spring-mariadb-test-images`; la herramienta rechazó la limpieza destructiva, así que quedan disponibles para inspección.
+- Pendiente: prueba de carga desde Android Emulator al host Spring en `10.0.2.2:8081`; el valor predeterminado móvil continúa apuntando a PHP. La configuración XAMPP se revisó sin copiar secretos.
+- Riesgo operacional: un cierre abrupto del proceso entre la escritura de archivos y commit puede dejar una carpeta huérfana; requiere reconciliación periódica antes de operación de larga duración.
+- Configuración, inventario detallado de endpoints, estructura, seguridad y ejecución: [[Agronom_IA/backend-spring/README]].
 ## Commits
 
 - `635316e` — Implementa flujo móvil de imágenes y análisis.
