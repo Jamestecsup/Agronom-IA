@@ -417,7 +417,8 @@ class PlantRepositoryImpl(
 
     /**
      * Pl@ntNet sin lanzar: devuelve null ante cualquier fallo para intentar el
-     * respaldo con visión.
+     * respaldo con visión. Los errores de conectividad SÍ se propagan para
+     * mostrar "sin conexión" en vez de una guía engañosa.
      */
     private suspend fun identifyWithPlantNetOrNull(
         images: List<ByteArray>,
@@ -426,6 +427,10 @@ class PlantRepositoryImpl(
         identifyWithPlantNet(images, organs)
     } catch (e: CancellationException) {
         throw e
+    } catch (e: UnknownHostException) {
+        throw e
+    } catch (e: ConnectException) {
+        throw e
     } catch (_: Exception) {
         null
     }
@@ -433,6 +438,7 @@ class PlantRepositoryImpl(
     /**
      * Respaldo con IA de visión sin lanzar: devuelve null si no alcanza la
      * certeza exigida, para pasar a la desambiguación con candidatas.
+     * Los errores de conectividad SÍ se propagan (ver arriba).
      */
     private suspend fun identifyWithVisionOrNull(imageBytes: ByteArray): SpeciesMatch? = try {
         val match = identifyWithAiVision(imageBytes)
@@ -440,6 +446,10 @@ class PlantRepositoryImpl(
             !match.scientificName.equals("unknown", true)
         if (!hasName || match.confidence < Constants.AI_FALLBACK_MIN_CONFIDENCE) null else match
     } catch (e: CancellationException) {
+        throw e
+    } catch (e: UnknownHostException) {
+        throw e
+    } catch (e: ConnectException) {
         throw e
     } catch (_: Exception) {
         null
