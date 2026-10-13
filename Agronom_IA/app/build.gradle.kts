@@ -5,6 +5,7 @@ plugins {
 
 android {
     namespace = "com.correa.agronom_ia"
+    sourceSets.getByName("main").assets.directories.add("${rootProject.projectDir}/.agents/skills")
     compileSdk {
         version = release(37)
     }

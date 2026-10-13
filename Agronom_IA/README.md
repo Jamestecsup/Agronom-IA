@@ -1,13 +1,14 @@
 # Agronom_IA
 
-Aplicación Android Kotlin con Jetpack Compose y MVVM para seleccionar o tomar hasta cinco fotos de una planta, validarlas, identificarlas con Pl@ntNet y pedir una guía textual a Space Bunny. El almacenamiento local opcional sigue conectado a PHP/MySQL en XAMPP.
+Aplicación Android Kotlin con Jetpack Compose y MVVM. La pantalla principal es un chat botánico que conserva conversaciones localmente, adjunta hasta cinco fotos validadas y combina la identificación de Pl@ntNet con respuestas contextuales de Space Bunny. La persistencia remota opcional sigue conectada a PHP/MySQL en XAMPP.
 
 ## Arquitectura
 
-- UI: `app/src/main/java/com/correa/agronom_ia/MainActivity.kt` (Compose Material 3), con selección, vista previa horizontal desplazable, captura, estados y resultados separados por proveedor.
-- Estado y flujo: `PlantPhotoViewModel.kt` y `StateFlow`; las tareas de red/imagen se ejecutan fuera del hilo principal.
+- UI: `app/src/main/java/com/correa/agronom_ia/MainActivity.kt` y `PlantChatScreen.kt` (Compose Material 3). Muestra un inicio conversacional, burbujas de chat, composer con fotos/cámara, envío, carga, error/reintento e identificación adjunta a la respuesta.
+- Estado y flujo: `PlantPhotoViewModel.kt` y `StateFlow`; preguntas, respuestas, nombres de adjuntos e identificaciones se persisten en preferencias privadas (hasta 60 mensajes). Las fotos seleccionadas se guardan en `files/images`; una selección pendiente permanece disponible para guardar en XAMPP después del análisis.
 - Validación local: copia limitada a 15 MiB, decodificación con dimensiones acotadas, normalización a JPEG (máximo 2048 px) en `files/images`; admite HEIF/HEIC si el decodificador Android del dispositivo puede abrirlos.
-- Integración: `PlantAnalysisApi.kt` envía multipart JPEG directamente a Pl@ntNet y después solo texto a Space Bunny mediante el servidor OpenCode local. No se envían imágenes a Space Bunny. Si falla la guía, conserva la identificación para reintentar sin consumir otra llamada Pl@ntNet.
+- Integración: `PlantAnalysisApi.kt` envía multipart JPEG directamente a Pl@ntNet y después solo contexto textual a Space Bunny mediante el servidor OpenCode local. El historial reciente también se pasa como texto. No se envían imágenes a Space Bunny. Si falla OpenCode, se conserva el mensaje/identificación y se puede reintentar.
+- Skill de Space Bunny: [`.agents/skills/space-bunny-botany/SKILL.md`](.agents/skills/space-bunny-botany/SKILL.md). Gradle empaqueta esta misma fuente Markdown como asset; `SpaceBunnySkillRepository` quita el frontmatter de Codex y el `ViewModel` inyecta su contenido como instrucción `system` en cada turno. Contexto Pl@ntNet e historial/pregunta viajan por separado como texto del usuario.
 - Persistencia opcional: la acción **Guardar imágenes** conserva el envío independiente al backend PHP/Apache y MySQL. Las imágenes quedan en `C:\xampp\plant-images`, y MySQL almacena rutas relativas y metadatos, no BLOB.
 
 ## Configuración de APIs
@@ -24,7 +25,9 @@ Reinicia/sincroniza Gradle y ejecuta la variante debug. También se acepta la va
 
 **Seguridad:** la clave de Pl@ntNet queda compilada en el APK y puede extraerse. Este modo directo es solo de desarrollo; para producción, traslada la clave a un backend propio y rota cualquier clave que haya estado en un APK compartido. No pegues claves en el chat ni en archivos versionados. El servidor OpenCode se debe enlazar a loopback, no a la red LAN.
 
-Space Bunny recibe únicamente nombre científico, familia/nombre común si Pl@ntNet los devuelve, puntuación de coincidencia y alternativas. El prompt solicita JSON para riego, iluminación, toxicidad para mascotas y advertencias. Se valida la respuesta antes de mostrarla. La disponibilidad gratuita del modelo puede cambiar.
+Space Bunny recibe únicamente texto: contexto de la especie (si Pl@ntNet la devuelve), puntuación y alternativas, el historial reciente y la pregunta actual. Nunca recibe las fotos. La respuesta en Markdown se valida antes de mostrarla. La disponibilidad gratuita del modelo puede cambiar.
+
+En el flujo de chat, la Skill aporta las instrucciones de sistema persistentes y pide Markdown breve, sin JSON. La identificación y los candidatos de Pl@ntNet se construyen como contexto dinámico independiente; luego se adjunta el historial textual reciente y el mensaje actual. El parser valida que la respuesta no esté vacía, no supere 8.000 caracteres ni incluya marcadores internos o alfabetos CJK que el usuario no haya solicitado; si falla, se solicita una corrección una vez. Si sigue fallando, el chat presenta el error y habilita reintento.
 
 ## Ejecución y backend local
 
@@ -34,4 +37,4 @@ El tipo `debug` permite HTTP para el backend local. `release` bloquea tráfico H
 
 ## Verificación
 
-Pruebas automatizadas para los parsers y límites de selección: `.\gradlew.bat :app:connectedDebugAndroidTest`. Compilación: `.\gradlew.bat :app:assembleDebug`. La prueba real requiere una clave válida de Pl@ntNet, Internet y OpenCode CLI con Space Bunny disponible; inicia el servidor con el comando anterior.
+Verificación del rediseño (2026-10-13): `:app:assembleDebug`, `:app:assembleRelease`, `:app:testDebugUnitTest` y `:app:connectedDebugAndroidTest` completados; 15 pruebas instrumentadas pasan en Pixel_8 AVD/API 37. La prueba real requiere una clave válida de Pl@ntNet, Internet y OpenCode CLI con Space Bunny disponible; inicia el servidor con el comando anterior. En una consulta genérica real, una respuesta lingüísticamente ilegible se rechazó y el chat mostró el error con reintento; la disponibilidad y calidad del modelo pueden variar. Nota de decisiones y verificaciones: [[Proyecto Agronom_IA]].

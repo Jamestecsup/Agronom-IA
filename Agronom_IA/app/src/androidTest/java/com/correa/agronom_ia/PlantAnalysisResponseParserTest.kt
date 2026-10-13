@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import androidx.test.platform.app.InstrumentationRegistry
 
 class PlantAnalysisResponseParserTest {
     @Test
@@ -52,28 +53,58 @@ class PlantAnalysisResponseParserTest {
     }
 
     @Test
-    fun spaceBunnyParsesStructuredGuide() {
+    fun spaceBunnyExtractsMarkdownReply() {
         val result = SpaceBunnyResponseParser.parse(
-            """{"parts":[{"type":"text","text":"{\"watering\":\"Riega cuando se seque la superficie.\",\"lighting\":\"Luz indirecta.\",\"pet_toxicity\":\"No confirmada.\",\"warnings\":\"La especie requiere verificación.\"}"}]}"""
+            """{"parts":[{"type":"text","text":"## Riego\nRiega cuando la superficie del sustrato esté seca.\n\n## Toxicidad\nNo hay información fiable."}]}"""
         )
 
-        assertEquals("Riega cuando se seque la superficie.", result.watering)
-        assertEquals("Luz indirecta.", result.lighting)
-        assertEquals("No confirmada.", result.petToxicity)
-        assertEquals("La especie requiere verificación.", result.warnings)
+        assertTrue(result.startsWith("## Riego"))
+        assertTrue(result.contains("No hay información fiable."))
     }
 
     @Test(expected = IllegalStateException::class)
     fun spaceBunnyRejectsIncompleteGuide() {
         SpaceBunnyResponseParser.parse(
-            """{"parts":[{"type":"text","text":"{\"watering\":\"Riega.\"}"}]}"""
+            """{"parts":[{"type":"text","text":"  "}]}"""
+        )
+    }
+
+    @Test
+    fun spaceBunnyCanReplyInTheLanguageRequestedByTheUser() {
+        val result = SpaceBunnyResponseParser.parse(
+            """{"parts":[{"type":"text","text":"如果用户要求中文，就用中文回答。"}]}""",
+            userQuestion = "请用中文回答"
+        )
+        assertTrue(result.contains("中文"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun spaceBunnyRejectsUnrequestedMixedWritingSystems() {
+        SpaceBunnyResponseParser.parse(
+            """{"parts":[{"type":"text","text":"Comprueba la humedad. 湿度"}]}""",
+            userQuestion = "¿Cuándo riego?"
         )
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun spaceBunnyRejectsMixedScriptGarbage() {
+    fun spaceBunnyRejectsOversizedReply() {
+        val longReply = "x".repeat(8_001)
+        SpaceBunnyResponseParser.parse("""{"parts":[{"type":"text","text":"$longReply"}]}""")
+    }
+
+    @Test
+    fun skillInstructionsAreBundledForTheRuntimePrompt() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val instructions = SpaceBunnySkillRepository.load(context)
+
+        assertTrue(instructions.contains("Pl@ntNet es el único responsable de la identificación visual"))
+        assertTrue(instructions.contains("Una falta de datos sobre toxicidad no significa que la planta sea segura"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun spaceBunnyRejectsInternalPlaceholderText() {
         SpaceBunnyResponseParser.parse(
-            """{"parts":[{"type":"text","text":"{\"watering\":\"Riega cuando se seque.\",\"lighting\":\"Luz brillante.\",\"pet_toxicity\":\"No verificada.\",\"warnings\":\"Confirma la especie. 因为这是测试\"}"}]}"""
+            """{"parts":[{"type":"text","text":"Usa agua con_filtro en cada riego."}]}"""
         )
     }
 }
