@@ -360,19 +360,13 @@ class PlantRepositoryImpl(
      * No usa Pl@ntNet: es solo una referencia visual de internet. Reintenta una
      * vez ante límites momentáneos; si no hay foto, devuelve "" sin bloquear.
      */
-    private fun fetchCandidateImageUrl(scientificName: String): String {
+    private suspend fun fetchCandidateImageUrl(scientificName: String): String {
         if (scientificName.isBlank()) return ""
         repeat(2) { attempt ->
             val url = tryFetchCandidateImageUrl(scientificName)
             if (url.isNotBlank()) return url
-            // Una espera breve antes del segundo intento (límite momentáneo).
             if (attempt == 0) {
-                try {
-                    Thread.sleep(2000)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    return ""
-                }
+                delay(300L)
             }
         }
         return ""
@@ -545,7 +539,7 @@ class PlantRepositoryImpl(
      */
     private suspend fun <T> withAiRetry(
         attempts: Int = 3,
-        initialDelayMs: Long = 2000L,
+        initialDelayMs: Long = 800L,
         block: suspend () -> T
     ): T {
         var delayMs = initialDelayMs
@@ -558,27 +552,28 @@ class PlantRepositoryImpl(
                 val retryable = e.code() == 429 || e.code() in 500..599
                 if (!retryable || attempt == attempts - 1) throw e
             }
-            delay(delayMs + (0..500).random())
+            delay(delayMs + (0..300).random())
             delayMs *= 2
         }
         error("Reintentos de IA agotados")
     }
 
     /**
-     * Cadena de información:
-     *  1. La IA genera un prompt optimizado de investigación (contexto base).
-     *  2. La IA ejecuta UN prompt por categoría de cuidado, en paralelo, cada
-     *     uno con la ficha extendida + el prompt de investigación.
-     *  3. Con el texto de cada categoría, la IA genera su glosario contextual
-     *     (palabras difíciles + significado), también en paralelo.
-     *  4. Solo en categorías de cuidado, la IA lista materiales, productos y
-     *     alternativas viables (p. ej. forzado fuera de estación), en paralelo.
-     * Es "best-effort" por categoría: si algo falla, esa parte queda vacía
-     * pero lo demás se muestra igual.
+     * Cadena de información optimizada:
+     * Intenta primero la generación unificada en UNA sola llamada a Gemini (2-3s).
+     * Si falla, recurre en fallback a las llamadas paralelas individuales.
      */
     private suspend fun runInfoChain(species: SpeciesMatch): InfoChainResult = coroutineScope {
-        val refinedPrompt = generateRefinedPrompt(species)
         val ficha = buildPlantNetFicha(species)
+
+        // Intento 1: Generación unificada en UNA sola petición HTTP (2-3s)
+        val unifiedResult = generateUnifiedPlantInfo(species, ficha)
+        if (unifiedResult != null) {
+            return@coroutineScope unifiedResult
+        }
+
+        // Fallback: Cadena paralela por categorías
+        val refinedPrompt = generateRefinedPrompt(species)
         val texts = Constants.CATEGORY_ORDER.associateWith { category ->
             async { generateCategoryInfo(category, ficha, refinedPrompt) }
         }.mapValues { (_, job) -> job.await() }
@@ -608,6 +603,131 @@ class PlantRepositoryImpl(
             )
         }
         InfoChainResult(info, sections)
+    }
+
+    /**
+     * Genera la información agronómica completa (8 categorías, glosarios y materiales)
+     * en UNA sola llamada HTTP a Gemini para máxima velocidad (2-3 segundos total).
+     */
+    private suspend fun generateUnifiedPlantInfo(
+        species: SpeciesMatch,
+        ficha: String
+    ): InfoChainResult? {
+        val plantLabel = species.scientificName.ifBlank { species.commonName }.ifBlank { "planta" }
+        val prompt = """
+            Actúa como un botánico y agrónomo experto. Genera la guía técnica agronómica completa para la planta "$plantLabel" utilizando la siguiente ficha:
+
+            $ficha
+
+            Debes responder ÚNICAMENTE con un objeto JSON válido (sin marcas de código markdown) con la siguiente estructura exacta:
+            {
+              "description": "descripción extensa de la planta, tallos, hojas y flores (4 a 5 frases con datos concretos)",
+              "light": "requisitos de luz en horas al día, sol directo o sombra y tolerancia",
+              "watering": "frecuencia de riego por estación, cantidad y recomendaciones de drenaje",
+              "soil": "tipo de suelo ideal, pH, textura y mezcla de sustrato recomendada",
+              "climate": "temperaturas ideales en °C, resistencia a heladas y humedad ambiente",
+              "flowering": "época de floración, duración y cómo favorecerla",
+              "uses": "usos principales: ornamental, medicinal, comestible u otros",
+              "care": "cuidados generales de fertilización, poda y mantenimiento",
+              "terms": [
+                {"word": "palabra_tecnica1", "meaning": "significado sencillo en contexto"}
+              ],
+              "materials": [
+                {"name": "nombre del producto o herramienta", "detail": "detalle práctico de uso"}
+              ]
+            }
+        """.trimIndent()
+
+        return try {
+            val response = withAiRetry(attempts = 2, initialDelayMs = 500L) {
+                aiService.identifyPlant(
+                    url = Constants.identifyEndpointUrl(),
+                    authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
+                    request = buildTextRequest(prompt)
+                )
+            }
+            val content = response.choices.firstOrNull()?.message?.content ?: return null
+            parseUnifiedInfoDto(content)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseUnifiedInfoDto(rawContent: String): InfoChainResult? {
+        val jsonText = extractJsonObject(rawContent)
+        if (jsonText.isBlank()) return null
+        return try {
+            val root = json.parseToJsonElement(jsonText) as? JsonObject ?: return null
+
+            fun getString(key: String): String {
+                return (root[key] as? JsonPrimitive)?.contentOrNull?.cleanInfo().orEmpty()
+            }
+
+            val description = getString("description")
+            val light = getString("light")
+            val watering = getString("watering")
+            val soil = getString("soil")
+            val climate = getString("climate")
+            val flowering = getString("flowering")
+            val uses = getString("uses")
+            val care = getString("care")
+
+            if (description.isBlank() && light.isBlank() && watering.isBlank()) {
+                return null
+            }
+
+            val info = PlantInfoDto(
+                description = description,
+                light = light,
+                watering = watering,
+                soil = soil,
+                climate = climate,
+                flowering = flowering,
+                uses = uses,
+                care = care
+            )
+
+            val terms = ((root["terms"] ?: root["glossary"]) as? JsonArray)?.mapNotNull { el ->
+                val obj = el as? JsonObject ?: return@mapNotNull null
+                val w = (obj["word"] as? JsonPrimitive)?.contentOrNull?.cleanInfo().orEmpty()
+                val m = (obj["meaning"] as? JsonPrimitive)?.contentOrNull?.cleanInfo().orEmpty()
+                if (w.length >= 3 && m.isNotBlank()) WordMeaning(w, m) else null
+            }.orEmpty().take(8)
+
+            val materials = ((root["materials"] ?: root["items"]) as? JsonArray)?.mapNotNull { el ->
+                val obj = el as? JsonObject ?: return@mapNotNull null
+                val n = (obj["name"] as? JsonPrimitive)?.contentOrNull?.cleanInfo().orEmpty()
+                val d = (obj["detail"] as? JsonPrimitive)?.contentOrNull?.cleanInfo().orEmpty()
+                if (n.isNotBlank() && d.isNotBlank()) MaterialItem(n, d) else null
+            }.orEmpty().take(6)
+
+            val textsMap = mapOf(
+                "description" to description,
+                "light" to light,
+                "watering" to watering,
+                "soil" to soil,
+                "climate" to climate,
+                "flowering" to flowering,
+                "uses" to uses,
+                "care" to care
+            )
+
+            val sections = Constants.CATEGORY_ORDER.map { key ->
+                PlantSection(
+                    key = key,
+                    title = Constants.CATEGORY_TITLES[key].orEmpty(),
+                    body = textsMap[key].orEmpty(),
+                    terms = if (key == "description") terms else emptyList(),
+                    materials = if (key == "care" || key == "soil") materials else emptyList()
+                )
+            }
+
+            InfoChainResult(info, sections)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /** Resultado interno de la cadena: textos por categoría + secciones con glosario. */
