@@ -68,25 +68,25 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
     val state by model.state.collectAsState()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
-    var pendingUpload by remember { mutableStateOf(false) }
+    var pendingNetworkAction by remember { mutableStateOf<String?>(null) }
     val localNetworkPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        val shouldUpload = pendingUpload
-        pendingUpload = false
-        if (granted && shouldUpload) {
-            model.upload()
+        val action = pendingNetworkAction
+        pendingNetworkAction = null
+        if (granted && action != null) {
+            if (action == "analyze") model.analyze() else model.upload()
         } else {
-            if (shouldUpload) model.reportError("Se necesita permiso de red local para guardar las imágenes en el servidor de desarrollo.")
+            if (action != null) model.reportError("Se necesita permiso de red local para conectar con los servicios locales de desarrollo.")
         }
     }
-    fun uploadWithLocalNetworkPermission() {
+    fun runWithLocalNetworkPermission(action: String) {
         val permission = "android.permission.ACCESS_LOCAL_NETWORK"
         if (Build.VERSION.SDK_INT >= 37 &&
             ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED
         ) {
-            pendingUpload = true
+            pendingNetworkAction = action
             localNetworkPermission.launch(permission)
         } else {
-            model.upload()
+            if (action == "analyze") model.analyze() else model.upload()
         }
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> -> model.addUris(context, uris) }
@@ -156,12 +156,12 @@ private fun PlantPhotoScreen(model: PlantPhotoViewModel = viewModel()) {
                 }
             }
             item {
-                OutlinedButton(onClick = { model.analyze() }, enabled = state.photos.isNotEmpty() && !state.busy, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Text("Identificar y consultar cuidados")
+                OutlinedButton(onClick = { runWithLocalNetworkPermission("analyze") }, enabled = state.photos.isNotEmpty() && !state.busy, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text(if (state.analysis?.care == null && state.analysis != null) "Reintentar guía de cuidados" else "Identificar y consultar cuidados")
                 }
             }
             item {
-                Button(onClick = { uploadWithLocalNetworkPermission() }, enabled = state.photos.isNotEmpty() && !state.busy && !state.uploaded, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Button(onClick = { runWithLocalNetworkPermission("upload") }, enabled = state.photos.isNotEmpty() && !state.busy && !state.uploaded, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                     Text(if (state.uploaded) "Guardadas correctamente" else "Guardar imágenes")
                 }
             }
@@ -189,11 +189,15 @@ private fun AnalysisCard(analysis: PlantAnalysis) {
             }
             if (identification.alternatives.isNotEmpty()) AnalysisDetail("Otros candidatos", identification.alternatives.joinToString())
             Text("Cuidados · Space Bunny", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            AnalysisDetail("Riego", care.watering)
-            AnalysisDetail("Iluminación", care.lighting)
-            AnalysisDetail("Toxicidad para perros y gatos", care.petToxicity)
-            if (care.warnings.isNotBlank()) AnalysisDetail("Advertencias", care.warnings)
-            Text("Confirma la toxicidad con una fuente veterinaria fiable antes de permitir que una mascota consuma la planta.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (care == null) {
+                Text("La identificación está disponible. La guía de cuidados está pendiente; puedes reintentar la consulta.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                AnalysisDetail("Riego", care.watering)
+                AnalysisDetail("Iluminación", care.lighting)
+                AnalysisDetail("Toxicidad para perros y gatos", care.petToxicity)
+                if (care.warnings.isNotBlank()) AnalysisDetail("Advertencias", care.warnings)
+                Text("Confirma la toxicidad con una fuente veterinaria fiable antes de permitir que una mascota consuma la planta.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

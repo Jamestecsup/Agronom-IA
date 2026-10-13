@@ -14,8 +14,16 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - PHP valida otra vez conteo, tamaño, contenido detectado (`fileinfo`), dimensiones (`getimagesize`) y decodificación GD. El lote es atómico a nivel lógico: staging, transacción SQL, limpieza de archivos si falla.
 - Flujo de identificación directa en Android: Pl@ntNet recibe las fotos y devuelve especies candidatas; la app envía solo los nombres/datos botánicos a Space Bunny (`space-bunny-free`) para generar cuidados. Las imágenes nunca se envían a Space Bunny.
 - HTTP y endpoint sin autenticación se limitan al desarrollo local en red privada; preparar TLS y autenticación antes de exponer.
-- Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, solicita `ACCESS_LOCAL_NETWORK` únicamente al guardar por HTTP en el backend local. El análisis remoto usa permiso `INTERNET`.
-- Configuración directa para desarrollo: `PLANTNET_API_KEY` es obligatoria y `OPENCODE_API_KEY` opcional en `%USERPROFILE%\.gradle\gradle.properties`. Estas claves quedan en BuildConfig/APK y son extraíbles; para producción se requiere un backend intermediario.
+- Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, solicita `ACCESS_LOCAL_NETWORK` cuando se usa XAMPP o el servidor OpenCode del host. Pl@ntNet requiere permiso `INTERNET`.
+- Configuración directa de Pl@ntNet para desarrollo: `PLANTNET_API_KEY` en `%USERPROFILE%\.gradle\gradle.properties` (se compila en el APK y puede extraerse). Space Bunny Free se ejecuta mediante el servidor local de OpenCode CLI (`127.0.0.1:4096` en el equipo; `10.0.2.2` desde emulador); no requiere añadir su clave de API al APK. Para producción, trasladar Pl@ntNet a un backend intermediario.
+
+## Verificación de análisis IA (2026-10-13)
+
+- La llamada directa al endpoint de inferencia de OpenCode para Space Bunny Free devolvió HTTP 403 `FreeTierError`. Se sustituyó por el servidor local OpenCode CLI, enlazado solo a `127.0.0.1:4096`; desde Android Emulator se accede vía `10.0.2.2:4096`.
+- Flujo real probado en Pixel_8 AVD/API 37: imagen JPEG seleccionada y validada por la app; Pl@ntNet identificó `Hibiscus arnottianus`, familia Malvaceae, 40,2 % y alternativas. La app presentó la coincidencia como incierta y conservó las alternativas.
+- Space Bunny recibió exclusivamente texto y devolvió riego, iluminación, toxicidad y advertencias; la primera respuesta tenía JSON/carácteres mezclados y fue rechazada. Un reintento correctivo produjo una guía JSON válida que se mostró en la app.
+- Verificaciones: `:app:assembleDebug`, `:app:assembleRelease`, `:app:testDebugUnitTest` y `:app:connectedDebugAndroidTest` (10 pruebas instrumentadas, todas correctas).
+- Para volver a analizar, mantener `opencode serve --hostname 127.0.0.1 --port 4096` activo. Rotar las claves compartidas durante la configuración; Pl@ntNet se compila en el APK local.
 
 ## API y almacenamiento
 

@@ -54,7 +54,7 @@ class PlantAnalysisResponseParserTest {
     @Test
     fun spaceBunnyParsesStructuredGuide() {
         val result = SpaceBunnyResponseParser.parse(
-            """{"choices":[{"message":{"content":"{\"watering\":\"Riega cuando se seque la superficie.\",\"lighting\":\"Luz indirecta.\",\"pet_toxicity\":\"No confirmada.\",\"warnings\":\"La especie requiere verificación.\"}"}}]}"""
+            """{"parts":[{"type":"text","text":"{\"watering\":\"Riega cuando se seque la superficie.\",\"lighting\":\"Luz indirecta.\",\"pet_toxicity\":\"No confirmada.\",\"warnings\":\"La especie requiere verificación.\"}"}]}"""
         )
 
         assertEquals("Riega cuando se seque la superficie.", result.watering)
@@ -66,7 +66,14 @@ class PlantAnalysisResponseParserTest {
     @Test(expected = IllegalStateException::class)
     fun spaceBunnyRejectsIncompleteGuide() {
         SpaceBunnyResponseParser.parse(
-            """{"choices":[{"message":{"content":"{\"watering\":\"Riega.\"}"}}]}"""
+            """{"parts":[{"type":"text","text":"{\"watering\":\"Riega.\"}"}]}"""
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun spaceBunnyRejectsMixedScriptGarbage() {
+        SpaceBunnyResponseParser.parse(
+            """{"parts":[{"type":"text","text":"{\"watering\":\"Riega cuando se seque.\",\"lighting\":\"Luz brillante.\",\"pet_toxicity\":\"No verificada.\",\"warnings\":\"Confirma la especie. 因为这是测试\"}"}]}"""
         )
     }
 }

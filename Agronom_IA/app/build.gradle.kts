@@ -21,11 +21,12 @@ android {
         buildConfigField("String", "PLANT_API_BASE_URL", "\"$apiBaseUrl\"")
         val plantNetKey = providers.gradleProperty("PLANTNET_API_KEY")
             .orElse(providers.environmentVariable("PLANTNET_API_KEY")).getOrElse("")
-        val openCodeKey = providers.gradleProperty("OPENCODE_API_KEY")
-            .orElse(providers.environmentVariable("OPENCODE_API_KEY")).getOrElse("")
+        val openCodeBaseUrl = providers.gradleProperty("OPENCODE_SERVER_BASE_URL")
+            .orElse(providers.environmentVariable("OPENCODE_SERVER_BASE_URL"))
+            .getOrElse("http://10.0.2.2:4096")
         fun String.asBuildConfigString() = "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
         buildConfigField("String", "PLANTNET_API_KEY", plantNetKey.asBuildConfigString())
-        buildConfigField("String", "OPENCODE_API_KEY", openCodeKey.asBuildConfigString())
+        buildConfigField("String", "OPENCODE_SERVER_BASE_URL", openCodeBaseUrl.asBuildConfigString())
     }
 
     buildTypes {

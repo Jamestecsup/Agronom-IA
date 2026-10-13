@@ -135,14 +135,20 @@ class PlantPhotoViewModel : ViewModel() {
         }
         if (mutableState.value.busy) return
         viewModelScope.launch {
-            mutableState.value = mutableState.value.copy(busy = true, progress = "Preparando identificación…", error = null, analysis = null)
+            mutableState.value = mutableState.value.copy(busy = true, progress = "Preparando identificación…", error = null)
             try {
-                val result = withContext(Dispatchers.IO) {
-                    PlantAnalysisApi.analyze(photos.map { it.file }) { stage ->
+                val identification = mutableState.value.analysis?.identification ?: withContext(Dispatchers.IO) {
+                    PlantAnalysisApi.identify(photos.map { it.file }) { stage ->
                         mutableState.value = mutableState.value.copy(progress = stage)
                     }
                 }
-                mutableState.value = mutableState.value.copy(busy = false, progress = null, analysis = result)
+                mutableState.value = mutableState.value.copy(analysis = PlantAnalysis(identification))
+                val care = withContext(Dispatchers.IO) {
+                    PlantAnalysisApi.generateCare(identification) { stage ->
+                        mutableState.value = mutableState.value.copy(progress = stage)
+                    }
+                }
+                mutableState.value = mutableState.value.copy(busy = false, progress = null, analysis = PlantAnalysis(identification, care))
             } catch (e: Exception) {
                 val message = when (e) {
                     is UnknownHostException, is ConnectException -> "No hay conexión con Pl@ntNet o Space Bunny. Comprueba Internet e inténtalo de nuevo."
