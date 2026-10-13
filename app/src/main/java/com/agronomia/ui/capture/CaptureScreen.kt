@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -211,9 +212,157 @@ fun CaptureScreen(
         topBar = {
             AgronomIaTopBar()
         },
-        bottomBar = {
-            // Barra de israel: solo Escáner existe (nuestras 2 rutas); el resto
-            // avisa por Toast sin cambiar la navegación (mismo backend).
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = modifier
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = innerPadding.calculateTopPadding())
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.Top,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Foto ampliada a pantalla completa al tocarla.
+                var expandedImage by remember { mutableStateOf<Uri?>(null) }
+
+                // Vista previa con Coil: la primera foto en grande + tarjetas por foto.
+                val firstUri = imageUris.firstOrNull()
+                if (firstUri != null) {
+                    AsyncImage(
+                        model = firstUri,
+                        contentDescription = "Foto seleccionada de la planta (toca para ampliar)",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(260.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { expandedImage = firstUri }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Foto 1 de ${imageUris.size} (máx. ${ImageUtils.MAX_IMAGES}). " +
+                            "Ideal: flor, hoja y tallo.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "¿Qué es cada foto? Elige su órgano para identificar mejor.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    imageUris.forEachIndexed { index, uri ->
+                        PhotoOrganCard(
+                            index = index,
+                            uri = uri,
+                            organ = organs[uri.toString()] ?: "auto",
+                            onOrganChange = { viewModel.setOrgan(uri, it) },
+                            onRemove = { viewModel.removeImage(uri) }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Sin fotos. Usa Galería o Cámara " +
+                                    "(hasta ${ImageUtils.MAX_IMAGES}: flor, hoja y tallo).",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            galleryLauncher.launch(
+                                PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Galería")
+                    }
+                    OutlinedButton(
+                        onClick = ::launchCamera,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cámara")
+                    }
+                }
+
+                if (imageUris.isNotEmpty()) {
+                    TextButton(onClick = viewModel::clearImages) {
+                        Text("Quitar todas")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        // Lanza el procesado + envío en el ViewModel y navega al resultado.
+                        viewModel.identifyCurrentImage()
+                        onNavigateToResult()
+                    },
+                    enabled = imageUris.isNotEmpty() && uiState !is IdentificationUiState.Loading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (uiState is IdentificationUiState.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                    }
+                    Text(if (imageUris.size > 1) "Identificar (${imageUris.size} fotos)" else "Identificar")
+                }
+
+                expandedImage?.let { uri ->
+                    FullscreenImageDialog(
+                        image = uri,
+                        contentDescription = "Foto ampliada",
+                        onDismiss = { expandedImage = null }
+                    )
+                }
+
+                // Espacio inferior para que el último elemento pueda scrollear totalmente
+                // sobre la píldora flotante sin quedar bloqueado al final.
+                Spacer(modifier = Modifier.height(100.dp))
+            }
+
+            // Barra flotante superpuesta
             AgronomIaBottomBar(
                 selectedIndex = selectedNavIndex,
                 onItemSelected = { index ->
@@ -227,147 +376,9 @@ fun CaptureScreen(
                         }
                         Toast.makeText(context, "Sección: $sectionName", Toast.LENGTH_SHORT).show()
                     }
-                }
-            )
-        },
-        modifier = modifier
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Top,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Foto ampliada a pantalla completa al tocarla.
-            var expandedImage by remember { mutableStateOf<Uri?>(null) }
-
-            // Vista previa con Coil: la primera foto en grande + tarjetas por foto.
-            val firstUri = imageUris.firstOrNull()
-            if (firstUri != null) {
-                AsyncImage(
-                    model = firstUri,
-                    contentDescription = "Foto seleccionada de la planta (toca para ampliar)",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(260.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { expandedImage = firstUri }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Foto 1 de ${imageUris.size} (máx. ${ImageUtils.MAX_IMAGES}). " +
-                        "Ideal: flor, hoja y tallo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "¿Qué es cada foto? Elige su órgano para identificar mejor.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                imageUris.forEachIndexed { index, uri ->
-                    PhotoOrganCard(
-                        index = index,
-                        uri = uri,
-                        organ = organs[uri.toString()] ?: "auto",
-                        onOrganChange = { viewModel.setOrgan(uri, it) },
-                        onRemove = { viewModel.removeImage(uri) }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(320.dp)
-                        .clip(RoundedCornerShape(16.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Sin fotos. Usa Galería o Cámara " +
-                                "(hasta ${ImageUtils.MAX_IMAGES}: flor, hoja y tallo).",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        galleryLauncher.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly
-                            )
-                        )
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Galería")
-                }
-                OutlinedButton(
-                    onClick = ::launchCamera,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Cámara")
-                }
-            }
-
-            if (imageUris.isNotEmpty()) {
-                TextButton(onClick = viewModel::clearImages) {
-                    Text("Quitar todas")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    // Lanza el procesado + envío en el ViewModel y navega al resultado.
-                    viewModel.identifyCurrentImage()
-                    onNavigateToResult()
                 },
-                enabled = imageUris.isNotEmpty() && uiState !is IdentificationUiState.Loading,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (uiState is IdentificationUiState.Loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                }
-                Text(if (imageUris.size > 1) "Identificar (${imageUris.size} fotos)" else "Identificar")
-            }
-
-            expandedImage?.let { uri ->
-                FullscreenImageDialog(
-                    image = uri,
-                    contentDescription = "Foto ampliada",
-                    onDismiss = { expandedImage = null }
-                )
-            }
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }
