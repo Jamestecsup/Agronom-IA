@@ -97,14 +97,10 @@ sealed interface AnalysisResult {
 }
 
 class PlantRepositoryImpl(
-    private val json: Json = NetworkModule.json
+    private val json: Json = NetworkModule.json,
+    private val aiService: PlantApiService = NetworkModule.plantApiService,
+    private val plantNetService: PlantNetApiService = NetworkModule.plantNetApiService
 ) : PlantRepository {
-
-    // Resolución perezosa: si la URL no está configurada preferimos devolver un
-    // error legible en [identifyPlant] en lugar de lanzar al construir la clase.
-    // Es genérico OpenAI-compatible: sirve para Gemini, Qwen 3.6 local, etc.
-    private val aiService: PlantApiService by lazy { NetworkModule.plantApiService }
-    private val plantNetService: PlantNetApiService by lazy { NetworkModule.plantNetApiService }
 
     override suspend fun analyze(images: List<ByteArray>, organs: List<String>): AnalysisResult =
         withContext(Dispatchers.IO) {
