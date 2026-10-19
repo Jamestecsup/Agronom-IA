@@ -125,6 +125,32 @@ Para ejecutar en desarrollo: `npm install` y `npm run dev` en `Agronom_IA/fronte
 
 Ver también [[Agronom_IA/frontend-web/README]] y [[Agronom_IA/backend-spring/README]].
 
+## Análisis de imágenes en el chat web (2026-10-19)
+
+Esta sección actualiza el estado del chat web descrito arriba. El alcance se limita a `frontend-web` y al módulo de chat de `backend-spring`; no se modificó el cliente Android, la API de imágenes existente ni MySQL.
+
+### Entrada, validación y persistencia local
+
+- El usuario puede elegir archivos, arrastrarlos a la ventana del chat o pegarlos con Ctrl/Cmd + V. El pegado normal de texto se conserva; si vienen texto e imagen en el mismo evento, se insertan ambos.
+- Un validador común inspecciona firma binaria, MIME declarado cuando es de tipo imagen, decodificación y dimensiones antes de preparar un JPEG de miniatura de 320 px. En UI y backend se limitan cinco imágenes por mensaje (política de lotes existente), 15 MiB por imagen (límite existente en el backend), 50 MiB total en el contexto enviado (derivado del máximo HTTP 80 MB y el aumento aproximado de Base64 4/3) y dimensiones entre 16 y 4096 px. Se admiten JPEG, PNG, WebP y GIF; HEIF/HEIC y SVG no se admiten en este flujo.
+- Las miniaturas preservan la vista del historial en localStorage. Los originales se guardan en IndexedDB del navegador, se reenvían como imágenes reales en turnos posteriores y se limpian cuando se borra la conversación. El almacenamiento es local al navegador; no usa MySQL ni una ruta del PC.
+- Los bytes viajan como Base64 en el JSON privado entre navegador y Spring, luego como data URL según los contratos del proveedor. No se guardan de forma permanente en el backend ni se imprimen en logs.
+
+### Compatibilidad de proveedores
+
+`GET /api/ai/models` ahora incluye `supportsImages` e información de incompatibilidad. DeepSeek se habilita solo si OpenCode anuncia `capabilities.input.image`; Qwen solo si Open WebUI anuncia `info.meta.capabilities.vision`. En la configuración local revisada ambos valores eran `true`. DeepSeek recibe partes `file` con URL `data:` por `prompt_async`; Qwen recibe el formato OpenAI-compatible `content` con bloques `image_url`. El texto y el historial siguen pasando por el mismo endpoint SSE y al proveedor elegido por la conversación. Un modelo sin la capacidad declarada conserva el chat de texto y deshabilita adjuntos.
+
+### Comprobaciones realizadas
+
+- `mvn test`: 25 pruebas pasan, incluyendo validación de bytes, MIME falseado, corrupción, límites y contrato de Open WebUI.
+- `npm test -- --run`: suite de Vitest pasa con detección de firmas, rechazo MIME falso/archivo vacío y petición con datos reales de imagen.
+- `npm run build`: TypeScript y Vite construyen el cliente.
+- Con Spring en perfil de pruebas y los servicios locales activos, `GET /api/ai/models` anunció DeepSeek y Qwen disponibles con imágenes. Una misma imagen sintética con una maceta azul se envió a cada proveedor por Spring; ambos contestaron “Azul” mediante SSE (HTTP 200). Esto confirma la transmisión visual de esa prueba, no la certeza de identificaciones de plantas en general.
+- La interfaz se abrió en navegador local y se inspeccionó el árbol accesible: saludo Qwen, selector, botón de adjuntar y estados estaban presentes. No se automatizaron las acciones de file chooser del SO, arrastrar ni pegar en navegador; se verificaron por compilación y revisión de código, no por prueba UI automatizada.
+- Al borrar un chat se borran también sus originales de IndexedDB. No se modificó ninguna tabla ni se persistieron imágenes en el servidor.
+
+Detalle de contratos y límites: [[Agronom_IA/backend-spring/README]].
+
 ## Sustitución de Space Bunny por DeepSeek (2026-10-19)
 
 Este apartado refleja el estado vigente y prevalece sobre los registros históricos de Space Bunny Free que aparecen en las secciones anteriores.

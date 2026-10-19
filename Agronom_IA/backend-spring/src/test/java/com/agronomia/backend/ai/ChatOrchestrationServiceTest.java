@@ -110,7 +110,7 @@ class ChatOrchestrationServiceTest {
 
     private ChatOrchestrationService service(FakeProvider deepSeek, FakeProvider qwen) throws Exception {
         BotanyInstructions instructions = new BotanyInstructions(new DefaultResourceLoader());
-        return new ChatOrchestrationService(List.of(deepSeek, qwen), instructions, properties);
+        return new ChatOrchestrationService(List.of(deepSeek, qwen), instructions, properties, new ChatImageValidator());
     }
 
     private static final class FakeProvider implements ChatProvider {

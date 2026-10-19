@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('AI chat API client', () => {
   it('reads only the public model catalog and uses the local backend', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ models: [
-      { id: 'qwen-local', name: 'Qwen', provider: 'Open WebUI', modelId: 'local-id', available: true, unavailableReason: null, welcomeMessage: 'Hola' },
+      { id: 'qwen-local', name: 'Qwen', provider: 'Open WebUI', modelId: 'local-id', available: true, unavailableReason: null, welcomeMessage: 'Hola', supportsImages: true, imageUnavailableReason: null },
     ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -36,6 +36,26 @@ describe('AI chat API client', () => {
     expect(chunks.join('')).toBe('Hola mundo')
     const request = fetchMock.mock.calls[0][1] as RequestInit
     expect(JSON.parse(String(request.body))).toMatchObject({ providerId: 'qwen-local', messages: [{ role: 'user' }] })
+  })
+
+  it('includes real image bytes and text in the selected model request', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('event: delta\ndata: {"text":"Veo una hoja"}\n\nevent: done\ndata: {"providerId":"qwen-local"}\n\n'))
+        controller.close()
+      },
+    })
+    const fetchMock = vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await streamChat('qwen-local', [{ role: 'user', content: 'Describe la hoja', images: [{
+      fileName: 'leaf.png', mimeType: 'image/png', data: 'iVBORw0KGgo=',
+    }] }], new AbortController().signal, () => undefined)
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      providerId: 'qwen-local', messages: [{ content: 'Describe la hoja', images: [{ fileName: 'leaf.png', mimeType: 'image/png', data: 'iVBORw0KGgo=' }] }],
+    })
   })
 
   it('surfaces a structured backend/provider error instead of success', async () => {

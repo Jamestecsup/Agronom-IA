@@ -14,14 +14,16 @@ public class ChatOrchestrationService {
     private final Map<String, ChatProvider> providers;
     private final BotanyInstructions instructions;
     private final AiProviderProperties properties;
+    private final ChatImageValidator imageValidator;
 
     public ChatOrchestrationService(List<ChatProvider> providers, BotanyInstructions instructions,
-                                    AiProviderProperties properties) {
+                                    AiProviderProperties properties, ChatImageValidator imageValidator) {
         Map<String, ChatProvider> byId = new ConcurrentHashMap<>();
         providers.forEach(provider -> byId.put(provider.id(), provider));
         this.providers = Map.copyOf(byId);
         this.instructions = instructions;
         this.properties = properties;
+        this.imageValidator = imageValidator;
     }
 
     public List<ChatContracts.ModelOption> availableModels() {
@@ -38,14 +40,24 @@ public class ChatOrchestrationService {
         if (request.messages().size() > properties.getChat().getMaxMessages())
             return "La conversación excede el límite de mensajes por solicitud.";
         long total = 0;
+        long imageBytes = 0;
         for (ChatContracts.ChatMessage message : request.messages()) {
             if (message == null || message.role() == null || !(message.role().equals("user") || message.role().equals("assistant")))
                 return "Cada mensaje debe tener rol user o assistant.";
-            if (message.content() == null || message.content().isBlank()) return "Los mensajes no pueden estar vacíos.";
-            if (message.content().length() > properties.getChat().getMaxMessageCharacters())
+            boolean hasImages = message.images() != null && !message.images().isEmpty();
+            if ((message.content() == null || message.content().isBlank()) && !hasImages) return "Los mensajes no pueden estar vacíos.";
+            if (message.content() != null && message.content().length() > properties.getChat().getMaxMessageCharacters())
                 return "Un mensaje excede el máximo permitido de caracteres.";
-            total += message.content().length();
+            String imageError = imageValidator.validate(message);
+            if (imageError != null) return imageError;
+            if (hasImages) {
+                ChatProvider provider = providers.get(request.providerId());
+                if (!provider.availability().supportsImages()) return "El modelo seleccionado no admite análisis de imágenes.";
+                for (ChatContracts.ChatImage image : message.images()) imageBytes += image.data().length;
+            }
+            total += message.content() == null ? 0 : message.content().length();
         }
+        if (imageBytes > ChatImageValidator.MAX_TOTAL_BYTES) return "Las imágenes superan el límite conjunto de 50 MiB.";
         if (total > properties.getChat().getMaxMessageCharacters() * 4L)
             return "El contexto de conversación es demasiado extenso. Inicia una conversación nueva.";
         return null;

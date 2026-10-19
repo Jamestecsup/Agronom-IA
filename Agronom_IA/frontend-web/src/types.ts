@@ -1,5 +1,13 @@
 export type Role = 'user' | 'assistant'
 
+export interface ImagePreview {
+  id: string
+  fileName: string
+  mimeType: string
+  size: number
+  previewUrl: string
+}
+
 export interface ChatMessage {
   id: string
   role: Role
@@ -7,6 +15,7 @@ export interface ChatMessage {
   modelId?: string
   createdAt: number
   error?: boolean
+  images?: ImagePreview[]
 }
 
 export interface Conversation {
@@ -25,4 +34,6 @@ export interface ModelOption {
   available: boolean
   unavailableReason: string | null
   welcomeMessage: string
+  supportsImages: boolean
+  imageUnavailableReason: string | null
 }

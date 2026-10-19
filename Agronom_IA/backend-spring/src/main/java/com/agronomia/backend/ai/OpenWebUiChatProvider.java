@@ -33,7 +33,7 @@ public class OpenWebUiChatProvider implements ChatProvider {
     @Override
     public ChatContracts.ModelOption modelOption() {
         return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(),
-                false, "Comprueba la conexión con Open WebUI.", "¡Hola! Soy Qwen, tu asistente de inteligencia artificial local. Puedo ayudarte a responder preguntas, desarrollar ideas, analizar información y resolver problemas. ¿En qué te gustaría que trabajemos hoy?");
+                false, "Comprueba la conexión con Open WebUI.", welcome(), false, "Open WebUI no confirmó la capacidad de visión del modelo.");
     }
 
     @Override
@@ -45,9 +45,11 @@ public class OpenWebUiChatProvider implements ChatProvider {
             JsonNode data = models.path("data");
             if (!data.isArray()) return unavailable("Open WebUI devolvió una lista de modelos no válida.");
             for (JsonNode model : data) {
-                if (config.getModel().equals(model.path("id").asText()))
+                if (config.getModel().equals(model.path("id").asText())) {
+                    boolean vision = model.path("info").path("meta").path("capabilities").path("vision").asBoolean(false);
                     return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(), true, null,
-                            "¡Hola! Soy Qwen, tu asistente de inteligencia artificial local. Puedo ayudarte a responder preguntas, desarrollar ideas, analizar información y resolver problemas. ¿En qué te gustaría que trabajemos hoy?");
+                            welcome(), vision, vision ? null : "La instancia de Open WebUI no declara vision=true para este modelo.");
+                }
             }
             return unavailable("El modelo configurado no aparece en Open WebUI.");
         } catch (ChatProviderException error) {
@@ -60,9 +62,22 @@ public class OpenWebUiChatProvider implements ChatProvider {
                        Consumer<String> onDelta, ChatCancellation cancellation) {
         if (config.getApiKey() == null || config.getApiKey().isBlank())
             throw new ChatProviderException(HttpStatus.SERVICE_UNAVAILABLE, "Open WebUI no está configurado en el backend.");
-        List<Map<String, String>> context = new ArrayList<>();
+        List<Map<String, Object>> context = new ArrayList<>();
         context.add(Map.of("role", "system", "content", systemPrompt));
-        messages.forEach(message -> context.add(Map.of("role", message.role(), "content", message.content())));
+        messages.forEach(message -> {
+            if (message.images() == null || message.images().isEmpty()) {
+                context.add(Map.of("role", message.role(), "content", message.content() == null ? "" : message.content()));
+            } else {
+                List<Object> parts = new ArrayList<>();
+                if (message.content() != null && !message.content().isBlank())
+                    parts.add(Map.of("type", "text", "text", message.content()));
+                for (ChatContracts.ChatImage image : message.images()) {
+                    String encoded = java.util.Base64.getEncoder().encodeToString(image.data());
+                    parts.add(Map.of("type", "image_url", "image_url", Map.of("url", "data:" + image.mimeType() + ";base64," + encoded)));
+                }
+                context.add(Map.of("role", message.role(), "content", parts));
+            }
+        });
         Map<String, Object> payload = Map.of("model", config.getModel(), "messages", context, "stream", true);
         final String body;
         try { body = ProviderHttp.JSON.writeValueAsString(payload); }
@@ -132,8 +147,10 @@ public class OpenWebUiChatProvider implements ChatProvider {
 
     private ChatContracts.ModelOption unavailable(String reason) {
         return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(), false, reason,
-                "¡Hola! Soy Qwen, tu asistente de inteligencia artificial local. Puedo ayudarte a responder preguntas, desarrollar ideas, analizar información y resolver problemas. ¿En qué te gustaría que trabajemos hoy?");
+                welcome(), false, "La instancia de Open WebUI no confirmó la capacidad de visión del modelo.");
     }
+
+    private String welcome() { return "¡Hola! Soy Qwen, tu asistente de inteligencia artificial local. Puedo ayudarte a responder preguntas, desarrollar ideas, analizar información y resolver problemas. ¿En qué te gustaría que trabajemos hoy?"; }
 
     private String base() { return config.getBaseUrl().replaceAll("/+$", ""); }
     private String bearer() { return "Bearer " + config.getApiKey(); }

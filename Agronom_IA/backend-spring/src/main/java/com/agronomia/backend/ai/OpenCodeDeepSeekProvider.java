@@ -37,7 +37,7 @@ public class OpenCodeDeepSeekProvider implements ChatProvider {
     @Override
     public ChatContracts.ModelOption modelOption() {
         return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), false,
-                "Comprueba el servidor OpenCode local.", WELCOME_MESSAGE);
+                "Comprueba el servidor OpenCode local.", WELCOME_MESSAGE, false, "OpenCode no confirmó entrada de imágenes para este modelo.");
     }
 
     @Override
@@ -50,14 +50,16 @@ public class OpenCodeDeepSeekProvider implements ChatProvider {
             for (JsonNode provider : providers.path("connected"))
                 if (config.getProviderId().equals(provider.asText())) connected = true;
             JsonNode all = providers.path("all");
-            boolean modelFound = false;
+            JsonNode model = null;
             if (all.isArray()) for (JsonNode provider : all) {
                 if (config.getProviderId().equals(provider.path("id").asText()) && provider.path("models").has(config.getModelId()))
-                    modelFound = true;
+                    model = provider.path("models").path(config.getModelId());
             }
             if (!connected) return unavailable("OpenCode no tiene conectado el proveedor configurado.");
-            if (!modelFound) return unavailable("El modelo DeepSeek configurado no aparece en los modelos disponibles de OpenCode.");
-            return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), true, null, WELCOME_MESSAGE);
+            if (model == null) return unavailable("El modelo DeepSeek configurado no aparece en los modelos disponibles de OpenCode.");
+            boolean vision = model.path("capabilities").path("input").path("image").asBoolean(false);
+            return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), true, null, WELCOME_MESSAGE,
+                    vision, vision ? null : "OpenCode no declara entrada de imágenes para el modelo configurado.");
         } catch (ChatProviderException error) {
             return unavailable("Inicia opencode serve en el equipo del backend para habilitar DeepSeek.");
         }
@@ -151,8 +153,17 @@ public class OpenCodeDeepSeekProvider implements ChatProvider {
         String content = context.toString();
         if (content.length() > limits.getMaxMessageCharacters() * 4L)
             throw new ChatProviderException(HttpStatus.BAD_REQUEST, "El contexto de conversación es demasiado extenso.");
+        List<Map<String, String>> parts = new java.util.ArrayList<>();
+        parts.add(Map.of("type", "text", "text", content));
+        for (ChatContracts.ChatMessage message : messages) {
+            if (message.images() == null) continue;
+            for (ChatContracts.ChatImage image : message.images()) {
+                String dataUrl = "data:" + image.mimeType() + ";base64," + java.util.Base64.getEncoder().encodeToString(image.data());
+                parts.add(Map.of("type", "file", "mime", image.mimeType(), "filename", image.fileName(), "url", dataUrl));
+            }
+        }
         return Map.of("model", Map.of("providerID", config.getProviderId(), "modelID", config.getModelId()),
-                "system", systemPrompt, "tools", Map.of(), "parts", List.of(Map.of("type", "text", "text", content)));
+                "system", systemPrompt, "tools", Map.of(), "parts", parts);
     }
 
     private JsonNode post(String path, Object payload, Duration timeout) {
@@ -208,7 +219,8 @@ public class OpenCodeDeepSeekProvider implements ChatProvider {
     }
 
     private ChatContracts.ModelOption unavailable(String reason) {
-        return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), false, reason, WELCOME_MESSAGE);
+        return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), false, reason, WELCOME_MESSAGE,
+                false, "OpenCode no confirmó entrada de imágenes para el modelo configurado.");
     }
     static JsonNode unwrapEvent(JsonNode envelope) {
         return envelope.path("payload").isObject() ? envelope.path("payload") : envelope;

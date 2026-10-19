@@ -157,6 +157,10 @@ button:disabled { cursor: not-allowed; }
 .message-user .message-meta time { margin-left: 0; }
 .message-content { color: var(--text); font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
 .message-user .message-content { padding: 11px 15px; border: 1px solid var(--line); border-radius: 15px 15px 4px 15px; background: var(--surface); }
+.message-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.message-image { width: min(190px, 42vw); margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.message-image img { display: block; width: 100%; max-height: 180px; aspect-ratio: 4 / 3; object-fit: cover; }
+.message-image figcaption { overflow: hidden; padding: 5px 7px; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .message-content > :first-child { margin-top: 0; }
 .message-content > :last-child { margin-bottom: 0; }
 .message-content h1, .message-content h2, .message-content h3 { margin: 1.2em 0 .5em; color: var(--text); font-size: 1.08em; line-height: 1.4; }
@@ -187,6 +191,11 @@ button:disabled { cursor: not-allowed; }
 
 .composer-area { position: relative; z-index: 2; width: min(100% - 48px, 820px); margin: 0 auto; padding: 12px 0 13px; background: var(--page); }
 .composer { padding: 12px 12px 8px 16px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--surface); box-shadow: 0 5px 20px rgba(34, 51, 42, .045); transition: border-color 150ms ease, box-shadow 150ms ease; }
+.attachment-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 2px 10px; }
+.attachment-card { position: relative; width: 76px; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+.attachment-card img { display: block; width: 76px; height: 62px; object-fit: cover; }
+.attachment-card figcaption { overflow: hidden; padding: 4px 5px; color: var(--text-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-card button { position: absolute; top: 4px; right: 4px; display: grid; width: 25px; height: 25px; place-items: center; border: 1px solid rgba(255,255,255,.8); border-radius: 50%; color: #26342b; background: rgba(255,255,255,.92); cursor: pointer; }
 .composer:focus-within { border-color: color-mix(in srgb, var(--primary) 70%, var(--line-strong)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent), 0 5px 20px rgba(34, 51, 42, .045); }
 .composer-generating { border-color: var(--primary); }
 .composer textarea { display: block; width: 100%; max-height: 220px; min-height: 34px; resize: none; overflow-y: auto; padding: 5px 2px 8px; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 14px; line-height: 1.55; }
@@ -196,6 +205,16 @@ button:disabled { cursor: not-allowed; }
 .composer-bottom { display: flex; align-items: center; justify-content: space-between; min-height: 34px; gap: 10px; }
 .composer-bottom > span { color: var(--text-faint); font-size: 9px; }
 .composer-controls { display: flex; align-items: center; gap: 12px; }
+.attach-button { display: grid; flex: 0 0 36px; width: 36px; height: 36px; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: var(--primary); background: var(--surface); cursor: pointer; }
+.attach-button:hover:not(:disabled) { border-color: var(--primary); background: var(--primary-soft); }
+.attach-button:disabled { color: var(--text-faint); opacity: .55; }
+.attachment-help { margin: 6px 4px 0; color: var(--text-faint); font-size: 10px; text-align: left; }
+.attachment-help + .attachment-help { margin-top: 2px; text-align: right; }
+.drop-overlay { position: absolute; z-index: 8; inset: 86px 18px 116px; display: grid; place-items: center; border: 2px dashed var(--primary); border-radius: 20px; color: var(--primary-ink); background: color-mix(in srgb, var(--primary-soft) 88%, transparent); pointer-events: none; }
+.drop-overlay > div { display: grid; justify-items: center; gap: 10px; padding: 20px; text-align: center; }
+.drop-overlay strong { font-size: 16px; }
+.drop-overlay span { color: var(--text-muted); font-size: 12px; }
+.drop-overlay-invalid { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger-soft) 90%, transparent); }
 .generating-label { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 10px; }
 .mini-spinner { width: 12px; height: 12px; border: 1.5px solid var(--line-strong); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
 .send-button { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 10px; color: #fff; background: var(--primary); cursor: pointer; transition: background 150ms ease, opacity 150ms ease, transform 150ms ease; }
@@ -208,6 +227,7 @@ button:disabled { cursor: not-allowed; }
 .composer-hint, .composer-error, .status-notice { margin: 0 4px 8px; color: var(--text-muted); font-size: 11px; }
 .composer-error { color: var(--danger); }
 .status-notice { color: var(--primary); text-align: center; }
+.thread:has(.drop-overlay) { outline: 2px dashed var(--primary); outline-offset: -8px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .mobile-scrim { display: none; }

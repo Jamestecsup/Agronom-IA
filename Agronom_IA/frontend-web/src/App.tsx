@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown, ArrowUp, ChevronDown, Leaf, Menu, MessageSquare, MessageSquarePlus,
-  Moon, PanelLeftClose, PanelLeftOpen, RefreshCw, Search,
+  Moon, PanelLeftClose, PanelLeftOpen, Paperclip, RefreshCw, Search,
   Send, Sprout, Sun, Trash2, X,
 } from 'lucide-react'
-import { loadModels, streamChat } from './api'
+import { loadModels, streamChat, type ChatRequestMessage } from './api'
+import { fileToBase64, MAX_IMAGE_COUNT, MAX_IMAGE_BYTES, MAX_TOTAL_IMAGE_BYTES, prepareImage, type ValidatedImage } from './imageAttachments'
+import { deleteConversationImages, loadImageAttachments, saveImageAttachments } from './imageStore'
 import type { ChatMessage, Conversation, ModelOption } from './types'
 
 const Markdown = lazy(() => import('./Markdown'))
@@ -65,6 +67,10 @@ export default function App() {
   const [mobileSidebar, setMobileSidebar] = useState(false)
   const [search, setSearch] = useState('')
   const [draft, setDraft] = useState('')
+  const [attachments, setAttachments] = useState<ValidatedImage[]>([])
+  const [isDragActive, setIsDragActive] = useState(false)
+  const [isDragInvalid, setIsDragInvalid] = useState(false)
+  const [isPreparingImages, setIsPreparingImages] = useState(false)
   const [models, setModels] = useState<ModelOption[]>([])
   const [modelsLoading, setModelsLoading] = useState(true)
   const [modelsError, setModelsError] = useState('')
@@ -73,6 +79,11 @@ export default function App() {
   const [notice, setNotice] = useState('')
   const threadRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const attachmentsRef = useRef<ValidatedImage[]>([])
+  const preparingImagesRef = useRef(false)
+  const attachedFilesRef = useRef(new Map<string, Map<string, File>>())
+  const dragDepthRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const scrollPinnedRef = useRef(true)
 
@@ -115,6 +126,95 @@ export default function App() {
     return () => window.clearTimeout(timeout)
   }, [notice])
   useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(() => () => { attachedFilesRef.current.clear() }, [])
+
+  const addImageFiles = useCallback(async (files: File[]) => {
+    if (!files.length) return
+    if (preparingImagesRef.current) {
+      setNotice('Espera a que termine la validación actual antes de adjuntar más imágenes.')
+      return
+    }
+    if (!selectedModel?.supportsImages) {
+      setNotice(selectedModel?.imageUnavailableReason ?? 'El modelo seleccionado no admite análisis de imágenes.')
+      return
+    }
+    const unique = files.filter((file) => !attachmentsRef.current.some((item) =>
+      item.fileName === file.name && item.size === file.size && item.file.lastModified === file.lastModified))
+    const availableSlots = MAX_IMAGE_COUNT - attachmentsRef.current.length
+    if (unique.length > availableSlots) {
+      setNotice(`Puedes adjuntar hasta ${MAX_IMAGE_COUNT} imágenes por mensaje.`)
+      unique.splice(availableSlots)
+    }
+    let total = attachmentsRef.current.reduce((sum, item) => sum + item.size, 0)
+    const prepared: ValidatedImage[] = []
+    preparingImagesRef.current = true
+    setIsPreparingImages(true)
+    try {
+      for (const file of unique) {
+        if (file.size > MAX_IMAGE_BYTES) {
+          setNotice(`${file.name || 'La imagen'} supera el límite de 15 MiB.`)
+          continue
+        }
+        if (total + file.size > MAX_TOTAL_IMAGE_BYTES) {
+          setNotice('Las imágenes superan el límite conjunto de 50 MiB.')
+          continue
+        }
+        try {
+          const image = await prepareImage(file)
+          prepared.push(image)
+          total += image.size
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : 'No se pudo validar una imagen.')
+        }
+      }
+      if (prepared.length) {
+        const next = [...attachmentsRef.current, ...prepared]
+        attachmentsRef.current = next
+        setAttachments(next)
+      }
+    } finally {
+      preparingImagesRef.current = false
+      setIsPreparingImages(false)
+    }
+  }, [selectedModel])
+
+  const removeAttachment = (attachmentId: string) => {
+    const next = attachmentsRef.current.filter((image) => image.id !== attachmentId)
+    attachmentsRef.current = next
+    setAttachments(next)
+  }
+
+  const onPasteImages = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile()).filter((file): file is File => file !== null)
+    if (!images.length) return
+    event.preventDefault()
+    const pastedText = event.clipboardData.getData('text/plain')
+    if (pastedText) {
+      const textarea = event.currentTarget
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      setDraft((value) => value.slice(0, start) + pastedText + value.slice(end))
+      requestAnimationFrame(() => textarea.setSelectionRange(start + pastedText.length, start + pastedText.length))
+    }
+    void addImageFiles(images)
+  }
+
+  const hasDraggedFiles = (event: React.DragEvent<HTMLElement>) => Array.from(event.dataTransfer.types).includes('Files')
+  const dragContainsUnsupportedType = (event: React.DragEvent<HTMLElement>) => {
+    const accepted = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    return !selectedModel?.supportsImages || Array.from(event.dataTransfer.items)
+      .some((item) => item.kind === 'file' && item.type && !accepted.includes(item.type))
+  }
+  const onFilesDrop = (event: React.DragEvent<HTMLElement>) => {
+    if (!hasDraggedFiles(event)) return
+    event.preventDefault()
+    dragDepthRef.current = 0
+    setIsDragActive(false)
+    setIsDragInvalid(false)
+    void addImageFiles(Array.from(event.dataTransfer.files))
+  }
 
   const patchConversation = useCallback((conversationId: string, update: (conversation: Conversation) => Conversation) => {
     setConversations((previous) => previous.map((chat) => chat.id === conversationId ? update(chat) : chat))
@@ -137,13 +237,47 @@ export default function App() {
     if (model) setNotice(`Modelo activo: ${model.name} · ${model.provider}`)
   }
 
-  const runChat = useCallback(async (conversationId: string, providerId: string, messages: Pick<ChatMessage, 'role' | 'content'>[], assistantId: string) => {
+  const runChat = useCallback(async (conversationId: string, providerId: string, messages: ChatMessage[], assistantId: string) => {
     const controller = new AbortController()
     abortRef.current = controller
     setIsGenerating(true)
     setNotice('')
     try {
-      await streamChat(providerId, messages, controller.signal, (delta) => {
+      const providerSupportsImages = models.find((model) => model.id === providerId)?.supportsImages ?? false
+      const imageMessageIds = new Set<string>()
+      let remainingImageBytes = MAX_TOTAL_IMAGE_BYTES
+      let omittedImageContext = false
+      if (providerSupportsImages) {
+        for (const candidate of [...messages].reverse()) {
+          if (!candidate.images?.length) continue
+          const candidateSize = candidate.images.reduce((sum, image) => sum + image.size, 0)
+          if (candidateSize <= remainingImageBytes) {
+            imageMessageIds.add(candidate.id)
+            remainingImageBytes -= candidateSize
+          } else omittedImageContext = true
+        }
+      } else omittedImageContext = messages.some((message) => Boolean(message.images?.length))
+      if (omittedImageContext) setNotice(providerSupportsImages
+        ? 'Se omitieron algunas imágenes antiguas para respetar el límite de tamaño del proveedor.'
+        : 'El modelo activo solo admite texto; no se enviaron las imágenes anteriores.')
+
+      const requestMessages: ChatRequestMessage[] = await Promise.all(messages.map(async (message) => {
+        if (!message.images?.length) return { role: message.role, content: message.content }
+        if (!imageMessageIds.has(message.id)) return { role: message.role, content: message.content }
+        let filesById = attachedFilesRef.current.get(message.id)
+        if (!filesById?.size) {
+          try { filesById = await loadImageAttachments(message.images.map((image) => image.id)) }
+          catch { filesById = new Map() }
+          if (filesById.size) attachedFilesRef.current.set(message.id, filesById)
+        }
+        const images = (await Promise.all(message.images.map(async (image) => {
+          const file = filesById?.get(image.id)
+          return file ? { fileName: image.fileName, mimeType: image.mimeType, data: await fileToBase64(file) } : null
+        }))).filter((image): image is NonNullable<typeof image> => image !== null)
+        if (images.length !== message.images.length) setNotice('No se pudieron recuperar algunas imágenes antiguas; se enviará el texto disponible.')
+        return { role: message.role, content: message.content, ...(images ? { images } : {}) }
+      }))
+      await streamChat(providerId, requestMessages, controller.signal, (delta) => {
         patchConversation(conversationId, (chat) => ({
           ...chat,
           updatedAt: Date.now(),
@@ -168,23 +302,42 @@ export default function App() {
       if (abortRef.current === controller) abortRef.current = null
       setIsGenerating(false)
     }
-  }, [patchConversation])
+  }, [models, patchConversation])
 
   const sendMessage = useCallback((content = draft.trim()) => {
-    if (!active || !content.trim() || isGenerating || abortRef.current) return
+    const cleanContent = content.trim()
+    const selectedImages = attachmentsRef.current
+    if (!active || (!cleanContent && !selectedImages.length) || isGenerating || isPreparingImages || abortRef.current) return
     if (!selectedModel?.available) {
       setNotice(selectedModel?.unavailableReason ?? 'Elige un modelo disponible para continuar.')
       return
     }
+    if (selectedImages.length && !selectedModel.supportsImages) {
+      setNotice(selectedModel.imageUnavailableReason ?? 'El modelo seleccionado no admite análisis de imágenes.')
+      return
+    }
     const now = Date.now()
-    const userMessage: ChatMessage = { id: id(), role: 'user', content: content.trim(), createdAt: now }
+    const userId = id()
+    const userMessage: ChatMessage = {
+      id: userId, role: 'user', content: cleanContent, createdAt: now,
+      ...(selectedImages.length ? { images: selectedImages.map(({ id: imageId, fileName, mimeType, size, previewUrl }) => ({ id: imageId, fileName, mimeType, size, previewUrl })) } : {}),
+    }
+    if (selectedImages.length) attachedFilesRef.current.set(userId, new Map(selectedImages.map((image) => [image.id, image.file])))
     const assistantMessage: ChatMessage = { id: id(), role: 'assistant', content: '', modelId: active.providerId, createdAt: now + 1 }
     const nextMessages = [...active.messages, userMessage, assistantMessage]
-    const title = active.messages.length === 0 ? content.trim().replace(/\s+/g, ' ').slice(0, 48) : active.title
+    const titleSeed = cleanContent || `Imagen: ${selectedImages[0]?.fileName ?? 'adjunta'}`
+    const title = active.messages.length === 0 ? titleSeed.replace(/\s+/g, ' ').slice(0, 48) : active.title
     patchConversation(active.id, (chat) => ({ ...chat, title, updatedAt: now, messages: nextMessages }))
     setDraft('')
-    void runChat(active.id, active.providerId, nextMessages.slice(0, -1).map(({ role, content: text }) => ({ role, content: text })), assistantMessage.id)
-  }, [active, draft, isGenerating, patchConversation, runChat, selectedModel])
+    if (selectedImages.length) {
+      attachedFilesRef.current.set(userId, new Map(selectedImages.map((image) => [image.id, image.file])))
+      void saveImageAttachments(active.id, userId, selectedImages.map((image) => ({ id: image.id, file: image.file })))
+        .catch(() => setNotice('El mensaje se envió, pero el archivo no quedó disponible para futuras preguntas tras recargar.'))
+    }
+    void runChat(active.id, active.providerId, nextMessages.slice(0, -1), assistantMessage.id)
+    attachmentsRef.current = []
+    setAttachments([])
+  }, [active, draft, isGenerating, isPreparingImages, patchConversation, runChat, selectedModel])
 
   const retryLast = () => {
     if (!active || isGenerating) return
@@ -194,7 +347,7 @@ export default function App() {
     const assistantMessage: ChatMessage = { id: id(), role: 'assistant', content: '', modelId: active.providerId, createdAt: Date.now() }
     const next = [...messages, assistantMessage]
     patchConversation(active.id, (chat) => ({ ...chat, messages: next }))
-    void runChat(active.id, active.providerId, next.slice(0, -1).map(({ role, content }) => ({ role, content })), assistantMessage.id)
+    void runChat(active.id, active.providerId, next.slice(0, -1), assistantMessage.id)
   }
 
   const stopGeneration = () => abortRef.current?.abort()
@@ -210,6 +363,8 @@ export default function App() {
   const removeConversation = (chat: Conversation) => {
     if (isGenerating && chat.id === activeId) return
     if (!window.confirm(`¿Eliminar “${chat.title}” de este navegador?`)) return
+    chat.messages.forEach((message) => attachedFilesRef.current.delete(message.id))
+    void deleteConversationImages(chat.id).catch(() => setNotice('No se pudieron limpiar todas las imágenes guardadas en este navegador.'))
     const remaining = conversations.filter((item) => item.id !== chat.id)
     if (remaining.length) {
       setConversations(remaining)
@@ -281,7 +436,11 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="main-panel">
+      <main className="main-panel"
+        onDragEnter={(event) => { if (!hasDraggedFiles(event)) return; event.preventDefault(); dragDepthRef.current += 1; setIsDragActive(true); setIsDragInvalid(dragContainsUnsupportedType(event)) }}
+        onDragOver={(event) => { if (hasDraggedFiles(event)) { event.preventDefault(); const invalid = dragContainsUnsupportedType(event); setIsDragInvalid(invalid); event.dataTransfer.dropEffect = invalid ? 'none' : 'copy' } }}
+        onDragLeave={(event) => { if (!hasDraggedFiles(event)) return; dragDepthRef.current = Math.max(0, dragDepthRef.current - 1); if (!dragDepthRef.current) { setIsDragActive(false); setIsDragInvalid(false) } }}
+        onDrop={onFilesDrop}>
         <header className="topbar">
           <div className="topbar-left">
             <button className="icon-button mobile-menu-button" type="button" onClick={() => setMobileSidebar(true)} aria-label="Abrir conversaciones"><Menu size={20} /></button>
@@ -325,7 +484,13 @@ export default function App() {
                       <time dateTime={new Date(message.createdAt).toISOString()}>{formatTime(message.createdAt)}</time>
                     </div>
                     <div className={`message-content ${message.error ? 'message-error' : ''}`}>
-                      {message.content ? <Suspense fallback={<p className="markdown-loading">Mostrando respuesta…</p>}><Markdown content={message.content} /></Suspense> : <TypingIndicator />}
+                      {message.content ? <Suspense fallback={<p className="markdown-loading">Mostrando respuesta…</p>}><Markdown content={message.content} /></Suspense> : message.role === 'assistant' ? <TypingIndicator /> : null}
+                      {message.images?.length ? <div className="message-images">
+                        {message.images.map((image) => <figure className="message-image" key={image.id}>
+                          <img src={image.previewUrl} alt={`Imagen adjunta: ${image.fileName}`} loading="lazy" />
+                          <figcaption>{image.fileName}</figcaption>
+                        </figure>)}
+                      </div> : null}
                     </div>
                     {message.error && <button className="retry-button" type="button" onClick={retryLast} disabled={isGenerating}><RefreshCw size={14} /> Reintentar respuesta</button>}
                   </div>
@@ -337,27 +502,51 @@ export default function App() {
 
         {showScrollButton && <button className="scroll-latest" type="button" aria-label="Ir a los mensajes recientes" onClick={() => { scrollPinnedRef.current = true; threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' }) }}><ArrowDown size={17} /></button>}
 
+        {isDragActive && <div className={`drop-overlay ${isDragInvalid ? 'drop-overlay-invalid' : ''}`} aria-live="polite">
+          <div><Paperclip size={22} aria-hidden="true" /><strong>{!selectedModel?.supportsImages ? 'Este modelo no admite imágenes' : isDragInvalid ? 'Tipo de archivo no compatible' : 'Suelta las imágenes para adjuntarlas'}</strong>
+            <span>{!selectedModel?.supportsImages ? selectedModel?.imageUnavailableReason : isDragInvalid ? 'Se aceptan JPEG, PNG, WebP o GIF.' : 'Se validará el contenido antes del envío · hasta 5 imágenes'}</span></div>
+        </div>}
+
         <footer className="composer-area">
           {notice && <div className="status-notice" role="status">{notice}</div>}
           {modelsError && active?.messages.length ? <div className="composer-error" role="alert">{modelsError} <button type="button" onClick={() => void refreshModels()}>Reintentar</button></div> : null}
           {selectedModel && !selectedModel.available && !modelsLoading && !modelsError && <div className="composer-hint" role="status">{selectedModel.unavailableReason}</div>}
+          {selectedModel?.available && !selectedModel.supportsImages && <div className="composer-hint" role="status">{selectedModel.imageUnavailableReason ?? 'Este modelo solo admite mensajes de texto.'}</div>}
           <div className={`composer ${isGenerating ? 'composer-generating' : ''}`}>
+            {attachments.length > 0 && <div className="attachment-list" aria-label="Imágenes preparadas para enviar">
+              {attachments.map((image) => <figure className="attachment-card" key={image.id}>
+                <img src={image.previewUrl} alt={`Vista previa: ${image.fileName}`} />
+                <figcaption title={image.fileName}>{image.fileName}</figcaption>
+                <button type="button" onClick={() => removeAttachment(image.id)} aria-label={`Quitar ${image.fileName}`}><X size={14} /></button>
+              </figure>)}
+            </div>}
             <textarea ref={composerRef} rows={1} value={draft} onChange={(event) => setDraft(event.target.value)}
+              onPaste={onPasteImages}
               onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); sendMessage() } }}
               aria-label="Escribe una pregunta sobre tus plantas" aria-describedby="composer-help"
               placeholder="Escribe tu pregunta sobre plantas…" disabled={isGenerating || !selectedModel?.available} />
             <div className="composer-bottom">
               <span id="composer-help">Enter para enviar · Shift + Enter para nueva línea</span>
               <div className="composer-controls">
+                <input ref={fileInputRef} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple
+                  aria-label="Seleccionar imágenes" onChange={(event) => { void addImageFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
+                <button className="attach-button" type="button" onClick={() => fileInputRef.current?.click()}
+                  disabled={!selectedModel?.supportsImages || isGenerating || isPreparingImages || attachments.length >= MAX_IMAGE_COUNT}
+                  aria-label="Adjuntar imágenes" title={selectedModel?.supportsImages ? 'Adjuntar imágenes' : selectedModel?.imageUnavailableReason ?? 'El modelo no admite imágenes'}>
+                  <Paperclip size={17} aria-hidden="true" />
+                </button>
                 {isGenerating && <span className="generating-label"><span className="mini-spinner" /> Generando respuesta</span>}
                 {isGenerating ? (
                   <button className="send-button stop-button" type="button" onClick={stopGeneration} aria-label="Detener generación"><span className="stop-square" /></button>
                 ) : (
-                  <button className="send-button" type="button" onClick={() => sendMessage()} disabled={!draft.trim() || !selectedModel?.available} aria-label="Enviar mensaje"><Send size={17} /></button>
+                  <button className="send-button" type="button" onClick={() => sendMessage()} disabled={(!draft.trim() && attachments.length === 0) || !selectedModel?.available || (attachments.length > 0 && !selectedModel.supportsImages) || isPreparingImages} aria-label="Enviar mensaje"><Send size={17} /></button>
                 )}
               </div>
             </div>
           </div>
+          {isPreparingImages && <p className="composer-hint" role="status">Validando y preparando imágenes…</p>}
+          {selectedModel?.supportsImages && !isPreparingImages && <p className="attachment-help">Adjunta, arrastra o pega con Ctrl/Cmd + V · máximo 5, 15 MiB cada una.</p>}
+          {selectedModel?.supportsImages && <p className="attachment-help">{attachments.length} de {MAX_IMAGE_COUNT} imágenes preparadas</p>}
           <p className="disclaimer">Las respuestas pueden contener errores. Verifica información importante sobre toxicidad y cuidado.</p>
         </footer>
       </main>

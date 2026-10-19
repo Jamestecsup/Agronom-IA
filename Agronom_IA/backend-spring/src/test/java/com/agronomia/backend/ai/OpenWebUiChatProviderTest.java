@@ -29,7 +29,7 @@ class OpenWebUiChatProviderTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/models", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            respond(exchange, 200, "{\"data\":[{\"id\":\"Qwen/Qwen3.6-35B-A3B-FP8\"}]}", "application/json");
+            respond(exchange, 200, "{\"data\":[{\"id\":\"Qwen/Qwen3.6-35B-A3B-FP8\",\"info\":{\"meta\":{\"capabilities\":{\"vision\":true}}}}]}", "application/json");
         });
         server.createContext("/api/chat/completions", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
@@ -77,6 +77,24 @@ class OpenWebUiChatProviderTest {
     }
 
     @Test
+    void sendsImagePartsUsingOpenAiCompatibleContentAndReportsVisionCapability() throws Exception {
+        assertThat(provider.availability().supportsImages()).isTrue();
+        byte[] png = pngFixture();
+        var image = new ChatContracts.ChatImage("leaf.png", "image/png", png);
+        var output = new StringBuilder();
+
+        provider.stream(List.of(new ChatContracts.ChatMessage("user", "Describe this plant", List.of(image))),
+                "Instrucciones botánicas", output::append, new ChatCancellation());
+
+        var userContent = parseBody().path("messages").get(1).path("content");
+        assertThat(userContent.isArray()).isTrue();
+        assertThat(userContent.get(0).path("text").asText()).isEqualTo("Describe this plant");
+        assertThat(userContent.get(1).path("type").asText()).isEqualTo("image_url");
+        assertThat(userContent.get(1).path("image_url").path("url").asText()).startsWith("data:image/png;base64,");
+        assertThat(userContent.get(1).path("image_url").path("url").asText()).contains(java.util.Base64.getEncoder().encodeToString(png));
+    }
+
+    @Test
     void convertsProviderRateLimitToAHandledError() {
         rejectChat = true;
         assertThatThrownBy(() -> provider.stream(List.of(new ChatContracts.ChatMessage("user", "hola")), "system",
@@ -97,5 +115,13 @@ class OpenWebUiChatProviderTest {
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
+    }
+
+    private byte[] pngFixture() throws Exception {
+        var image = new java.awt.image.BufferedImage(32, 32, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        image.setRGB(16, 16, 0x228833);
+        var bytes = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", bytes);
+        return bytes.toByteArray();
     }
 }

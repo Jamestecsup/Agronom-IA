@@ -1,4 +1,16 @@
-import type { ChatMessage, ModelOption } from './types'
+import type { ModelOption } from './types'
+
+export interface ChatImagePayload {
+  fileName: string
+  mimeType: string
+  data: string
+}
+
+export interface ChatRequestMessage {
+  role: 'user' | 'assistant'
+  content: string
+  images?: ChatImagePayload[]
+}
 
 export async function loadModels(signal?: AbortSignal): Promise<ModelOption[]> {
   const response = await fetch('/api/ai/models', { signal, headers: { Accept: 'application/json' } })
@@ -10,7 +22,7 @@ export async function loadModels(signal?: AbortSignal): Promise<ModelOption[]> {
 
 export async function streamChat(
   providerId: string,
-  messages: Pick<ChatMessage, 'role' | 'content'>[],
+  messages: ChatRequestMessage[],
   signal: AbortSignal,
   onDelta: (text: string) => void,
 ): Promise<void> {

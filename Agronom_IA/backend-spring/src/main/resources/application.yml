@@ -18,6 +18,9 @@ spring:
       file-size-threshold: 1MB
   jackson:
     default-property-inclusion: non_null
+    constraints:
+      # Una imagen de 15 MiB ocupa hasta ~20 Mi caracteres en Base64.
+      max-string-length: 22000000
   mvc:
     problemdetails:
       enabled: false
