@@ -78,19 +78,18 @@ La base de prueba y cinco imágenes sintéticas permanecen para inspección: agr
 
 ## Chat web multi-modelo (desarrollo local)
 
-El módulo `ai` agrega una API común de chat para dos proveedores configurados por el servidor. `GET /api/ai/models` publica solo identificadores, etiquetas y disponibilidad; el navegador nunca envía una URL ni credenciales. `POST /api/ai/chat` recibe `providerId` permitido (`qwen-local` o `space-bunny`) y un historial acotado, y responde como SSE (`delta`, `done`, `error`). Cancelar el `AbortController` del navegador cierra la conexión y Spring cancela la lectura del proveedor. La selección se aplica a mensajes siguientes; el historial textual se conserva en el navegador y se reenvía como contexto a cada proveedor, sin asumir memoria compartida. No hay persistencia del chat en MySQL.
+El módulo `ai` agrega una API común de chat para dos proveedores configurados por el servidor. `GET /api/ai/models` publica solo identificadores, etiquetas y disponibilidad; el navegador nunca envía una URL ni credenciales. `POST /api/ai/chat` recibe `providerId` permitido (`deepseek-opencode` o `qwen-local`) y un historial acotado, y responde como SSE (`delta`, `done`, `error`). Cancelar el `AbortController` del navegador cierra la conexión y Spring cancela la lectura del proveedor. La selección se aplica a mensajes siguientes; el historial textual se conserva en el navegador y se reenvía como contexto a cada proveedor, sin asumir memoria compartida. No hay persistencia del chat en MySQL.
 
 Proveedores:
 
 - `qwen-local`: Open WebUI con `GET /api/models` para descubrir el identificador autorizado y `POST /api/chat/completions` con SSE compatible con OpenAI. La clave solo se lee desde `OPENWEBUI_API_KEY` en Spring.
-- `space-bunny`: adaptador al servidor OpenCode, usando `GET /global/health`, `GET /provider` y endpoints de sesiones/eventos. Mantiene el ID configurado `space-bunny-free`; no hay sustitución automática.
+- `deepseek-opencode`: adaptador al servidor OpenCode, usando `GET /global/health`, `GET /provider` y endpoints de sesiones/eventos. Modelo configurado por `OPENCODE_MODEL_ID`, cuyo valor por defecto es `deepseek-v4.1-flash-free`.
 
 Para iniciar React en desarrollo usa `npm install`, `npm run dev` dentro de `frontend-web`; Vite proxya las rutas API a Spring. Para servir la web en el mismo puerto de Spring, ejecuta `npm run build` primero y después empaqueta/ejecuta el backend; Maven incluye `frontend-web/dist` en `static/`. El módulo web guarda historial únicamente en el `localStorage` del navegador.
 
-Configuración adicional: `OPENWEBUI_BASE_URL`, `OPENWEBUI_API_KEY`, `OPENWEBUI_MODEL`, `OPENCODE_SERVER_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, `AI_CHAT_CONNECT_TIMEOUT` y `AI_CHAT_READ_TIMEOUT`. `application-example.env` muestra nombres y ejemplos inocuos; Spring no carga `.env` automáticamente. No se versiona ninguna clave real.
+Configuración adicional: `OPENWEBUI_BASE_URL`, `OPENWEBUI_API_KEY`, `OPENWEBUI_MODEL`, `OPENCODE_SERVER_BASE_URL`, `OPENCODE_SERVER_USERNAME`, `OPENCODE_SERVER_PASSWORD`, `OPENCODE_MODEL_ID`, `AI_CHAT_CONNECT_TIMEOUT` y `AI_CHAT_READ_TIMEOUT`. `application-example.env` muestra nombres y ejemplos inocuos; Spring no carga `.env` automáticamente. No se versiona ninguna clave real.
 
-Verificación realizada en desarrollo: Open WebUI autenticado y modelo `Qwen/Qwen3.6-35B-A3B-FP8` disponible; Spring devolvió HTTP 200 y deltas SSE en peticiones reales, sin incluir la credencial en el catálogo ni en el cliente. El catálogo detectó Space Bunny no disponible: OpenCode 1.19.3 reporta salud correcta y proveedor conectado, pero no anuncia `space-bunny-free`; una generación explícita falla con `ProviderModelNotFoundError` antes de llamar al proveedor del modelo. Se actualizó desde 1.18.34 y el ID sigue ausente. El endpoint devuelve 503 al seleccionarlo; un proveedor no permitido devuelve 400. No se sustituyó el modelo ni se modificó MySQL.
-
+Verificación actual (2026-10-19): OpenCode CLI 1.19.3 anuncia `opencode/deepseek-v4.1-flash-free`; tanto el CLI como `opencode run --attach http://127.0.0.1:4096` devolvieron respuestas reales. El endpoint Spring respondió HTTP 200 con deltas y `done` para DeepSeek y Qwen; ambos aparecieron disponibles en `GET /api/ai/models`. La regresión del stream se debía a que OpenCode 1.19+ envuelve los eventos globales en `payload` y Spring leía `type` en el nivel superior. El adaptador ahora desenvuelve el evento, conserva compatibilidad con el formato anterior y reconoce `session.status=idle`. Maven: 22 pruebas pasan; React: 4 pruebas y build pasan; Android: assembleDebug y testDebugUnitTest pasan. No se cambió MySQL ni la configuración del modelo Qwen.
 ## Migración por fases
 
 1. Implementado: API equivalente Spring en puerto 8081; PHP se conserva. Sin cambios de esquema.
@@ -100,7 +99,7 @@ Verificación realizada en desarrollo: Open WebUI autenticado y modelo `Qwen/Qwe
 
 React se agregó como chat de usuario, no como panel administrativo. No hay un módulo administrativo React ni persistencia MySQL para conversaciones.
 
-Diagnóstico de Qwen: una pregunta exacta enviada al endpoint de Spring llegó al modelo y produjo una respuesta real por SSE; la salida genérica repetida del chat se debía a la instrucción de sistema compartida que lo identificaba como Space Bunny. Esa instrucción ahora pide responder primero a la consulta, omitir presentaciones repetidas y no atribuirse el proveedor.
+Los metadatos públicos de `GET /api/ai/models` incluyen un saludo inicial visual por modelo. React lo muestra solo en conversaciones vacías; no se persiste ni se envía al modelo. Los saludos siguen al modelo de la conversación activa, y cambiarlo conserva los mensajes existentes.
 
 ## Referencias técnicas consultadas
 

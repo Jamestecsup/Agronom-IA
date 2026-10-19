@@ -54,7 +54,7 @@ class PlantAnalysisResponseParserTest {
 
     @Test
     fun spaceBunnyExtractsMarkdownReply() {
-        val result = SpaceBunnyResponseParser.parse(
+        val result = OpenCodeResponseParser.parse(
             """{"parts":[{"type":"text","text":"## Riego\nRiega cuando la superficie del sustrato esté seca.\n\n## Toxicidad\nNo hay información fiable."}]}"""
         )
 
@@ -64,14 +64,14 @@ class PlantAnalysisResponseParserTest {
 
     @Test(expected = IllegalStateException::class)
     fun spaceBunnyRejectsIncompleteGuide() {
-        SpaceBunnyResponseParser.parse(
+        OpenCodeResponseParser.parse(
             """{"parts":[{"type":"text","text":"  "}]}"""
         )
     }
 
     @Test
     fun spaceBunnyCanReplyInTheLanguageRequestedByTheUser() {
-        val result = SpaceBunnyResponseParser.parse(
+        val result = OpenCodeResponseParser.parse(
             """{"parts":[{"type":"text","text":"如果用户要求中文，就用中文回答。"}]}""",
             userQuestion = "请用中文回答"
         )
@@ -80,7 +80,7 @@ class PlantAnalysisResponseParserTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun spaceBunnyRejectsUnrequestedMixedWritingSystems() {
-        SpaceBunnyResponseParser.parse(
+        OpenCodeResponseParser.parse(
             """{"parts":[{"type":"text","text":"Comprueba la humedad. 湿度"}]}""",
             userQuestion = "¿Cuándo riego?"
         )
@@ -89,13 +89,13 @@ class PlantAnalysisResponseParserTest {
     @Test(expected = IllegalArgumentException::class)
     fun spaceBunnyRejectsOversizedReply() {
         val longReply = "x".repeat(8_001)
-        SpaceBunnyResponseParser.parse("""{"parts":[{"type":"text","text":"$longReply"}]}""")
+        OpenCodeResponseParser.parse("""{"parts":[{"type":"text","text":"$longReply"}]}""")
     }
 
     @Test
     fun skillInstructionsAreBundledForTheRuntimePrompt() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val instructions = SpaceBunnySkillRepository.load(context)
+        val instructions = BotanyInstructionsRepository.load(context)
 
         assertTrue(instructions.contains("Pl@ntNet es el único responsable de la identificación visual"))
         assertTrue(instructions.contains("Una falta de datos sobre toxicidad no significa que la planta sea segura"))
@@ -103,7 +103,7 @@ class PlantAnalysisResponseParserTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun spaceBunnyRejectsInternalPlaceholderText() {
-        SpaceBunnyResponseParser.parse(
+        OpenCodeResponseParser.parse(
             """{"parts":[{"type":"text","text":"Usa agua con_filtro en cada riego."}]}"""
         )
     }

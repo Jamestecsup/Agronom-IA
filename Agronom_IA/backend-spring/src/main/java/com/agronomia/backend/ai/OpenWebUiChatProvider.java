@@ -33,7 +33,7 @@ public class OpenWebUiChatProvider implements ChatProvider {
     @Override
     public ChatContracts.ModelOption modelOption() {
         return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(),
-                false, "Comprueba la conexión con Open WebUI.");
+                false, "Comprueba la conexión con Open WebUI.", "¡Hola! Soy Qwen, tu asistente de inteligencia artificial local. Puedo ayudarte a responder preguntas, desarrollar ideas, analizar información y resolver problemas. ¿En qué te gustaría que trabajemos hoy?");
     }
 
     @Override
@@ -46,7 +46,8 @@ public class OpenWebUiChatProvider implements ChatProvider {
             if (!data.isArray()) return unavailable("Open WebUI devolvió una lista de modelos no válida.");
             for (JsonNode model : data) {
                 if (config.getModel().equals(model.path("id").asText()))
-                    return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(), true, null);
+                    return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(), true, null,
+                            "¡Hola! Soy Qwen, tu asistente de inteligencia artificial local. Puedo ayudarte a responder preguntas, desarrollar ideas, analizar información y resolver problemas. ¿En qué te gustaría que trabajemos hoy?");
             }
             return unavailable("El modelo configurado no aparece en Open WebUI.");
         } catch (ChatProviderException error) {
@@ -130,7 +131,8 @@ public class OpenWebUiChatProvider implements ChatProvider {
     }
 
     private ChatContracts.ModelOption unavailable(String reason) {
-        return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(), false, reason);
+        return new ChatContracts.ModelOption(ID, "Qwen 3.6 35B A3B FP8", "Open WebUI", config.getModel(), false, reason,
+                "¡Hola! Soy Qwen, tu asistente de inteligencia artificial local. Puedo ayudarte a responder preguntas, desarrollar ideas, analizar información y resolver problemas. ¿En qué te gustaría que trabajemos hoy?");
     }
 
     private String base() { return config.getBaseUrl().replaceAll("/+$", ""); }

@@ -8,7 +8,7 @@ public final class ChatContracts {
     public record ChatMessage(String role, String content) { }
     public record ChatRequest(String providerId, List<ChatMessage> messages) { }
     public record ModelOption(String id, String name, String provider, String modelId,
-                              boolean available, String unavailableReason) { }
+                              boolean available, String unavailableReason, String welcomeMessage) { }
     public record Delta(String text) { }
     public record Completion(String providerId) { }
     public record ChatError(String message) { }

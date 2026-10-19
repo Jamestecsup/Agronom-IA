@@ -24,4 +24,5 @@ export interface ModelOption {
   modelId: string
   available: boolean
   unavailableReason: string | null
+  welcomeMessage: string
 }

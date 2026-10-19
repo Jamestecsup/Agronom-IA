@@ -63,8 +63,8 @@
             </resource>
             <!-- Keep the Android client's single botany skill as the source of truth. -->
             <resource>
-                <directory>${project.basedir}/../.agents/skills/space-bunny-botany</directory>
-                <targetPath>skills/space-bunny-botany</targetPath>
+                <directory>${project.basedir}/../.agents/skills/botany-assistant</directory>
+                <targetPath>skills/botany-assistant</targetPath>
                 <includes>
                     <include>SKILL.md</include>
                 </includes>

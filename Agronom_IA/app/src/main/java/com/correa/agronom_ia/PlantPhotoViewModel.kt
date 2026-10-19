@@ -120,8 +120,8 @@ class PlantPhotoViewModel : ViewModel() {
                 .dropLastWhile { it.id != userMessage.id }
                 .dropLast(1)
                 .takeLast(12)
-                .map { SpaceBunnyTurn(it.role, it.text) }
-            val skillInstructions = withContext(Dispatchers.IO) { SpaceBunnySkillRepository.load(context) }
+                .map { ChatTurn(it.role, it.text) }
+            val skillInstructions = withContext(Dispatchers.IO) { BotanyInstructionsRepository.load(context) }
             val reply = withContext(Dispatchers.IO) {
                 PlantAnalysisApi.generateReply(skillInstructions, identification, history, userMessage.text) { stage ->
                     mutableState.value = mutableState.value.copy(progress = stage)

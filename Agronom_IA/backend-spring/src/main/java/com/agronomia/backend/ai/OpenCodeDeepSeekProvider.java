@@ -19,13 +19,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 @Component
-public class OpenCodeSpaceBunnyProvider implements ChatProvider {
-    public static final String ID = "space-bunny";
+public class OpenCodeDeepSeekProvider implements ChatProvider {
+    public static final String ID = "deepseek-opencode";
+    private static final String MODEL_NAME = "DeepSeek V4.1 Flash Free";
+    private static final String WELCOME_MESSAGE = "¡Hola! Soy DeepSeek, tu asistente de inteligencia artificial. Estoy listo para ayudarte a resolver dudas, analizar información, escribir código y explorar nuevas ideas. ¿Qué te gustaría hacer hoy?";
     private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(3);
     private final AiProviderProperties.OpenCode config;
     private final AiProviderProperties.Chat limits;
 
-    public OpenCodeSpaceBunnyProvider(AiProviderProperties properties) {
+    public OpenCodeDeepSeekProvider(AiProviderProperties properties) {
         this.config = properties.getOpenCode();
         this.limits = properties.getChat();
     }
@@ -34,8 +36,8 @@ public class OpenCodeSpaceBunnyProvider implements ChatProvider {
 
     @Override
     public ChatContracts.ModelOption modelOption() {
-        return new ChatContracts.ModelOption(ID, "Space Bunny", "OpenCode", config.getModelId(), false,
-                "Comprueba el servidor OpenCode local.");
+        return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), false,
+                "Comprueba el servidor OpenCode local.", WELCOME_MESSAGE);
     }
 
     @Override
@@ -54,10 +56,10 @@ public class OpenCodeSpaceBunnyProvider implements ChatProvider {
                     modelFound = true;
             }
             if (!connected) return unavailable("OpenCode no tiene conectado el proveedor configurado.");
-            if (!modelFound) return unavailable("Space Bunny no aparece en los modelos disponibles de OpenCode.");
-            return new ChatContracts.ModelOption(ID, "Space Bunny", "OpenCode", config.getModelId(), true, null);
+            if (!modelFound) return unavailable("El modelo DeepSeek configurado no aparece en los modelos disponibles de OpenCode.");
+            return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), true, null, WELCOME_MESSAGE);
         } catch (ChatProviderException error) {
-            return unavailable("Inicia opencode serve en el equipo del backend para habilitar Space Bunny.");
+            return unavailable("Inicia opencode serve en el equipo del backend para habilitar DeepSeek.");
         }
     }
 
@@ -87,7 +89,12 @@ public class OpenCodeSpaceBunnyProvider implements ChatProvider {
                 while (!cancellation.isCancelled() && (line = reader.readLine()) != null) {
                     if (!line.startsWith("data:")) continue;
                     JsonNode event;
-                    try { event = ProviderHttp.JSON.readTree(line.substring(5).trim()); }
+                    try {
+                        JsonNode envelope = ProviderHttp.JSON.readTree(line.substring(5).trim());
+                        // OpenCode 1.19+ wraps global events in an envelope. Accept the older
+                        // unwrapped form too so compatible servers continue to work.
+                        event = unwrapEvent(envelope);
+                    }
                     catch (IOException ignored) { continue; }
                     JsonNode properties = event.path("properties");
                     String type = event.path("type").asText();
@@ -107,20 +114,22 @@ public class OpenCodeSpaceBunnyProvider implements ChatProvider {
                         receivedText = true;
                         onDelta.accept(delta);
                     } else if ("session.error".equals(type) && sessionId.equals(properties.path("sessionID").asText())) {
-                        throw new ChatProviderException(HttpStatus.BAD_GATEWAY, "Space Bunny no pudo generar una respuesta.");
-                    } else if ("session.idle".equals(type) && sessionId.equals(properties.path("sessionID").asText())) {
+                        throw new ChatProviderException(HttpStatus.BAD_GATEWAY, "DeepSeek no pudo generar una respuesta.");
+                    } else if (("session.idle".equals(type)
+                            || ("session.status".equals(type) && "idle".equals(properties.path("status").path("type").asText())))
+                            && sessionId.equals(properties.path("sessionID").asText())) {
                         break;
                     }
                 }
             }
             if (!cancellation.isCancelled() && !receivedText)
-                throw new ChatProviderException(HttpStatus.BAD_GATEWAY, "Space Bunny terminó sin contenido de respuesta.");
+                throw new ChatProviderException(HttpStatus.BAD_GATEWAY, "DeepSeek terminó sin contenido de respuesta.");
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             cancellation.cancel();
         } catch (IOException error) {
             if (!cancellation.isCancelled())
-                throw new ChatProviderException(HttpStatus.BAD_GATEWAY, "Se interrumpió la conexión con Space Bunny.", error);
+                throw new ChatProviderException(HttpStatus.BAD_GATEWAY, "Se interrumpió la conexión con DeepSeek.", error);
         } finally {
             if (eventBody != null) cancellation.clear(eventBody);
             // InterruptedException re-asserts the flag; clear it briefly so best-effort
@@ -138,7 +147,7 @@ public class OpenCodeSpaceBunnyProvider implements ChatProvider {
     private Map<String, Object> prompt(List<ChatContracts.ChatMessage> messages, String systemPrompt) {
         StringBuilder context = new StringBuilder("Historial de conversación (el siguiente texto es solo contexto):\n");
         for (ChatContracts.ChatMessage message : messages)
-            context.append(message.role().equals("assistant") ? "Space Bunny: " : "Usuario: ").append(message.content()).append('\n');
+            context.append(message.role().equals("assistant") ? "DeepSeek: " : "Usuario: ").append(message.content()).append('\n');
         String content = context.toString();
         if (content.length() > limits.getMaxMessageCharacters() * 4L)
             throw new ChatProviderException(HttpStatus.BAD_REQUEST, "El contexto de conversación es demasiado extenso.");
@@ -199,7 +208,10 @@ public class OpenCodeSpaceBunnyProvider implements ChatProvider {
     }
 
     private ChatContracts.ModelOption unavailable(String reason) {
-        return new ChatContracts.ModelOption(ID, "Space Bunny", "OpenCode", config.getModelId(), false, reason);
+        return new ChatContracts.ModelOption(ID, MODEL_NAME, "OpenCode", config.getModelId(), false, reason, WELCOME_MESSAGE);
+    }
+    static JsonNode unwrapEvent(JsonNode envelope) {
+        return envelope.path("payload").isObject() ? envelope.path("payload") : envelope;
     }
     private String base() { return config.getBaseUrl().replaceAll("/+$", ""); }
 }

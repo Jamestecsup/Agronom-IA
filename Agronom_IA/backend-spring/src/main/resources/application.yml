@@ -40,7 +40,7 @@ agronomia:
       username: ${OPENCODE_SERVER_USERNAME:opencode}
       password: ${OPENCODE_SERVER_PASSWORD:}
       provider-id: opencode
-      model-id: space-bunny-free
+      model-id: ${OPENCODE_MODEL_ID:deepseek-v4.1-flash-free}
     open-webui:
       base-url: ${OPENWEBUI_BASE_URL:http://192.168.17.11:3000}
       api-key: ${OPENWEBUI_API_KEY:}

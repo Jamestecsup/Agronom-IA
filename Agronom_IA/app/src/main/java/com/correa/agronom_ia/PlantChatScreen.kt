@@ -72,7 +72,7 @@ internal fun ChatTopBar(onNewConversation: () -> Unit, onSaveImages: () -> Unit,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text("Agronom-IA", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("Asistente botánico · Space Bunny", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Asistente botánico · DeepSeek", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         actions = {
@@ -161,7 +161,7 @@ private fun ConversationBubble(message: ChatMessage) {
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    if (isUser) "Tú" else "Space Bunny",
+                    if (isUser) "Tú" else "DeepSeek",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
@@ -249,7 +249,7 @@ private fun AssistantTyping() {
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(18.dp)) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Text("Space Bunny está pensando…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("DeepSeek está pensando…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

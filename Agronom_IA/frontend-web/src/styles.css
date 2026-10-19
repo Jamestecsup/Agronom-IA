@@ -133,6 +133,7 @@ button:disabled { cursor: not-allowed; }
 .welcome-kicker { margin: 0 0 10px; color: var(--primary); font-size: 10px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
 .welcome-state h2 { margin: 0; color: var(--text); font-size: clamp(27px, 3.8vw, 39px); font-weight: 630; letter-spacing: -1.35px; line-height: 1.15; }
 .welcome-copy { max-width: 520px; margin: 14px auto 0; color: var(--text-muted); font-size: 14px; line-height: 1.7; }
+.welcome-greeting { max-width: 620px; margin-top: 12px; color: var(--text); font-size: 16px; line-height: 1.75; }
 .suggestion-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 34px; text-align: left; }
 .suggestion-card { position: relative; display: flex; min-height: 132px; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 13px; color: var(--text); background: var(--surface); text-align: left; cursor: pointer; transition: border-color 150ms ease, background 150ms ease, transform 150ms ease; }
 .suggestion-card:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary) 50%, var(--line)); background: var(--primary-soft); transform: translateY(-2px); }

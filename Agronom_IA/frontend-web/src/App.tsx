@@ -37,7 +37,10 @@ function restoreWorkspace(): SavedWorkspace {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
       const data = JSON.parse(saved) as Partial<SavedWorkspace>
-      const conversations = Array.isArray(data.conversations) ? data.conversations : []
+      // Storage-only migration; the legacy id is never sent to the backend.
+      const conversations = Array.isArray(data.conversations) ? data.conversations.map((chat) =>
+        chat.providerId === 'space-bunny' ? { ...chat, providerId: 'deepseek-opencode' } : chat,
+      ) : []
       const activeId = conversations.some((chat) => chat.id === data.activeId) ? data.activeId! : conversations[0]?.id ?? ''
       const activeTheme = data.theme === 'dark' ? 'dark' : 'light'
       if (conversations.length) return { conversations, activeId, theme: activeTheme, collapsed: Boolean(data.collapsed) }
@@ -298,9 +301,8 @@ export default function App() {
           {active?.messages.length === 0 ? (
             <div className="welcome-state">
               <div className="welcome-orbit"><div className="welcome-icon"><Leaf size={28} strokeWidth={1.7} /></div></div>
-              <p className="welcome-kicker">Tu espacio de consulta</p>
-              <h2>Entiende mejor tus plantas.</h2>
-              <p className="welcome-copy">Pregunta sobre riego, iluminación y cuidados. Elige el modelo que mejor se adapte a tu consulta.</p>
+              <p className="welcome-kicker">{selectedModel?.name ?? 'Asistente de IA'}</p>
+              <p className="welcome-copy welcome-greeting">{selectedModel?.welcomeMessage ?? 'Consulta sobre tus plantas y recibe orientación cuando un modelo esté disponible.'}</p>
               <div className="suggestion-grid">
                 {SUGGESTIONS.map((suggestion, index) => (
                   <button className="suggestion-card" key={suggestion} type="button" onClick={() => sendMessage(suggestion)} disabled={!selectedModel?.available || isGenerating}>

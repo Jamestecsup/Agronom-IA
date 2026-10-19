@@ -21,7 +21,7 @@ data class PlantIdentification(
 }
 
 data class PlantAnalysis(val identification: PlantIdentification, val care: String? = null)
-data class SpaceBunnyTurn(val role: String, val text: String)
+data class ChatTurn(val role: String, val text: String)
 
 internal object PlantNetResponseParser {
     fun parse(body: String): PlantIdentification? {
@@ -58,26 +58,26 @@ internal object PlantNetResponseParser {
     }
 }
 
-internal object SpaceBunnyResponseParser {
+internal object OpenCodeResponseParser {
     fun parse(body: String, userQuestion: String = ""): String {
         val parts = JSONObject(body).optJSONArray("parts")
-            ?: throw IllegalStateException("OpenCode no devolvió las partes de la respuesta de Space Bunny.")
+            ?: throw IllegalStateException("OpenCode no devolvió las partes de la respuesta de DeepSeek.")
         val content = buildList {
             for (index in 0 until parts.length()) {
                 val part = parts.optJSONObject(index) ?: continue
                 if (part.optString("type") == "text") part.optString("text").takeIf { it.isNotBlank() && it != "null" }?.let(::add)
             }
-        }.lastOrNull() ?: throw IllegalStateException("Space Bunny devolvió una respuesta vacía.")
+        }.lastOrNull() ?: throw IllegalStateException("DeepSeek devolvió una respuesta vacía.")
         val cleaned = content.trim().removePrefix("````markdown").removePrefix("```markdown")
             .removePrefix("```").removeSuffix("```").trim()
-        require(cleaned.length <= 8_000) { "La respuesta de Space Bunny excedió el límite de longitud." }
-        require('_' !in cleaned) { "Space Bunny devolvió texto incompleto o un marcador interno." }
+        require(cleaned.length <= 8_000) { "La respuesta de DeepSeek excedió el límite de longitud." }
+        require('_' !in cleaned) { "DeepSeek devolvió texto incompleto o un marcador interno." }
         val containsCjk = Regex("[\\u2E80-\\u2EFF\\u3000-\\u30FF\\u3400-\\u9FFF\\uF900-\\uFAFF]")
         require(!containsCjk.containsMatchIn(cleaned) || containsCjk.containsMatchIn(userQuestion)) {
-            "Space Bunny mezcló idiomas o devolvió texto ilegible."
+            "DeepSeek mezcló idiomas o devolvió texto ilegible."
         }
         return cleaned.takeIf(String::isNotBlank)
-            ?: throw IllegalStateException("Space Bunny devolvió una respuesta vacía.")
+            ?: throw IllegalStateException("DeepSeek devolvió una respuesta vacía.")
     }
 }
 
@@ -90,7 +90,7 @@ internal object PlantAnalysisRequestValidator {
 
 internal object PlantAnalysisApi {
     private const val PLANTNET_ENDPOINT = "https://my-api.plantnet.org/v2/identify/all"
-    private const val SPACE_BUNNY_MODEL = "space-bunny-free"
+    private const val DEEPSEEK_MODEL = "deepseek-v4.1-flash-free"
     private const val MAX_TOTAL_BYTES = 50L * 1024 * 1024
     private const val OPENCODE_TIMEOUT_MS = 120_000
 
@@ -109,11 +109,11 @@ internal object PlantAnalysisApi {
     fun generateReply(
         skillInstructions: String,
         identification: PlantIdentification?,
-        history: List<SpaceBunnyTurn>,
+        history: List<ChatTurn>,
         question: String,
         onProgress: (String) -> Unit
     ): String {
-        onProgress("Space Bunny está preparando una respuesta…")
+        onProgress("DeepSeek está preparando una respuesta…")
         return requestReply(skillInstructions, identification, history, question)
     }
 
@@ -165,7 +165,7 @@ internal object PlantAnalysisApi {
     private fun requestReply(
         skillInstructions: String,
         identification: PlantIdentification?,
-        history: List<SpaceBunnyTurn>,
+        history: List<ChatTurn>,
         question: String
     ): String {
         val systemPrompt = "$skillInstructions\n\n" +
@@ -189,7 +189,7 @@ internal object PlantAnalysisApi {
                 history.takeLast(8).forEach { turn ->
                     if (historyBudget <= 0) return@forEach
                     val text = turn.text.take(minOf(700, historyBudget))
-                    appendLine("${if (turn.role == "assistant") "Space Bunny" else "Usuario"}: $text")
+                    appendLine("${if (turn.role == "assistant") "DeepSeek" else "Usuario"}: $text")
                     historyBudget -= text.length
                 }
             }
@@ -199,26 +199,26 @@ internal object PlantAnalysisApi {
         val baseUrl = BuildConfig.OPENCODE_SERVER_BASE_URL.trim().trimEnd('/')
         val session = requestJson("$baseUrl/session", JSONObject().put("title", "Consulta botánica: ${identification?.scientificName ?: "general"}"))
         val sessionId = session.optString("id").takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("OpenCode local no creó una sesión para Space Bunny.")
+            ?: throw IllegalStateException("OpenCode local no creó una sesión para DeepSeek.")
         val payload = JSONObject()
-            .put("model", JSONObject().put("providerID", "opencode").put("modelID", SPACE_BUNNY_MODEL))
+            .put("model", JSONObject().put("providerID", "opencode").put("modelID", DEEPSEEK_MODEL))
             .put("system", systemPrompt)
             .put("tools", JSONObject())
             .put("parts", org.json.JSONArray().put(JSONObject().put("type", "text").put("text", userPrompt)))
         try {
             val response = requestJson("$baseUrl/session/$sessionId/message", payload, OPENCODE_TIMEOUT_MS)
-            val firstAttempt = runCatching { SpaceBunnyResponseParser.parse(response.toString(), question) }
+            val firstAttempt = runCatching { OpenCodeResponseParser.parse(response.toString(), question) }
             if (firstAttempt.isSuccess) return firstAttempt.getOrThrow()
 
             val correction = "La respuesta anterior estaba vacía, era demasiado larga o contenía un marcador interno/texto ilegible. Reescribe la respuesta actual de forma breve y clara en el idioma solicitado; si no sabes un dato, dilo y no inventes. Sigue las instrucciones de sistema."
             val retry = JSONObject()
-                .put("model", JSONObject().put("providerID", "opencode").put("modelID", SPACE_BUNNY_MODEL))
+                .put("model", JSONObject().put("providerID", "opencode").put("modelID", DEEPSEEK_MODEL))
                 .put("system", systemPrompt)
                 .put("tools", JSONObject())
                 .put("parts", org.json.JSONArray().put(JSONObject().put("type", "text").put("text", correction)))
             val correctedResponse = requestJson("$baseUrl/session/$sessionId/message", retry, OPENCODE_TIMEOUT_MS)
-            return runCatching { SpaceBunnyResponseParser.parse(correctedResponse.toString(), question) }
-                .getOrElse { throw IllegalStateException("Space Bunny no pudo devolver una respuesta legible después de un reintento.") }
+            return runCatching { OpenCodeResponseParser.parse(correctedResponse.toString(), question) }
+                .getOrElse { throw IllegalStateException("DeepSeek no pudo devolver una respuesta legible después de un reintento.") }
         } finally {
             runCatching { request("DELETE", "$baseUrl/session/$sessionId") }
         }
@@ -247,7 +247,7 @@ internal object PlantAnalysisApi {
             val code = connection.responseCode
             val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw httpError("OpenCode local / Space Bunny", code, body)
+            if (code !in 200..299) throw httpError("OpenCode local / DeepSeek", code, body)
             return body
         } finally { connection.disconnect() }
     }

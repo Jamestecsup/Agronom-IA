@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('AI chat API client', () => {
   it('reads only the public model catalog and uses the local backend', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ models: [
-      { id: 'qwen-local', name: 'Qwen', provider: 'Open WebUI', modelId: 'local-id', available: true, unavailableReason: null },
+      { id: 'qwen-local', name: 'Qwen', provider: 'Open WebUI', modelId: 'local-id', available: true, unavailableReason: null, welcomeMessage: 'Hola' },
     ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
 

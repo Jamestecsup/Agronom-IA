@@ -12,7 +12,7 @@ public class BotanyInstructions {
     private final String content;
 
     public BotanyInstructions(ResourceLoader resourceLoader) throws IOException {
-        Resource skill = resourceLoader.getResource("classpath:skills/space-bunny-botany/SKILL.md");
+        Resource skill = resourceLoader.getResource("classpath:skills/botany-assistant/SKILL.md");
         String markdown;
         try (var input = skill.getInputStream()) {
             markdown = new String(input.readAllBytes(), StandardCharsets.UTF_8);

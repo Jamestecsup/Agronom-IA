@@ -12,10 +12,10 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - PHP/Apache funciona como puente local; Android nunca habla con MySQL. En emulador, Android accede al host con `10.0.2.2`; en teléfono usa la IP LAN del PC.
 - Imágenes en `C:\xampp\plant-images/<batch UUID>/<image UUID>.<ext>`, fuera del directorio público `htdocs`. MySQL guarda ruta relativa, UUID, lote, MIME, tamaño, dimensiones, estado mínimo y fecha. No se guardan BLOB.
 - PHP valida otra vez conteo, tamaño, contenido detectado (`fileinfo`), dimensiones (`getimagesize`) y decodificación GD. El lote es atómico a nivel lógico: staging, transacción SQL, limpieza de archivos si falla.
-- Flujo conversacional Android: Pl@ntNet recibe las fotos y devuelve especies candidatas; la app envía solo los datos botánicos, el historial textual reciente y la pregunta a Space Bunny (`space-bunny-free`) mediante el servidor OpenCode local. Las imágenes nunca se envían a Space Bunny.
+- Flujo conversacional Android: Pl@ntNet recibe las fotos y devuelve especies candidatas; la app envía solo los datos botánicos, el historial textual reciente y la pregunta a DeepSeek V4.1 Flash Free (`deepseek-v4.1-flash-free`) mediante el servidor OpenCode local. Las imágenes nunca se envían al modelo.
 - HTTP y endpoint sin autenticación se limitan al desarrollo local en red privada; preparar TLS y autenticación antes de exponer.
 - Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, solicita `ACCESS_LOCAL_NETWORK` cuando se usa XAMPP o el servidor OpenCode del host. Pl@ntNet requiere permiso `INTERNET`.
-- Configuración directa de Pl@ntNet para desarrollo: `PLANTNET_API_KEY` en `%USERPROFILE%\.gradle\gradle.properties` (se compila en el APK y puede extraerse). Space Bunny Free se ejecuta mediante el servidor local de OpenCode CLI (`127.0.0.1:4096` en el equipo; `10.0.2.2` desde emulador); no requiere añadir su clave de API al APK. Para producción, trasladar Pl@ntNet a un backend intermediario.
+- Configuración directa de Pl@ntNet para desarrollo: `PLANTNET_API_KEY` en `%USERPROFILE%\.gradle\gradle.properties` (se compila en el APK y puede extraerse). DeepSeek V4.1 Flash Free se ejecuta mediante el servidor local de OpenCode CLI (`127.0.0.1:4096` en el equipo; `10.0.2.2` desde emulador); no requiere añadir su clave de API al APK. Para producción, trasladar Pl@ntNet a un backend intermediario.
 
 ## Verificación de análisis IA (2026-10-13)
 
@@ -29,13 +29,13 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 
 `POST /agronomia-api/api/images.php` acepta `photos[]`, máximo cinco, JPEG/PNG/WebP decodificables hasta 15 MiB cada uno. Devuelve `201` con `success`, `batch_id` y rutas relativas solo tras escribir y confirmar todas las filas. La carpeta local continúa siendo `C:\xampp\plant-images`; MySQL conserva metadatos y rutas, no las imágenes.
 
-El análisis ya no usa `api/analyze.php` (endpoint anterior retirado del proyecto y de XAMPP). Pl@ntNet recibe multipart JPEG en `POST https://my-api.plantnet.org/v2/identify/all?api-key=...` (`lang=es`, 3 candidatos). OpenCode Free respondió HTTP 403 a la inferencia directa; Space Bunny ahora se llama por OpenCode CLI local (`opencode serve --hostname 127.0.0.1 --port 4096`, modelo `opencode/space-bunny-free`). Android Emulator accede a `10.0.2.2:4096`. `OPENCODE_SERVER_BASE_URL` puede sobrescribir la URL base; Pl@ntNet requiere `PLANTNET_API_KEY` en propiedades locales de Gradle/variable de entorno. Ninguna clave debe guardarse en esta nota o en Git.
+El análisis ya no usa `api/analyze.php` (endpoint anterior retirado del proyecto y de XAMPP). Pl@ntNet recibe multipart JPEG en `POST https://my-api.plantnet.org/v2/identify/all?api-key=...` (`lang=es`, 3 candidatos). Android llama DeepSeek por OpenCode CLI local (`opencode serve --hostname 127.0.0.1 --port 4096`, modelo `opencode/deepseek-v4.1-flash-free`). Android Emulator accede a `10.0.2.2:4096`. `OPENCODE_SERVER_BASE_URL` puede sobrescribir la URL base; Pl@ntNet requiere `PLANTNET_API_KEY` en propiedades locales de Gradle/variable de entorno. Ninguna clave debe guardarse en esta nota o en Git.
 
-## Chat y Skill de Space Bunny
+## Chat Android y Skill botánica
 
 - UI actual: `app/src/main/java/com/correa/agronom_ia/PlantChatScreen.kt` ofrece barra de acciones, lista desplazable de mensajes, bienvenida con preguntas sugeridas y composer con texto, adjuntos, cámara y envío. El estado ocupado bloquea acciones repetidas; los errores quedan junto al composer con reintento.
 - `PlantPhotoViewModel.kt` persiste hasta 60 mensajes y los metadatos mínimos de análisis en `SharedPreferences` privadas de la app. Se conservan nombres de fotos en el historial, no se guardan en la nube. Una conversación nueva limpia el historial y selección local.
-- [[Agronom_IA/.agents/skills/space-bunny-botany/SKILL|Skill Space Bunny botánica]] es la fuente única versionada. Gradle la empaqueta como asset desde `Agronom_IA/.agents/skills`; `SpaceBunnySkillRepository` elimina el frontmatter `SKILL.md` y pasa su cuerpo como instrucción `system` a cada solicitud OpenCode. La app añade en el mensaje del usuario el contexto actual de Pl@ntNet y hasta 12 turnos anteriores por separado. El modelo no recibe imágenes.
+- [[Agronom_IA/.agents/skills/botany-assistant/SKILL|Skill botánica]] es la fuente única versionada. Gradle la empaqueta como asset desde `Agronom_IA/.agents/skills`; `BotanyInstructionsRepository` elimina el frontmatter `SKILL.md` y pasa su cuerpo como instrucción `system` a cada solicitud OpenCode. La app añade en el mensaje del usuario el contexto actual de Pl@ntNet y hasta 12 turnos anteriores por separado. El modelo no recibe imágenes.
 - El formato de respuesta es Markdown breve para chat, no JSON. El parser valida cuerpo no vacío, longitud y texto legible; una salida no válida activa un único intento de corrección. La prueba instrumentada comprueba que la Skill está realmente empaquetada y disponible.
 - Prueba real del chat sin identificación: el modelo devolvió una respuesta en español con fragmentos CJK y nombres comerciales no solicitados. Se añadió validación para rechazar caracteres CJK salvo que el usuario use ese alfabeto; la app reintentó y, al persistir una salida ilegible, dejó el error visible con acción **Reintentar**. Esto evita mostrar texto malformado, pero la calidad factual y lingüística de Space Bunny Free sigue siendo variable y no queda garantizada por la app.
 - No se añadieron bibliotecas ni se migró el tema. Se conservan Compose Material 3, colores botánicos claro/oscuro, selector, cámara y flujo de subida XAMPP/MySQL.
@@ -109,7 +109,7 @@ La aplicación web ofrece conversaciones locales recientes, búsqueda y borrado,
 
 ### Configuración
 
-Variables del backend (nunca del browser): `OPENWEBUI_BASE_URL`, `OPENWEBUI_API_KEY`, `OPENWEBUI_MODEL`, `OPENCODE_SERVER_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, `AI_CHAT_CONNECT_TIMEOUT`, `AI_CHAT_READ_TIMEOUT`. Un ejemplo sin credenciales reales está en [[Agronom_IA/backend-spring/application-example.env]]. Spring no carga `.env` automáticamente; define estas variables en el proceso del backend. La clave de desarrollo se configuró en el entorno de usuario de Windows y no se incorporó al repo. Como fue compartida en el chat, se recomienda rotarla y volver a definirla en el entorno local.
+Variables del backend (nunca del browser): `OPENWEBUI_BASE_URL`, `OPENWEBUI_API_KEY`, `OPENWEBUI_MODEL`, `OPENCODE_SERVER_BASE_URL`, `OPENCODE_SERVER_USERNAME`, `OPENCODE_SERVER_PASSWORD`, `OPENCODE_MODEL_ID`, `AI_CHAT_CONNECT_TIMEOUT`, `AI_CHAT_READ_TIMEOUT`. Un ejemplo sin credenciales reales está en [[Agronom_IA/backend-spring/application-example.env]]. Spring no carga `.env` automáticamente; define estas variables en el proceso del backend. La clave de desarrollo se configuró en el entorno de usuario de Windows y no se incorporó al repo. Como fue compartida en el chat, se recomienda rotarla y volver a definirla en el entorno local.
 
 Para ejecutar en desarrollo: `npm install` y `npm run dev` en `Agronom_IA/frontend-web`; Vite usa proxy a Spring `127.0.0.1:8081`. Para servir desde Spring, ejecuta `npm run build` y compila el módulo backend, que incluye `frontend-web/dist`. El backend sigue usando el perfil de base de datos existente; el perfil `test` usa H2 y no modifica MySQL.
 
@@ -124,3 +124,27 @@ Para ejecutar en desarrollo: `npm install` y `npm run dev` en `Agronom_IA/fronte
 - La auditoría de arquitectura delegada a OpenCode se realizó como lectura solamente con modelo `opencode/big-pickle`; corroboró ausencia previa de web y de chat en Spring. Codex revisó el resultado.
 
 Ver también [[Agronom_IA/frontend-web/README]] y [[Agronom_IA/backend-spring/README]].
+
+## Sustitución de Space Bunny por DeepSeek (2026-10-19)
+
+Este apartado refleja el estado vigente y prevalece sobre los registros históricos de Space Bunny Free que aparecen en las secciones anteriores.
+
+### Selección y flujo actual
+
+- El chat web consulta `GET /api/ai/models`; Spring expone dos opciones permitidas: `deepseek-opencode` y `qwen-local`. El cliente solo envía el identificador lógico elegido; OpenCode y Open WebUI, las URLs y sus credenciales permanecen detrás de Spring.
+- `deepseek-opencode` usa el adaptador `OpenCodeDeepSeekProvider`, `OPENCODE_SERVER_BASE_URL` y el servidor OpenCode existente. `OPENCODE_MODEL_ID` permite sobrescribir el ID (por defecto `deepseek-v4.1-flash-free`); el proveedor de OpenCode es `opencode`.
+- `qwen-local` conserva el proveedor Open WebUI y el identificador configurado `Qwen/Qwen3.6-35B-A3B-FP8`; no se cambió su configuración ni su adaptador.
+- El historial del chat web permanece en localStorage y se reenvía como contexto por turno. Al recuperar conversaciones antiguas, el ID lógico `space-bunny` se adapta a `deepseek-opencode`; los mensajes y el historial no se reemplazan. No hay cambios de esquema MySQL.
+- El backend devuelve el saludo correspondiente como metadato del modelo. Solo se presenta en la vista vacía; no se añade a la conversación ni se envía al proveedor. Cambiar modelo conserva el historial.
+
+### Identificador verificado y configuración
+
+El catálogo de OpenCode CLI 1.19.3 anunció `opencode/deepseek-v4.1-flash-free`. La documentación oficial publica el ID corto `deepseek-v4.1-flash-free` ([catálogo OpenCode](https://opencode.ai/v2/docs/console/models/)). El 2026-10-19, una ejecución directa y otra adjunta al servidor OpenCode produjeron texto. La validación de extremo a extremo desde Spring también pasó: el endpoint `POST /api/ai/chat` devolvió HTTP 200, deltas SSE y `done` con `providerId=deepseek-opencode`; Qwen devolvió HTTP 200, deltas y `done` por Open WebUI. `GET /api/ai/models` marcó ambos modelos disponibles.
+
+Spring debe ejecutarse en el mismo equipo que `opencode serve` o alcanzar su URL configurada. En emulador Android el host es `10.0.2.2`, pero este backend web resuelve OpenCode desde la máquina donde corre Spring. El servicio anuncia el modelo en catálogo solo si OpenCode reporta el servidor saludable, proveedor conectado y modelo presente. MySQL no guarda conversaciones web.
+
+### Archivos y verificación
+
+Cambios: adaptador OpenCode, catálogo/DTO Spring, `application.yml`, catálogo consumido por React, pantalla de bienvenida, migración de lectura del ID anterior, pruebas, README de Spring/app y esta nota. El cliente Android se actualizó para pedir el mismo ID de modelo a su OpenCode local. No se incluyeron secretos ni se añadieron dependencias.
+
+Pruebas de este cambio: `mvn clean test package` (22 pruebas, 0 fallidas), `npm test -- --run` (4 pruebas), `npm run build`, `:app:assembleDebug` y `:app:testDebugUnitTest` terminaron correctamente. Se probaron en vivo catálogo y generación SSE para DeepSeek y Qwen. La prueba de modelo identificó el problema real del adaptador: OpenCode 1.19.3 anida los eventos SSE bajo `payload`; al no desenvolverlos, Spring descartaba `type` y quedaba esperando indefinidamente. Ahora se acepta el formato actual y el anterior, y se detecta el estado idle actual. No se cambiaron MySQL ni la configuración de Qwen. No se realizó prueba visual automatizada en varios tamaños.

@@ -25,7 +25,7 @@ public class ChatOrchestrationService {
     }
 
     public List<ChatContracts.ModelOption> availableModels() {
-        return List.of("space-bunny", "qwen-local").stream()
+        return List.of(OpenCodeDeepSeekProvider.ID, OpenWebUiChatProvider.ID).stream()
                 .map(providers::get)
                 .map(ChatProvider::availability)
                 .toList();
