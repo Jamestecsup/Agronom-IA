@@ -7,6 +7,9 @@
 **/.gradle/
 **/build/
 **/target/
+**/dist/
+**/node_modules/
+*.tsbuildinfo
 **/local.properties
 **/.externalNativeBuild/
 **/.cxx/

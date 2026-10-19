@@ -57,6 +57,25 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- Keep the Android client's single botany skill as the source of truth. -->
+            <resource>
+                <directory>${project.basedir}/../.agents/skills/space-bunny-botany</directory>
+                <targetPath>skills/space-bunny-botany</targetPath>
+                <includes>
+                    <include>SKILL.md</include>
+                </includes>
+            </resource>
+            <!-- The standalone Vite client is embedded in the runnable jar when built. -->
+            <resource>
+                <directory>${project.basedir}/../frontend-web/dist</directory>
+                <targetPath>static</targetPath>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

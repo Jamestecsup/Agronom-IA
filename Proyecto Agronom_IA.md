@@ -82,3 +82,45 @@ Las verificaciones históricas de XAMPP/MySQL anotadas abajo son del bloque ante
 - `784fc3e` — Incluye archivos base del proyecto Android.
 
 El repositorio está en la raíz de la bóveda. `.obsidian`, `Bienvenido.md`, `local.properties`, compilaciones y archivos de IDE quedan fuera de Git.
+
+## Chat web multi-modelo (2026-10-19)
+
+### Arquitectura y flujo
+
+Se agregó `Agronom_IA/frontend-web` como cliente React + TypeScript independiente y empacable por Spring Boot. No existía frontend web antes de este cambio; no hay frontend administrativo ni se agregaron módulos multiagente a la aplicación.
+
+```mermaid
+flowchart LR
+  Browser[React chat] -->|GET /api/ai/models; POST /api/ai/chat SSE| Spring[Spring Boot: AI orchestration]
+  Spring -->|OpenAI-compatible HTTPS/HTTP API, Bearer backend-only| WebUI[Open WebUI local]
+  Spring -->|HTTP local session/event API| OpenCode[OpenCode serve]
+  Browser -->|history in localStorage| Local[Browser storage]
+```
+
+El backend es el único que resuelve el `providerId` mediante una lista permitida; el cliente no puede enviar URL, modelo arbitrario ni credencial. `GET /api/ai/models` devuelve identificador, nombre, proveedor y disponibilidad. `POST /api/ai/chat` transmite eventos SSE `delta`, `done` o `error`; cancelar la generación cierra la petición y señala cancelación al proveedor. Los mensajes anteriores permanecen en la conversación del navegador y se reenvían como texto contextual en cada solicitud. Cambiar el modelo afecta los turnos siguientes; no implica memoria compartida entre OpenCode y Open WebUI. La conversación web no se persiste en MySQL.
+
+`qwen-local` llama a Open WebUI con `GET /api/models` para comprobar el ID autorizado y `POST /api/chat/completions` para la generación progresiva. Las instrucciones botánicas se obtienen del `SKILL.md` ya existente, empaquetado como recurso de Spring, manteniendo una sola fuente de instrucciones. Space Bunny conserva el ID `space-bunny-free` y usa el servidor OpenCode. No se tocó el flujo de IA del cliente Android ni el esquema MySQL de imágenes.
+
+El diagnóstico de Qwen confirmó que el cuerpo del último mensaje sí llega a Open WebUI y que el modelo devuelve texto por SSE. La respuesta genérica repetida venía de las instrucciones compartidas, que lo hacían identificarse como Space Bunny; la Skill ahora exige contestar la solicitud actual, evitar saludos repetidos y no atribuirse el proveedor seleccionado.
+
+### Interfaz
+
+La aplicación web ofrece conversaciones locales recientes, búsqueda y borrado, sidebar contraíble y menú móvil, tema claro/oscuro, selector visible, bienvenida con consultas de ejemplo, composer con crecimiento automático, envío Enter/Shift+Enter, Markdown/GFM, bloques de código, indicadores de generación, cancelar, error/reintentar y diseño adaptable. El historial se guarda en `localStorage`, únicamente en ese navegador. No se muestran acciones de adjuntos en la web porque no están integradas en este flujo. El renderizado Markdown se carga de forma diferida.
+
+### Configuración
+
+Variables del backend (nunca del browser): `OPENWEBUI_BASE_URL`, `OPENWEBUI_API_KEY`, `OPENWEBUI_MODEL`, `OPENCODE_SERVER_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, `AI_CHAT_CONNECT_TIMEOUT`, `AI_CHAT_READ_TIMEOUT`. Un ejemplo sin credenciales reales está en [[Agronom_IA/backend-spring/application-example.env]]. Spring no carga `.env` automáticamente; define estas variables en el proceso del backend. La clave de desarrollo se configuró en el entorno de usuario de Windows y no se incorporó al repo. Como fue compartida en el chat, se recomienda rotarla y volver a definirla en el entorno local.
+
+Para ejecutar en desarrollo: `npm install` y `npm run dev` en `Agronom_IA/frontend-web`; Vite usa proxy a Spring `127.0.0.1:8081`. Para servir desde Spring, ejecuta `npm run build` y compila el módulo backend, que incluye `frontend-web/dist`. El backend sigue usando el perfil de base de datos existente; el perfil `test` usa H2 y no modifica MySQL.
+
+### Verificaciones y límites observados
+
+- UI real abierta en `http://127.0.0.1:8081/`: el navegador mostró chat vacío, selector, opción Qwen disponible y Space Bunny deshabilitado por indisponibilidad.
+- Open WebUI local real autenticado: catálogo identificó `Qwen/Qwen3.6-35B-A3B-FP8`; solicitud de chat atravesó Spring y produjo HTTP 200 con ocho deltas SSE. Se comprobó que el catálogo no contiene la credencial.
+- OpenCode local respondió health y lista de proveedores, pero no anunció `space-bunny-free`; por seguridad no se elige otro modelo de OpenCode. La opción queda deshabilitada hasta que ese ID exacto esté disponible.
+- Se reprodujo una llamada OpenCode explícita y el runtime devolvió `ProviderModelNotFoundError` para `opencode/space-bunny-free`. OpenCode 1.18.34 fue actualizado a 1.19.3, que sigue sin publicar el ID; el servidor local está sano pero Space Bunny queda deshabilitado. La configuración global fue restaurada sin cambios persistentes.
+- Spring: 20 pruebas ejecutadas en `mvn clean test package`, sin fallos; incluye descubrimiento/modelo, streaming simulado, errores 429 y HTTP 400/503, validaciones y persistencia de imágenes. Frontend: 4 pruebas y build TypeScript/Vite pasan; `npm audit` informa cero vulnerabilidades.
+- No se verificó renderizado visual automatizado en distintos tamaños, cámara, pruebas físicas ni integración visual de Space Bunny porque su modelo no está disponible. El flujo real de Open WebUI se verificó de extremo a extremo.
+- La auditoría de arquitectura delegada a OpenCode se realizó como lectura solamente con modelo `opencode/big-pickle`; corroboró ausencia previa de web y de chat en Spring. Codex revisó el resultado.
+
+Ver también [[Agronom_IA/frontend-web/README]] y [[Agronom_IA/backend-spring/README]].

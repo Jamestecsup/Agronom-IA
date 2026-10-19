@@ -70,11 +70,26 @@ cd ..\app
 
 ## Pruebas
 
-Ejecuta mvn test. Las pruebas automatizadas usan H2 en memoria y almacenamiento temporal; no necesitan claves, no usan datos reales y no conectan a MySQL de desarrollo. Pasaron 14 pruebas. Cubren contrato HTTP, selección 1/5/6, MIME/extensión falsos, JPEG, PNG, WebP decodificable, GIF, corrupción, ausencia de imágenes y rollback/limpieza cuando falla la persistencia después de un INSERT.
+Ejecuta `mvn test`. Las pruebas automatizadas usan H2 en memoria y almacenamiento temporal; no necesitan claves, no usan datos reales y no conectan a MySQL de desarrollo. Pasaron 20 pruebas. Cubren el contrato de imágenes, selección 1/5/6, formatos/corrupción, rollback/limpieza, selección autorizada de proveedores, streaming simulado, límites, errores de tasa y respuestas JSON 400/503 previas al SSE.
 
 La compatibilidad del DDL se comprobó leyendo SHOW CREATE TABLE; la cuenta API no tenía permisos para consultarlo. Se levantó el servidor contra la base aislada agronomia_spring_migration_test_20261013, con DDL equivalente: GET fue 405, cinco fotos devolvieron 201 con cinco filas/archivos JPEG, seis recibieron 422 y un GIF disfrazado fue 415 sin filas adicionales. No se escribió en la base agronomia de trabajo.
 
 La base de prueba y cinco imágenes sintéticas permanecen para inspección: agronomia_spring_migration_test_20261013 y %TEMP%\agronomia-spring-mariadb-test-images. La herramienta bloqueó la operación destructiva de limpieza; los artefactos quedan aislados y no contienen datos de usuario.
+
+## Chat web multi-modelo (desarrollo local)
+
+El módulo `ai` agrega una API común de chat para dos proveedores configurados por el servidor. `GET /api/ai/models` publica solo identificadores, etiquetas y disponibilidad; el navegador nunca envía una URL ni credenciales. `POST /api/ai/chat` recibe `providerId` permitido (`qwen-local` o `space-bunny`) y un historial acotado, y responde como SSE (`delta`, `done`, `error`). Cancelar el `AbortController` del navegador cierra la conexión y Spring cancela la lectura del proveedor. La selección se aplica a mensajes siguientes; el historial textual se conserva en el navegador y se reenvía como contexto a cada proveedor, sin asumir memoria compartida. No hay persistencia del chat en MySQL.
+
+Proveedores:
+
+- `qwen-local`: Open WebUI con `GET /api/models` para descubrir el identificador autorizado y `POST /api/chat/completions` con SSE compatible con OpenAI. La clave solo se lee desde `OPENWEBUI_API_KEY` en Spring.
+- `space-bunny`: adaptador al servidor OpenCode, usando `GET /global/health`, `GET /provider` y endpoints de sesiones/eventos. Mantiene el ID configurado `space-bunny-free`; no hay sustitución automática.
+
+Para iniciar React en desarrollo usa `npm install`, `npm run dev` dentro de `frontend-web`; Vite proxya las rutas API a Spring. Para servir la web en el mismo puerto de Spring, ejecuta `npm run build` primero y después empaqueta/ejecuta el backend; Maven incluye `frontend-web/dist` en `static/`. El módulo web guarda historial únicamente en el `localStorage` del navegador.
+
+Configuración adicional: `OPENWEBUI_BASE_URL`, `OPENWEBUI_API_KEY`, `OPENWEBUI_MODEL`, `OPENCODE_SERVER_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, `AI_CHAT_CONNECT_TIMEOUT` y `AI_CHAT_READ_TIMEOUT`. `application-example.env` muestra nombres y ejemplos inocuos; Spring no carga `.env` automáticamente. No se versiona ninguna clave real.
+
+Verificación realizada en desarrollo: Open WebUI autenticado y modelo `Qwen/Qwen3.6-35B-A3B-FP8` disponible; Spring devolvió HTTP 200 y deltas SSE en peticiones reales, sin incluir la credencial en el catálogo ni en el cliente. El catálogo detectó Space Bunny no disponible: OpenCode 1.19.3 reporta salud correcta y proveedor conectado, pero no anuncia `space-bunny-free`; una generación explícita falla con `ProviderModelNotFoundError` antes de llamar al proveedor del modelo. Se actualizó desde 1.18.34 y el ID sigue ausente. El endpoint devuelve 503 al seleccionarlo; un proveedor no permitido devuelve 400. No se sustituyó el modelo ni se modificó MySQL.
 
 ## Migración por fases
 
@@ -83,7 +98,9 @@ La base de prueba y cinco imágenes sintéticas permanecen para inspección: agr
 3. Siguiente paso: probar carga desde Android Emulator con PLANT_API_BASE_URL=http://10.0.2.2:8081/agronomia-api. El APK de desarrollo conserva por defecto la ruta PHP.
 4. Criterio para retirar PHP: aceptar lotes de 1 y 5 desde Android, rechazar 6/corruptas, confirmar archivos y filas, verificar rollback/fallo de conexión y estabilidad; retirar solo tras aceptación del responsable.
 
-React no existe en el repositorio y queda fuera del alcance. No hay panel administrativo que migrar.
+React se agregó como chat de usuario, no como panel administrativo. No hay un módulo administrativo React ni persistencia MySQL para conversaciones.
+
+Diagnóstico de Qwen: una pregunta exacta enviada al endpoint de Spring llegó al modelo y produjo una respuesta real por SSE; la salida genérica repetida del chat se debía a la instrucción de sistema compartida que lo identificaba como Space Bunny. Esa instrucción ahora pide responder primero a la consulta, omitir presentaciones repetidas y no atribuirse el proveedor.
 
 ## Referencias técnicas consultadas
 

@@ -2,6 +2,8 @@
 
 Aplicación Android Kotlin con Jetpack Compose y MVVM. La pantalla principal es un chat botánico que conserva conversaciones localmente, adjunta hasta cinco fotos validadas y combina la identificación de Pl@ntNet con respuestas contextuales de Space Bunny. La persistencia remota opcional sigue conectada a PHP/MySQL en XAMPP.
 
+El proyecto también incorpora un chat web React/TypeScript en `frontend-web`, consumiendo el mismo backend Spring. En su flujo actual, Qwen responde mediante Open WebUI con SSE. El historial web es local al navegador y no se guarda en MySQL. Consulta [[Proyecto Agronom_IA]] para el diagnóstico, pruebas y limitaciones de OpenCode/Space Bunny.
+
 ## Arquitectura
 
 - UI: `app/src/main/java/com/correa/agronom_ia/MainActivity.kt` y `PlantChatScreen.kt` (Compose Material 3). Muestra un inicio conversacional, burbujas de chat, composer con fotos/cámara, envío, carga, error/reintento e identificación adjunta a la respuesta.
@@ -37,4 +39,4 @@ El tipo `debug` permite HTTP para el backend local. `release` bloquea tráfico H
 
 ## Verificación
 
-Verificación del rediseño (2026-10-13): `:app:assembleDebug`, `:app:assembleRelease`, `:app:testDebugUnitTest` y `:app:connectedDebugAndroidTest` completados; 15 pruebas instrumentadas pasan en Pixel_8 AVD/API 37. La prueba real requiere una clave válida de Pl@ntNet, Internet y OpenCode CLI con Space Bunny disponible; inicia el servidor con el comando anterior. En una consulta genérica real, una respuesta lingüísticamente ilegible se rechazó y el chat mostró el error con reintento; la disponibilidad y calidad del modelo pueden variar. Nota de decisiones y verificaciones: [[Proyecto Agronom_IA]].
+Verificación del rediseño Android (2026-10-13): `:app:assembleDebug`, `:app:assembleRelease`, `:app:testDebugUnitTest` y `:app:connectedDebugAndroidTest` completados; 15 pruebas instrumentadas pasan en Pixel_8 AVD/API 37. Qwen web se verificó con Open WebUI real y respuestas progresivas por Spring. El servidor OpenCode local está actualizado a 1.19.3 y saludable, pero actualmente su catálogo no incluye `space-bunny-free`; el chat lo informa como no disponible.

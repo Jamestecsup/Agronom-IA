@@ -32,3 +32,22 @@ server:
 plant:
   storage:
     directory: ${PLANT_UPLOAD_DIR:C:/xampp/plant-images}
+
+agronomia:
+  ai:
+    open-code:
+      base-url: ${OPENCODE_SERVER_BASE_URL:http://127.0.0.1:4096}
+      username: ${OPENCODE_SERVER_USERNAME:opencode}
+      password: ${OPENCODE_SERVER_PASSWORD:}
+      provider-id: opencode
+      model-id: space-bunny-free
+    open-webui:
+      base-url: ${OPENWEBUI_BASE_URL:http://192.168.17.11:3000}
+      api-key: ${OPENWEBUI_API_KEY:}
+      model: ${OPENWEBUI_MODEL:Qwen/Qwen3.6-35B-A3B-FP8}
+      connect-timeout: ${OPENWEBUI_CONNECT_TIMEOUT:5s}
+      read-timeout: ${OPENWEBUI_READ_TIMEOUT:180s}
+    chat:
+      max-messages: 40
+      max-message-characters: 8000
+      max-response-characters: 20000
