@@ -31,7 +31,8 @@ data class ChatMessage(
     val role: String,
     val text: String,
     val photoNames: List<String> = emptyList(),
-    val analysis: PlantAnalysis? = null
+    val analysis: PlantAnalysis? = null,
+    val modelId: String? = null
 )
 data class PlantPhotoState(
     val photos: List<PlantPhoto> = emptyList(),
@@ -43,7 +44,10 @@ data class PlantPhotoState(
     val batchId: String? = null,
     val analysis: PlantAnalysis? = null,
     val photosPending: Boolean = false,
-    val conversation: List<ChatMessage> = emptyList()
+    val conversation: List<ChatMessage> = emptyList(),
+    val models: List<AiModelOption> = AiModelCatalogParser.defaults,
+    val selectedModelId: String = AiModelCatalogParser.DEEPSEEK_ID,
+    val modelsLoading: Boolean = false
 )
 class PlantPhotoViewModel : ViewModel() {
     private val mutableState = MutableStateFlow(PlantPhotoState())
@@ -54,8 +58,12 @@ class PlantPhotoViewModel : ViewModel() {
     fun restoreConversation(context: Context) {
         if (conversationLoaded) return
         conversationLoaded = true
-        val raw = context.getSharedPreferences(CHAT_PREFERENCES, Context.MODE_PRIVATE).getString(CHAT_KEY, null) ?: return
+        val preferences = context.getSharedPreferences(CHAT_PREFERENCES, Context.MODE_PRIVATE)
+        val selectedModelId = preferences.getString(MODEL_KEY, AiModelCatalogParser.DEEPSEEK_ID)
+            ?.takeIf { id -> AiModelCatalogParser.defaults.any { it.id == id } } ?: AiModelCatalogParser.DEEPSEEK_ID
+        val raw = preferences.getString(CHAT_KEY, null)
         val messages = runCatching {
+            if (raw == null) return@runCatching emptyList()
             val array = org.json.JSONArray(raw)
             buildList {
                 for (index in 0 until array.length()) array.optJSONObject(index)?.let { add(it.toChatMessage()) }
@@ -63,15 +71,43 @@ class PlantPhotoViewModel : ViewModel() {
         }.getOrDefault(emptyList())
         mutableState.value = mutableState.value.copy(
             conversation = messages.takeLast(MAX_HISTORY_MESSAGES),
-            analysis = messages.lastOrNull { it.analysis != null }?.analysis
+            analysis = messages.lastOrNull { it.analysis != null }?.analysis,
+            selectedModelId = selectedModelId
         )
     }
 
     fun startNewConversation(context: Context) {
         mutableState.value.photos.forEach { it.file.delete() }
         conversationLoaded = true
-        mutableState.value = PlantPhotoState()
+        val current = mutableState.value
+        mutableState.value = PlantPhotoState(models = current.models, selectedModelId = current.selectedModelId)
         persistConversation(context, emptyList())
+    }
+
+    fun selectModel(context: Context, modelId: String) {
+        if (mutableState.value.busy || AiModelCatalogParser.defaults.none { it.id == modelId }) return
+        val model = mutableState.value.models.firstOrNull { it.id == modelId }
+            ?: AiModelCatalogParser.defaults.first { it.id == modelId }
+        mutableState.value = mutableState.value.copy(selectedModelId = modelId, message = "Modelo activo: ${model.name} · ${model.provider}.")
+        context.getSharedPreferences(CHAT_PREFERENCES, Context.MODE_PRIVATE).edit().putString(MODEL_KEY, modelId).apply()
+    }
+
+    fun refreshModels() {
+        if (mutableState.value.modelsLoading) return
+        mutableState.value = mutableState.value.copy(modelsLoading = true)
+        viewModelScope.launch {
+            try {
+                val models = withContext(Dispatchers.IO) { AiChatApi.fetchModels(BuildConfig.SPRING_API_BASE_URL) }
+                mutableState.value = mutableState.value.copy(models = models, modelsLoading = false)
+            } catch (error: Exception) {
+                val message = when (error) {
+                    is UnknownHostException, is ConnectException -> "No se pudo consultar el backend local. Comprueba Spring Boot y la dirección configurada."
+                    is SocketTimeoutException -> "El backend tardó demasiado en consultar los modelos."
+                    else -> error.message ?: "No se pudo consultar la disponibilidad de los modelos."
+                }
+                mutableState.value = mutableState.value.copy(modelsLoading = false, message = message)
+            }
+        }
     }
 
     fun sendMessage(context: Context, rawQuestion: String) {
@@ -89,23 +125,27 @@ class PlantPhotoViewModel : ViewModel() {
             mutableState.value = current.copy(error = "El máximo es de cinco imágenes por análisis.")
             return
         }
-        val userMessage = ChatMessage(UUID.randomUUID().toString(), ROLE_USER, question, photos.map { it.name })
+        val providerId = current.selectedModelId
+        val userMessage = ChatMessage(UUID.randomUUID().toString(), ROLE_USER, question, photos.map { it.name }, modelId = providerId)
         val conversation = (current.conversation + userMessage).takeLast(MAX_HISTORY_MESSAGES)
         mutableState.value = current.copy(conversation = conversation, busy = true, progress = if (photos.isEmpty()) "Enviando pregunta…" else "Preparando identificación…", error = null)
         persistConversation(context, conversation)
-        viewModelScope.launch { runAssistantTurn(context, userMessage, photos) }
+        viewModelScope.launch { runAssistantTurn(context, userMessage, photos, providerId) }
     }
 
     fun retryLastMessage(context: Context) {
         val current = mutableState.value
         if (current.busy) return
         val latestUserMessage = current.conversation.lastOrNull { it.role == ROLE_USER } ?: return
-        mutableState.value = current.copy(busy = true, error = null, progress = "Reintentando…")
+        val providerId = latestUserMessage.modelId ?: current.selectedModelId
+        mutableState.value = current.copy(selectedModelId = providerId, busy = true, error = null, progress = "Reintentando…")
+        context.getSharedPreferences(CHAT_PREFERENCES, Context.MODE_PRIVATE).edit().putString(MODEL_KEY, providerId).apply()
         val photos = current.photos.takeIf { current.photosPending && current.analysis?.identification == null }.orEmpty()
-        viewModelScope.launch { runAssistantTurn(context, latestUserMessage, photos) }
+        viewModelScope.launch { runAssistantTurn(context, latestUserMessage, photos, providerId) }
     }
 
-    private suspend fun runAssistantTurn(context: Context, userMessage: ChatMessage, photos: List<PlantPhoto>) {
+    private suspend fun runAssistantTurn(context: Context, userMessage: ChatMessage, photos: List<PlantPhoto>, providerId: String) {
+        val assistantId = UUID.randomUUID().toString()
         try {
             var identification = mutableState.value.analysis?.identification
             if (photos.isNotEmpty() && identification == null) {
@@ -116,20 +156,50 @@ class PlantPhotoViewModel : ViewModel() {
                 }
                 mutableState.value = mutableState.value.copy(analysis = PlantAnalysis(identification))
             }
-            val history = mutableState.value.conversation
-                .dropLastWhile { it.id != userMessage.id }
-                .dropLast(1)
-                .takeLast(12)
-                .map { ChatTurn(it.role, it.text) }
-            val skillInstructions = withContext(Dispatchers.IO) { BotanyInstructionsRepository.load(context) }
+            var historyBudget = MAX_CONTEXT_CHARACTERS
+            val priorTurns = mutableState.value.conversation
+                .takeWhile { it.id != userMessage.id }
+                .takeLast(MAX_CONTEXT_MESSAGES)
+                .asReversed()
+                .mapNotNull { message ->
+                    if (historyBudget <= 0 || message.text.isBlank()) return@mapNotNull null
+                    val excerpt = message.text.take(minOf(MAX_CONTEXT_MESSAGE_CHARS, historyBudget))
+                    historyBudget -= excerpt.length
+                    ChatTurn(message.role, excerpt)
+                }
+                .asReversed()
+            val prompt = buildString {
+                if (identification != null) {
+                    appendLine("Contexto de identificación de Pl@ntNet (coincidencia orientativa, no certeza):")
+                    appendLine("Nombre científico: ${identification.scientificName}")
+                    identification.commonName?.let { appendLine("Nombre común: $it") }
+                    identification.family?.let { appendLine("Familia: $it") }
+                    appendLine("Coincidencia: ${identification.scorePercent}")
+                    if (identification.uncertain) appendLine("La identificación es incierta; advierte esta limitación.")
+                    if (identification.alternatives.isNotEmpty()) appendLine("Alternativas: ${identification.alternatives.joinToString()}")
+                    appendLine()
+                }
+                append(userMessage.text)
+            }
+            val turns = priorTurns + ChatTurn(ROLE_USER, prompt)
+            val modelName = mutableState.value.models.firstOrNull { it.id == providerId }?.name ?: providerId
+            val draft = ChatMessage(assistantId, ROLE_ASSISTANT, "", analysis = identification?.let(::PlantAnalysis), modelId = providerId)
+            mutableState.value = mutableState.value.copy(conversation = mutableState.value.conversation + draft, progress = "Conectando con $modelName…")
             val reply = withContext(Dispatchers.IO) {
-                PlantAnalysisApi.generateReply(skillInstructions, identification, history, userMessage.text) { stage ->
-                    mutableState.value = mutableState.value.copy(progress = stage)
+                AiChatApi.streamReply(BuildConfig.SPRING_API_BASE_URL, providerId, turns) { delta ->
+                    val current = mutableState.value
+                    mutableState.value = current.copy(
+                        progress = "${modelName} está respondiendo…",
+                        conversation = current.conversation.map { message ->
+                            if (message.id == assistantId) message.copy(text = message.text + delta) else message
+                        }
+                    )
                 }
             }
             val analysis = identification?.let { PlantAnalysis(it, reply) }
-            val assistantMessage = ChatMessage(UUID.randomUUID().toString(), ROLE_ASSISTANT, reply, analysis = analysis)
-            val conversation = (mutableState.value.conversation + assistantMessage).takeLast(MAX_HISTORY_MESSAGES)
+            val conversation = mutableState.value.conversation
+                .map { if (it.id == assistantId) it.copy(text = reply, analysis = analysis) else it }
+                .takeLast(MAX_HISTORY_MESSAGES)
             mutableState.value = mutableState.value.copy(
                 conversation = conversation,
                 analysis = analysis ?: mutableState.value.analysis,
@@ -144,11 +214,14 @@ class PlantPhotoViewModel : ViewModel() {
             persistConversation(context, conversation)
         } catch (error: Exception) {
             val message = when (error) {
-                is UnknownHostException, is ConnectException -> "No se pudo conectar con Pl@ntNet u OpenCode. Comprueba Internet y que OpenCode esté activo."
-                is SocketTimeoutException -> "El servicio tardó demasiado en responder. Puedes reintentar."
+                is UnknownHostException, is ConnectException -> "No se pudo conectar con el backend local. Comprueba que Spring Boot esté activo y que la dirección sea correcta."
+                is SocketTimeoutException -> "El backend o el modelo tardó demasiado en responder. Puedes reintentar."
                 else -> error.message ?: "No se pudo completar la respuesta."
             }
-            mutableState.value = mutableState.value.copy(busy = false, progress = null, error = message)
+            mutableState.value = mutableState.value.copy(
+                conversation = mutableState.value.conversation.filterNot { it.id == assistantId },
+                busy = false, progress = null, error = message
+            )
         }
     }
 
@@ -251,7 +324,8 @@ class PlantPhotoViewModel : ViewModel() {
             messages.takeLast(MAX_HISTORY_MESSAGES).forEach { message ->
                 put(JSONObject().put("id", message.id).put("role", message.role).put("text", message.text)
                     .put("photos", org.json.JSONArray(message.photoNames))
-                    .put("analysis", message.analysis?.toJson()))
+                    .put("analysis", message.analysis?.toJson())
+                    .put("modelId", message.modelId))
             }
         }
         context.getSharedPreferences(CHAT_PREFERENCES, Context.MODE_PRIVATE).edit().putString(CHAT_KEY, json.toString()).apply()
@@ -261,7 +335,8 @@ class PlantPhotoViewModel : ViewModel() {
         val photos = optJSONArray("photos") ?: org.json.JSONArray()
         val analysis = optJSONObject("analysis")?.toPlantAnalysis()
         return ChatMessage(optString("id", UUID.randomUUID().toString()), optString("role"), optString("text"),
-            (0 until photos.length()).map { photos.optString(it) }, analysis)
+            (0 until photos.length()).map { photos.optString(it) }, analysis,
+            optString("modelId").takeIf { it.isNotBlank() && it != "null" })
     }
 
     private fun PlantAnalysis.toJson(): JSONObject = JSONObject()
@@ -348,7 +423,11 @@ class PlantPhotoViewModel : ViewModel() {
         const val MAX_PHOTOS = 5
         private const val CHAT_PREFERENCES = "plant_chat_history"
         private const val CHAT_KEY = "messages"
+        private const val MODEL_KEY = "selected_model"
         private const val MAX_HISTORY_MESSAGES = 60
+        private const val MAX_CONTEXT_MESSAGES = 38
+        private const val MAX_CONTEXT_CHARACTERS = 28_000
+        private const val MAX_CONTEXT_MESSAGE_CHARS = 8_000
         private const val MAX_INPUT_BYTES = 15L * 1024 * 1024
         private const val MAX_DIMENSION = 12_000
         private const val MAX_DECODE_DIMENSION = 2048

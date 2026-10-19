@@ -19,10 +19,12 @@ class ConversationScreenTest {
         composeRule.onNodeWithText("Fotos").assertIsDisplayed()
         composeRule.onNodeWithText("Cámara").assertIsDisplayed()
         composeRule.onNodeWithText("Enviar").assertIsDisplayed()
+        composeRule.onNodeWithText("DeepSeek").assertIsDisplayed()
 
         composeRule.onNodeWithText("Más").performClick()
         composeRule.onNodeWithText("Nueva conversación").assertIsDisplayed()
         composeRule.onNodeWithText("Nueva conversación").performClick()
         composeRule.onNodeWithText("¿Qué planta te gustaría cuidar?").assertIsDisplayed()
     }
+
 }

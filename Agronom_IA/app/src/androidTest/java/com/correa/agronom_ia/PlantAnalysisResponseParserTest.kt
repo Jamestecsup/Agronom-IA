@@ -53,58 +53,76 @@ class PlantAnalysisResponseParserTest {
     }
 
     @Test
-    fun spaceBunnyExtractsMarkdownReply() {
-        val result = OpenCodeResponseParser.parse(
-            """{"parts":[{"type":"text","text":"## Riego\nRiega cuando la superficie del sustrato esté seca.\n\n## Toxicidad\nNo hay información fiable."}]}"""
+    fun modelCatalogKeepsBothConfiguredProvidersAndPublicMetadata() {
+        val models = AiModelCatalogParser.parse(
+            """{"models":[{"id":"deepseek-opencode","name":"DeepSeek V4.1 Flash Free","provider":"OpenCode","modelId":"deepseek-v4.1-flash-free","available":true,"welcomeMessage":"Hola DeepSeek"},{"id":"qwen-local","name":"Qwen 3.6 35B A3B FP8","provider":"Open WebUI","modelId":"Qwen/Qwen3.6-35B-A3B-FP8","available":false,"unavailableReason":"offline","welcomeMessage":"Hola Qwen"}]}"""
         )
 
-        assertTrue(result.startsWith("## Riego"))
-        assertTrue(result.contains("No hay información fiable."))
+        assertEquals(listOf("deepseek-opencode", "qwen-local"), models.map { it.id })
+        assertEquals(true, models[0].available)
+        assertEquals(false, models[1].available)
+        assertEquals("Open WebUI", models[1].provider)
+        assertEquals("Hola Qwen", models[1].welcomeMessage)
+    }
+
+    @Test
+    fun modelCatalogIgnoresUnknownProviderIdsAndRetainsFallbackOptions() {
+        val models = AiModelCatalogParser.parse("""{"models":[{"id":"arbitrary-provider","available":true}]}""")
+        assertEquals(setOf("deepseek-opencode", "qwen-local"), models.map { it.id }.toSet())
+        assertTrue(models.all { it.available == null })
+    }
+
+    @Test
+    fun serverSentEventsParseDeltasCompletionAndProviderErrors() {
+        assertEquals(AiSseEvent.Delta("Hola"), AiSseEventParser.parse("delta", """{"text":"Hola"}"""))
+        assertEquals(AiSseEvent.Done, AiSseEventParser.parse("done", """{"providerId":"qwen-local"}"""))
+        assertEquals(AiSseEvent.Error("Qwen no disponible"), AiSseEventParser.parse("error", """{"message":"Qwen no disponible"}"""))
+        assertEquals(AiSseEvent.Ignored, AiSseEventParser.parse("heartbeat", "{}"))
+    }
+
+    @Test
+    fun chatRequestCarriesOnlyTheSelectedLogicalProviderAndConversation() {
+        val turns = listOf(ChatTurn("user", "Hola"), ChatTurn("assistant", "¿Cómo puedo ayudar?"))
+        AiModelCatalogParser.defaults.forEach { model ->
+            val payload = AiChatApi.requestPayload(model.id, turns)
+            assertEquals(model.id, payload.getString("providerId"))
+            assertEquals("Hola", payload.getJSONArray("messages").getJSONObject(0).getString("content"))
+            assertEquals("assistant", payload.getJSONArray("messages").getJSONObject(1).getString("role"))
+            assertFalse(payload.has("apiKey"))
+            assertFalse(payload.has("baseUrl"))
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun chatRequestDoesNotAllowArbitraryProviderIds() {
+        AiChatApi.requestPayload("http://untrusted-host", listOf(ChatTurn("user", "Hola")))
     }
 
     @Test(expected = IllegalStateException::class)
-    fun spaceBunnyRejectsIncompleteGuide() {
-        OpenCodeResponseParser.parse(
-            """{"parts":[{"type":"text","text":"  "}]}"""
-        )
+    fun serverSentEventsRejectMalformedDeltaPayload() {
+        AiSseEventParser.parse("delta", "no-json")
     }
 
     @Test
-    fun spaceBunnyCanReplyInTheLanguageRequestedByTheUser() {
-        val result = OpenCodeResponseParser.parse(
-            """{"parts":[{"type":"text","text":"如果用户要求中文，就用中文回答。"}]}""",
-            userQuestion = "请用中文回答"
-        )
-        assertTrue(result.contains("中文"))
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun spaceBunnyRejectsUnrequestedMixedWritingSystems() {
-        OpenCodeResponseParser.parse(
-            """{"parts":[{"type":"text","text":"Comprueba la humedad. 湿度"}]}""",
-            userQuestion = "¿Cuándo riego?"
-        )
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun spaceBunnyRejectsOversizedReply() {
-        val longReply = "x".repeat(8_001)
-        OpenCodeResponseParser.parse("""{"parts":[{"type":"text","text":"$longReply"}]}""")
-    }
-
-    @Test
-    fun skillInstructionsAreBundledForTheRuntimePrompt() {
+    fun selectingModelPreservesExistingMessagesAndSurvivesRestore() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val instructions = BotanyInstructionsRepository.load(context)
+        val prefs = context.getSharedPreferences("plant_chat_history", android.content.Context.MODE_PRIVATE)
+        prefs.edit().clear().putString("messages", """[{"id":"old-assistant","role":"assistant","text":"Respuesta anterior","modelId":"deepseek-opencode"}]""").apply()
+        try {
+            val model = PlantPhotoViewModel()
+            model.restoreConversation(context)
+            model.selectModel(context, AiModelCatalogParser.QWEN_ID)
 
-        assertTrue(instructions.contains("Pl@ntNet es el único responsable de la identificación visual"))
-        assertTrue(instructions.contains("Una falta de datos sobre toxicidad no significa que la planta sea segura"))
-    }
+            assertEquals(AiModelCatalogParser.QWEN_ID, model.state.value.selectedModelId)
+            assertEquals("Respuesta anterior", model.state.value.conversation.single().text)
+            assertEquals(AiModelCatalogParser.DEEPSEEK_ID, model.state.value.conversation.single().modelId)
 
-    @Test(expected = IllegalArgumentException::class)
-    fun spaceBunnyRejectsInternalPlaceholderText() {
-        OpenCodeResponseParser.parse(
-            """{"parts":[{"type":"text","text":"Usa agua con_filtro en cada riego."}]}"""
-        )
+            val restored = PlantPhotoViewModel()
+            restored.restoreConversation(context)
+            assertEquals(AiModelCatalogParser.QWEN_ID, restored.state.value.selectedModelId)
+            assertEquals(AiModelCatalogParser.DEEPSEEK_ID, restored.state.value.conversation.single().modelId)
+        } finally {
+            prefs.edit().clear().apply()
+        }
     }
 }

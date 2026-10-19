@@ -43,7 +43,7 @@ private fun AgronomChatRoute(model: PlantPhotoViewModel = viewModel()) {
         val action = pendingAction
         pendingAction = null
         if (granted) action?.invoke()
-        else if (action != null) model.reportError("Se necesita permiso de red local para conectar con OpenCode en este dispositivo.")
+        else if (action != null) model.reportError("Se necesita permiso de red local para conectar con el backend Spring de este equipo.")
     }
     fun withLocalNetworkPermission(action: () -> Unit) {
         val permission = "android.permission.ACCESS_LOCAL_NETWORK"
@@ -64,6 +64,12 @@ private fun AgronomChatRoute(model: PlantPhotoViewModel = viewModel()) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             ChatTopBar(
+                selectedModel = state.models.firstOrNull { it.id == state.selectedModelId } ?: AiModelCatalogParser.defaults.first { it.id == state.selectedModelId },
+                models = state.models,
+                modelsLoading = state.modelsLoading,
+                busy = state.busy,
+                onSelectModel = { model.selectModel(context, it) },
+                onRefreshModels = { withLocalNetworkPermission(model::refreshModels) },
                 onNewConversation = { model.startNewConversation(context) },
                 onSaveImages = { withLocalNetworkPermission(model::upload) },
                 canSaveImages = state.photos.isNotEmpty() && !state.busy && !state.uploaded
@@ -85,6 +91,8 @@ private fun AgronomChatRoute(model: PlantPhotoViewModel = viewModel()) {
     ) { padding ->
         ConversationList(
             messages = state.conversation,
+            models = state.models,
+            selectedModel = state.models.firstOrNull { it.id == state.selectedModelId } ?: AiModelCatalogParser.defaults.first { it.id == state.selectedModelId },
             busy = state.busy,
             modifierPadding = padding,
             onSuggestion = { question -> withLocalNetworkPermission { model.sendMessage(context, question) } }

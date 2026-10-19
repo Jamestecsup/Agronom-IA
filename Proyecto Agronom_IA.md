@@ -12,10 +12,10 @@ La bóveda contiene el proyecto `Agronom_IA` de Android Studio. Al inicio era un
 - PHP/Apache funciona como puente local; Android nunca habla con MySQL. En emulador, Android accede al host con `10.0.2.2`; en teléfono usa la IP LAN del PC.
 - Imágenes en `C:\xampp\plant-images/<batch UUID>/<image UUID>.<ext>`, fuera del directorio público `htdocs`. MySQL guarda ruta relativa, UUID, lote, MIME, tamaño, dimensiones, estado mínimo y fecha. No se guardan BLOB.
 - PHP valida otra vez conteo, tamaño, contenido detectado (`fileinfo`), dimensiones (`getimagesize`) y decodificación GD. El lote es atómico a nivel lógico: staging, transacción SQL, limpieza de archivos si falla.
-- Flujo conversacional Android: Pl@ntNet recibe las fotos y devuelve especies candidatas; la app envía solo los datos botánicos, el historial textual reciente y la pregunta a DeepSeek V4.1 Flash Free (`deepseek-v4.1-flash-free`) mediante el servidor OpenCode local. Las imágenes nunca se envían al modelo.
+- Flujo conversacional Android vigente: Pl@ntNet recibe las fotos y devuelve especies candidatas; la app envía solo ese contexto textual, el historial reciente y la pregunta a Spring (`/api/ai/chat`, SSE), el cual enruta al modelo seleccionado: DeepSeek V4.1 Flash Free o Qwen 3.6. Las imágenes nunca se envían al modelo conversacional móvil.
 - HTTP y endpoint sin autenticación se limitan al desarrollo local en red privada; preparar TLS y autenticación antes de exponer.
-- Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, solicita `ACCESS_LOCAL_NETWORK` cuando se usa XAMPP o el servidor OpenCode del host. Pl@ntNet requiere permiso `INTERNET`.
-- Configuración directa de Pl@ntNet para desarrollo: `PLANTNET_API_KEY` en `%USERPROFILE%\.gradle\gradle.properties` (se compila en el APK y puede extraerse). DeepSeek V4.1 Flash Free se ejecuta mediante el servidor local de OpenCode CLI (`127.0.0.1:4096` en el equipo; `10.0.2.2` desde emulador); no requiere añadir su clave de API al APK. Para producción, trasladar Pl@ntNet a un backend intermediario.
+- Android 17 (API 37), que usa el emulador actual y coincide con `targetSdk 37`, solicita `ACCESS_LOCAL_NETWORK` cuando usa Spring local o XAMPP. Pl@ntNet requiere permiso `INTERNET`.
+- `SPRING_API_BASE_URL` se compila en la configuración debug del cliente, con valor por defecto `http://10.0.2.2:8081` para el emulador. OpenCode y Open WebUI, sus URLs y credenciales permanecen en Spring; OpenCode solo necesita estar activo en el PC donde corre Spring. La clave de Pl@ntNet se configura localmente con `PLANTNET_API_KEY`, pero actualmente se compila en el APK y debe trasladarse al backend antes de producción.
 
 ## Verificación de análisis IA (2026-10-13)
 
@@ -174,3 +174,33 @@ Spring debe ejecutarse en el mismo equipo que `opencode serve` o alcanzar su URL
 Cambios: adaptador OpenCode, catálogo/DTO Spring, `application.yml`, catálogo consumido por React, pantalla de bienvenida, migración de lectura del ID anterior, pruebas, README de Spring/app y esta nota. El cliente Android se actualizó para pedir el mismo ID de modelo a su OpenCode local. No se incluyeron secretos ni se añadieron dependencias.
 
 Pruebas de este cambio: `mvn clean test package` (22 pruebas, 0 fallidas), `npm test -- --run` (4 pruebas), `npm run build`, `:app:assembleDebug` y `:app:testDebugUnitTest` terminaron correctamente. Se probaron en vivo catálogo y generación SSE para DeepSeek y Qwen. La prueba de modelo identificó el problema real del adaptador: OpenCode 1.19.3 anida los eventos SSE bajo `payload`; al no desenvolverlos, Spring descartaba `type` y quedaba esperando indefinidamente. Ahora se acepta el formato actual y el anterior, y se detecta el estado idle actual. No se cambiaron MySQL ni la configuración de Qwen. No se realizó prueba visual automatizada en varios tamaños.
+
+## Integración multi-modelo en Android (2026-10-19)
+
+Este apartado actualiza el flujo móvil anterior de OpenCode directo. La app Kotlin mantiene Compose/MVVM, la selección/captura de hasta cinco imágenes, validación y almacenamiento privado, identificación mediante Pl@ntNet y guardado opcional de imágenes mediante el endpoint XAMPP. Solo cambia el destino de las solicitudes conversacionales.
+
+### Arquitectura y selección
+
+- `AiChatApi.kt` es el cliente móvil común para Spring. Consulta `GET /api/ai/models` y envía `POST /api/ai/chat` con `providerId` lógico e historial mediante SSE. No contiene URL del proveedor, clave Open WebUI ni credenciales de OpenCode.
+- Los únicos IDs seleccionables son `deepseek-opencode` y `qwen-local`. Spring mantiene sus adaptadores actuales e IDs técnicos: `deepseek-v4.1-flash-free` y `Qwen/Qwen3.6-35B-A3B-FP8`.
+- La disponibilidad visible procede del catálogo real de Spring; si el catálogo no se pudo consultar, la app no afirma que un proveedor esté disponible. El usuario puede elegir cualquiera y recibe el error de backend pertinente si ese proveedor está caído; no hay cambio automático al otro.
+- La preferencia se guarda en `SharedPreferences`. Cada mensaje nuevo guarda su `providerId`; los mensajes de historial anteriores sin esta propiedad se interpretan como DeepSeek, el único modelo móvil que existía. Cambiar el modelo conserva los mensajes. Reintentar vuelve a usar el modelo del mensaje fallido.
+- El saludo que devuelve el catálogo solo se presenta en la pantalla vacía. No se persiste como mensaje ni se envía al modelo. Cambiar de proveedor con historial no altera etiquetas anteriores.
+- Pl@ntNet sigue recibiendo las imágenes de la app. La identificación se incorpora como texto a la consulta conversacional seleccionada; Android no envía las fotos al endpoint multimodal del chat aunque el catálogo de proveedor informe compatibilidad de visión. El guardado opcional de imágenes PHP/XAMPP/MySQL no cambia.
+- Spring añade la Skill botánica como instrucción del sistema y construye la petición al proveedor. No hay cambios de esquema ni de base de datos.
+
+### Red local y ejecución
+
+El valor de desarrollo de `SPRING_API_BASE_URL` es `http://10.0.2.2:8081`, la dirección del host vista desde Android Emulator. Puede cambiarse en `%USERPROFILE%\.gradle\gradle.properties` o como propiedad al ejecutar Gradle, sin almacenar secretos:
+
+~~~properties
+SPRING_API_BASE_URL=http://10.0.2.2:8081
+~~~
+
+Para un teléfono físico, usar `http://IP_LAN_DEL_PC:8081`, iniciar Spring con `SERVER_ADDRESS=0.0.0.0` y permitir el puerto 8081 únicamente en el perfil privado del firewall. Mantener OpenCode en loopback es suficiente: Spring se conecta desde el mismo PC. Open WebUI debe ser accesible desde ese backend. La configuración de desarrollo Android permite HTTP; `release` lo bloquea. Spring local aún no autentica clientes, por lo que el puerto debe limitarse a la red local.
+
+### Archivos y comprobaciones
+
+Cambios Android: `app/build.gradle.kts`, `AiChatApi.kt`, `PlantAnalysisApi.kt`, `PlantPhotoViewModel.kt`, `PlantChatScreen.kt`, `MainActivity.kt` y pruebas instrumentadas. Se eliminó el antiguo cliente directo OpenCode y el cargador de Skill del APK; Spring ya añade la instrucción botánica. No se agregó dependencia. La documentación base de Android quedó actualizada en [[Agronom_IA/README]].
+
+Verificación ejecutada en este entorno: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:compileDebugAndroidTestKotlin`, `:app:connectedDebugAndroidTest` (15/15 en Pixel_8 API 37) y `:app:installDebug` pasaron. `GET /api/ai/models` fue accesible desde el emulador vía `10.0.2.2:8081` y mostró ambos proveedores disponibles. Desde la app instalada se seleccionó Qwen, que devolvió una respuesta real; se cambió luego a DeepSeek, que también respondió. El historial conservó las etiquetas originales de Qwen y DeepSeek. Además, desde el host, ambos POST reales a `/api/ai/chat` emitieron deltas SSE y `done`. Se revisó visualmente el estado vacío en Pixel_8; no se probó un teléfono físico ni otros tamaños/orientaciones. No se modificaron backend, Qwen, OpenCode, Pl@ntNet, PHP, MySQL ni el esquema.

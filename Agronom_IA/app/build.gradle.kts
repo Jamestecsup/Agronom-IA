@@ -5,7 +5,6 @@ plugins {
 
 android {
     namespace = "com.correa.agronom_ia"
-    sourceSets.getByName("main").assets.directories.add("${rootProject.projectDir}/.agents/skills")
     compileSdk {
         version = release(37)
     }
@@ -22,12 +21,12 @@ android {
         buildConfigField("String", "PLANT_API_BASE_URL", "\"$apiBaseUrl\"")
         val plantNetKey = providers.gradleProperty("PLANTNET_API_KEY")
             .orElse(providers.environmentVariable("PLANTNET_API_KEY")).getOrElse("")
-        val openCodeBaseUrl = providers.gradleProperty("OPENCODE_SERVER_BASE_URL")
-            .orElse(providers.environmentVariable("OPENCODE_SERVER_BASE_URL"))
-            .getOrElse("http://10.0.2.2:4096")
+        val springApiBaseUrl = providers.gradleProperty("SPRING_API_BASE_URL")
+            .orElse(providers.environmentVariable("SPRING_API_BASE_URL"))
+            .getOrElse("http://10.0.2.2:8081")
         fun String.asBuildConfigString() = "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
         buildConfigField("String", "PLANTNET_API_KEY", plantNetKey.asBuildConfigString())
-        buildConfigField("String", "OPENCODE_SERVER_BASE_URL", openCodeBaseUrl.asBuildConfigString())
+        buildConfigField("String", "SPRING_API_BASE_URL", springApiBaseUrl.asBuildConfigString())
     }
 
     buildTypes {

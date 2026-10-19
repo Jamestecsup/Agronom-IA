@@ -66,26 +66,77 @@ import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ChatTopBar(onNewConversation: () -> Unit, onSaveImages: () -> Unit, canSaveImages: Boolean) {
+internal fun ChatTopBar(
+    selectedModel: AiModelOption,
+    models: List<AiModelOption>,
+    modelsLoading: Boolean,
+    busy: Boolean,
+    onSelectModel: (String) -> Unit,
+    onRefreshModels: () -> Unit,
+    onNewConversation: () -> Unit,
+    onSaveImages: () -> Unit,
+    canSaveImages: Boolean
+) {
     var menuOpen by remember { mutableStateOf(false) }
+    var actionsOpen by remember { mutableStateOf(false) }
     TopAppBar(
         title = {
-            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text("Agronom-IA", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("Asistente botánico · DeepSeek", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text("Agronom-IA", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text("Asistente botánico", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Box {
+                    TextButton(
+                        onClick = { menuOpen = true; onRefreshModels() },
+                        enabled = !busy,
+                        modifier = Modifier.semantics { contentDescription = "Modelo activo: ${selectedModel.name}, ${selectedModel.provider}. Cambiar modelo" }
+                    ) {
+                        Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                            Text(if (selectedModel.id == AiModelCatalogParser.QWEN_ID) "Qwen 3.6" else "DeepSeek", maxLines = 1)
+                            Text(selectedModel.provider, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        Text("  ⌄", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        Text("Selecciona un modelo", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+                        models.forEach { model ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(model.name, fontWeight = if (model.id == selectedModel.id) FontWeight.SemiBold else FontWeight.Normal)
+                                        Text(
+                                            buildString {
+                                                append(model.provider)
+                                                model.availabilityLabel()?.let { append(" · "); append(it) }
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = { menuOpen = false; onSelectModel(model.id) },
+                                enabled = !busy
+                            )
+                        }
+                        if (modelsLoading) {
+                            Text("Consultando disponibilidad…", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
             }
         },
         actions = {
             Box {
-                TextButton(onClick = { menuOpen = true }, modifier = Modifier.semantics { contentDescription = "Acciones de conversación" }) {
+                TextButton(onClick = { actionsOpen = true }, modifier = Modifier.semantics { contentDescription = "Acciones de conversación" }) {
                     Text("Más")
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(text = { Text("Nueva conversación") }, onClick = { menuOpen = false; onNewConversation() })
+                DropdownMenu(expanded = actionsOpen, onDismissRequest = { actionsOpen = false }) {
+                    DropdownMenuItem(text = { Text("Nueva conversación") }, onClick = { actionsOpen = false; onNewConversation() })
                     DropdownMenuItem(
                         text = { Text("Guardar imágenes en XAMPP/MySQL") },
                         enabled = canSaveImages,
-                        onClick = { menuOpen = false; onSaveImages() }
+                        onClick = { actionsOpen = false; onSaveImages() }
                     )
                 }
             }
@@ -96,14 +147,16 @@ internal fun ChatTopBar(onNewConversation: () -> Unit, onSaveImages: () -> Unit,
 @Composable
 internal fun ConversationList(
     messages: List<ChatMessage>,
+    models: List<AiModelOption>,
+    selectedModel: AiModelOption,
     busy: Boolean,
     modifierPadding: PaddingValues,
     onSuggestion: (String) -> Unit
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(messages.size, busy) {
-        val lastIndex = messages.size + if (busy) 1 else 0
-        if (lastIndex > 0) listState.animateScrollToItem(lastIndex)
+    LaunchedEffect(messages.size, messages.lastOrNull()?.text?.length, busy) {
+        val itemCount = (if (messages.isEmpty()) 1 else messages.size) + if (busy && messages.lastOrNull()?.text.isNullOrEmpty()) 1 else 0
+        if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
     }
     LazyColumn(
         state = listState,
@@ -111,14 +164,18 @@ internal fun ConversationList(
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        if (messages.isEmpty()) item { WelcomePanel(onSuggestion) }
-        items(messages, key = { it.id }) { message -> ConversationBubble(message) }
-        if (busy) item { AssistantTyping() }
+        if (messages.isEmpty()) item { WelcomePanel(selectedModel, onSuggestion) }
+        items(messages, key = { it.id }) { message ->
+            val messageModelId = message.modelId ?: AiModelCatalogParser.DEEPSEEK_ID
+            val messageModel = models.firstOrNull { it.id == messageModelId } ?: selectedModel
+            ConversationBubble(message, messageModel.name)
+        }
+        if (busy && messages.lastOrNull()?.text.isNullOrEmpty()) item { AssistantTyping(selectedModel.name) }
     }
 }
 
 @Composable
-private fun WelcomePanel(onSuggestion: (String) -> Unit) {
+private fun WelcomePanel(model: AiModelOption, onSuggestion: (String) -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(top = 36.dp, bottom = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -132,7 +189,8 @@ private fun WelcomePanel(onSuggestion: (String) -> Unit) {
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("¿Qué planta te gustaría cuidar?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Adjunta una foto para identificarla o pregúntame sobre sus cuidados.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(model.welcomeMessage, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Adjunta una foto para identificarla o pregúntame sobre sus cuidados.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = { onSuggestion("¿Cómo puedo saber cuándo regar una planta de interior?") }, modifier = Modifier.fillMaxWidth()) {
@@ -146,7 +204,7 @@ private fun WelcomePanel(onSuggestion: (String) -> Unit) {
 }
 
 @Composable
-private fun ConversationBubble(message: ChatMessage) {
+private fun ConversationBubble(message: ChatMessage, assistantName: String) {
     val isUser = message.role == PlantPhotoViewModel.ROLE_USER
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -161,7 +219,7 @@ private fun ConversationBubble(message: ChatMessage) {
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    if (isUser) "Tú" else "DeepSeek",
+                    if (isUser) "Tú" else assistantName,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
@@ -245,11 +303,11 @@ private fun PlantNetSummary(identification: PlantIdentification) {
 }
 
 @Composable
-private fun AssistantTyping() {
+private fun AssistantTyping(modelName: String) {
     Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(18.dp)) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Text("DeepSeek está pensando…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("$modelName está respondiendo…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -327,3 +385,9 @@ internal fun ChatComposer(
 }
 
 private const val MAX_DRAFT_CHARS = 2_000
+
+private fun AiModelOption.availabilityLabel(): String? = when (available) {
+    true -> "Disponible"
+    false -> "No disponible"
+    null -> null
+}
