@@ -1,6 +1,7 @@
 package com.agronomia.ui.navigation
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -58,68 +59,63 @@ fun AppNavigation(
     val viewModel: CaptureViewModel = viewModel()
     val chatViewModel: ChatViewModel = viewModel()
 
-    NavHost(
-        navController = navController,
-        startDestination = Screen.Capture.route,
-        modifier = modifier
-    ) {
-        composable(Screen.Capture.route) {
-            CaptureScreen(
-                viewModel = viewModel,
-                onNavigateToResult = {
-                    navController.navigate(Screen.Result.route) {
-                        launchSingleTop = true
-                    }
-                }
-            )
-        }
-        composable(Screen.Result.route) {
-            ResultScreen(
-                viewModel = viewModel,
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
-        }
-        composable(Screen.Chat.route) {
-            ChatScreen(viewModel = chatViewModel)
-        }
-        composable(Screen.Garden.route) {
-            PlaceholderScreen("Mi Jardín")
-        }
-        composable(Screen.Calendar.route) {
-            PlaceholderScreen("Calendario")
-        }
-        composable(Screen.Settings.route) {
-            PlaceholderScreen("Ajustes")
-        }
-    }
-
-    // Barra inferior con las pestañas de la app.
-    NavigationBar(modifier = modifier) {
-        bottomItems.forEach { screen ->
-            NavigationBarItem(
-                selected = false,
-                onClick = {
-                    when (screen) {
-                        Screen.Result -> navController.navigate(Screen.Result.route) {
+    // El contenido arriba y la barra abajo, para que la barra no lo tape.
+    Column(modifier = Modifier.fillMaxSize()) {
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Capture.route,
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        ) {
+            composable(Screen.Capture.route) {
+                CaptureScreen(
+                    viewModel = viewModel,
+                    onNavigateToResult = {
+                        navController.navigate(Screen.Result.route) {
                             launchSingleTop = true
                         }
-                        Screen.Chat -> {
-                            // El chat toma la última planta detectada como contexto.
-                            chatViewModel.setLastDetected(lastDetected(viewModel))
-                            navController.navigate(Screen.Chat.route) {
+                    }
+                )
+            }
+            composable(Screen.Result.route) {
+                ResultScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable(Screen.Chat.route) {
+                ChatScreen(viewModel = chatViewModel)
+            }
+            composable(Screen.Garden.route) { PlaceholderScreen("Mi Jardín") }
+            composable(Screen.Calendar.route) { PlaceholderScreen("Calendario") }
+            composable(Screen.Settings.route) { PlaceholderScreen("Ajustes") }
+        }
+
+        // Barra inferior con las pestañas de la app.
+        NavigationBar(modifier = Modifier.fillMaxWidth()) {
+            bottomItems.forEach { screen ->
+                NavigationBarItem(
+                    selected = false,
+                    onClick = {
+                        when (screen) {
+                            Screen.Result -> navController.navigate(Screen.Result.route) {
+                                launchSingleTop = true
+                            }
+                            Screen.Chat -> {
+                                // El chat toma la última planta detectada como contexto.
+                                chatViewModel.setLastDetected(lastDetected(viewModel))
+                                navController.navigate(Screen.Chat.route) {
+                                    launchSingleTop = true
+                                }
+                            }
+                            else -> navController.navigate(screen.route) {
                                 launchSingleTop = true
                             }
                         }
-                        else -> navController.navigate(screen.route) {
-                            launchSingleTop = true
-                        }
-                    }
-                },
-                icon = { Icon(screen.icon, contentDescription = screen.label) },
-                label = { Text(screen.label) }
-            )
+                    },
+                    icon = { Icon(screen.icon, contentDescription = screen.label) },
+                    label = { Text(screen.label) }
+                )
+            }
         }
     }
 }
@@ -137,7 +133,7 @@ private fun lastDetected(viewModel: CaptureViewModel): SpeciesCandidate? {
 
 @Composable
 private fun PlaceholderScreen(title: String) {
-    Box(
+    androidx.compose.foundation.layout.Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
