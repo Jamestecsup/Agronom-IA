@@ -211,25 +211,6 @@ fun CaptureScreen(
         topBar = {
             AgronomIaTopBar()
         },
-        bottomBar = {
-            // Barra de israel: solo Escáner existe (nuestras 2 rutas); el resto
-            // avisa por Toast sin cambiar la navegación (mismo backend).
-            AgronomIaBottomBar(
-                selectedIndex = selectedNavIndex,
-                onItemSelected = { index ->
-                    selectedNavIndex = index
-                    if (index != 0) {
-                        val sectionName = when (index) {
-                            1 -> "Mi Jardín"
-                            2 -> "Calendario"
-                            3 -> "Ajustes"
-                            else -> ""
-                        }
-                        Toast.makeText(context, "Sección: $sectionName", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            )
-        },
         modifier = modifier
     ) { innerPadding ->
         Column(
