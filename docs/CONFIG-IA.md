@@ -1,34 +1,40 @@
 # Configuración de la app
 
-La app identifica plantas con este flujo:
+## Pipeline (prompts como skills en `assets/skills/`)
 
-1. **Pl@ntNet** identifica la **especie** y devuelve su ficha extendida: mejor
-   coincidencia (nombre científico, autoría, todos los nombres comunes, género,
-   familia, score) + hasta 3 especies candidatas alternativas + IDs
-   GBIF/POWO/IUCN (vienen a nivel de resultado, no dentro de `species`).
-2. **La IA (paso 1)** genera un **prompt optimizado de investigación** a partir
-   de esa ficha (interno, no se muestra).
-3. **La IA (paso 2)** ejecuta **UN prompt por categoría de cuidado, en paralelo**
-   (descripción, luz, riego, suelo, clima, floración, usos, cuidados). Cada uno
-   recibe la ficha extendida + el prompt de investigación y devuelve el texto
-   extenso de SU categoría en JSON `{"text": "..."}`, con datos concretos
-   (horarios, frecuencias, cantidades, medidas). Nada de consejos vagos.
-4. **La IA (paso 3)** genera el **glosario contextual** de cada categoría, en
-   paralelo: con el texto ya generado elige las palabras difíciles y explica
-   cada una de forma sencilla DENTRO DEL CONTEXTO (`{"terms": [{"word",
-   "meaning"}]}`). En la app esas palabras salen resaltadas y al tocarlas se
-   abre su significado.
-5. **La IA (paso 4)** lista **materiales y alternativas** solo en categorías de
-   cuidado (luz, riego, suelo, clima, cuidados), en paralelo: productos y
-   herramientas con marcas de ejemplo más alternativas viables si la estación
-   no acompaña (p. ej. forzado en ambiente controlado)
-   (`{"items": [{"name", "detail"}]}`). Se muestran en tarjetas de tonos que
-   combinan con el color esencial de su categoría.
+Cada paso del pipeline es una **skill** (archivo Markdown con instrucciones
+para la IA), cargada en tiempo de ejecución desde los assets de la app:
 
-Si Pl@ntNet no da una coincidencia confiable, se usa **la IA de visión** como
-respaldo (la cadena se aplica igual, con la información disponible).
-Si en ese respaldo la IA no alcanza la certeza exigida (100 % por defecto), se
-muestra un error pidiendo al usuario **más imágenes** (flor, hoja, tallo).
+1. **refine-prompt.md** — con la ficha de Pl@ntNet, genera un prompt optimizado de
+   investigación (interno, no se muestra).
+2. **category-info.md** — ejecuta UN prompt por categoría de cuidado, en paralelo
+   (descripción, luz, riego, suelo, clima, floración, usos, cuidados), con datos
+   concretos (horarios, frecuencias, cantidades, medidas).
+3. **glossary.md** — genera el glosario contextual de cada categoría: palabras
+   difíciles con su significado en contexto. En la app salen resaltadas y al
+   tocarlas se abre su significado.
+4. **candidate-hints.md** — solo en dudas (21–49%): rasgos únicos de cada planta
+   candidata para distinguirlas entre sí.
+5. **disambiguation-guide.md** — guía ordenada de cómo tomar mejores fotos
+   (flor en plano detalle, hoja sin contraluz, tallo/fruto), usada en dudas y en
+   no-detección.
+
+## Flujo de identificación y niveles de confianza
+
+1. **Pl@ntNet** identifica la especie y devuelve su ficha extendida (mejor
+   coincidencia + hasta 3 candidatas + GBIF/POWO/IUCN).
+2. Se ejecutan las skills del pipeline (refine → categorías → glosario → hints).
+3. Según el score de Pl@ntNet:
+   - **50 % o más = validada**: ficha completa con su % visible.
+   - **21 % a 49 % = con dudas**: guía de fotos + plantas similares (foto,
+     nombres, similitud, rasgos) para que elijas; al elegir, se genera su ficha.
+   - **20 % o menos = sin detección**: solo la guía + Tomar otra foto.
+
+## Chat post-detección (skill chat-assistant.md)
+
+La pestaña **Chat** del footer abre un chat con Gemini. Sin planta detectada,
+saluda y sugiere usar el escáner. Con planta detectada, pregunta sobre ella usando
+la skill `assets/skills/chat-assistant.md` y el contexto de la detección.
 
 ## Dónde se configura
 
