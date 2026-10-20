@@ -1,18 +1,15 @@
 package com.agronomia.ui.navigation
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.agronomia.domain.model.SpeciesCandidate
 import com.agronomia.ui.capture.CaptureScreen
@@ -30,6 +28,7 @@ import com.agronomia.ui.capture.CaptureViewModel
 import com.agronomia.ui.capture.IdentificationUiState
 import com.agronomia.ui.chat.ChatScreen
 import com.agronomia.ui.chat.ChatViewModel
+import com.agronomia.ui.components.AgronomIaBottomBar
 import com.agronomia.ui.result.ResultScreen
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
@@ -41,14 +40,6 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     data object Settings : Screen("settings", "Ajustes", Icons.Filled.Settings)
 }
 
-private val bottomItems = listOf(
-    Screen.Capture,
-    Screen.Chat,
-    Screen.Garden,
-    Screen.Calendar,
-    Screen.Settings
-)
-
 @Composable
 fun AppNavigation(
     modifier: Modifier = Modifier,
@@ -59,8 +50,20 @@ fun AppNavigation(
     val viewModel: CaptureViewModel = viewModel()
     val chatViewModel: ChatViewModel = viewModel()
 
-    // El contenido arriba y la barra abajo, para que la barra no lo tape.
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Ruta actual para resaltar la pestaña activa en la píldora.
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+
+    val selectedIndex = when (currentRoute) {
+        Screen.Capture.route -> 0
+        Screen.Chat.route -> 1
+        Screen.Garden.route -> 2
+        Screen.Calendar.route -> 3
+        Screen.Settings.route -> 4
+        else -> 0
+    }
+
+    androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = Screen.Capture.route,
@@ -90,33 +93,29 @@ fun AppNavigation(
             composable(Screen.Settings.route) { PlaceholderScreen("Ajustes") }
         }
 
-        // Barra inferior con las pestañas de la app.
-        NavigationBar(modifier = Modifier.fillMaxWidth()) {
-            bottomItems.forEach { screen ->
-                NavigationBarItem(
-                    selected = false,
-                    onClick = {
-                        when (screen) {
-                            Screen.Result -> navController.navigate(Screen.Result.route) {
-                                launchSingleTop = true
-                            }
-                            Screen.Chat -> {
-                                // El chat toma la última planta detectada como contexto.
-                                chatViewModel.setLastDetected(lastDetected(viewModel))
-                                navController.navigate(Screen.Chat.route) {
-                                    launchSingleTop = true
-                                }
-                            }
-                            else -> navController.navigate(screen.route) {
-                                launchSingleTop = true
-                            }
+        // Único footer: la píldora flotante estilo Material 3 Expressive.
+        AgronomIaBottomBar(
+            modifier = Modifier.fillMaxWidth(),
+            selectedIndex = selectedIndex,
+            onItemSelected = { index ->
+                when (index) {
+                    0 -> navController.navigate(Screen.Capture.route) {
+                        popUpTo(Screen.Capture.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                    1 -> {
+                        // El chat toma la última planta detectada como contexto.
+                        chatViewModel.setLastDetected(lastDetected(viewModel))
+                        navController.navigate(Screen.Chat.route) {
+                            launchSingleTop = true
                         }
-                    },
-                    icon = { Icon(screen.icon, contentDescription = screen.label) },
-                    label = { Text(screen.label) }
-                )
+                    }
+                    2 -> navController.navigate(Screen.Garden.route) { launchSingleTop = true }
+                    3 -> navController.navigate(Screen.Calendar.route) { launchSingleTop = true }
+                    4 -> navController.navigate(Screen.Settings.route) { launchSingleTop = true }
+                }
             }
-        }
+        )
     }
 }
 
@@ -133,7 +132,7 @@ private fun lastDetected(viewModel: CaptureViewModel): SpeciesCandidate? {
 
 @Composable
 private fun PlaceholderScreen(title: String) {
-    androidx.compose.foundation.layout.Box(
+    Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {

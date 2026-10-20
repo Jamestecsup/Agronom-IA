@@ -8,9 +8,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -114,6 +116,11 @@ val bottomNavItems = listOf(
         title = "Escáner",
         selectedIcon = Icons.Filled.Search,
         unselectedIcon = Icons.Outlined.Search
+    ),
+    BottomNavItem(
+        title = "Chat",
+        selectedIcon = Icons.Filled.Send,
+        unselectedIcon = Icons.Outlined.Send
     ),
     BottomNavItem(
         title = "Mi Jardín",
