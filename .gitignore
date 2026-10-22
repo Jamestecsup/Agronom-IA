@@ -16,3 +16,12 @@ build/
 local.properties
 .kotlin
 .idea/
+
+# Python / Django
+__pycache__/
+*.py[cod]
+backend-django/db.sqlite3
+backend-django/.env
+backend-django/.venv/
+media/
+
