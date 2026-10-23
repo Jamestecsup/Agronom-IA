@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -25,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.agronomia.ui.components.MarkdownText
 
 /**
  * Pantalla de chat botánico conectado a Gemini.
@@ -75,7 +78,18 @@ fun ChatScreen(
         }
 
         // Mensajes.
+        val listState = rememberLazyListState()
+        // Al llegar un mensaje nuevo, baja hasta el último para leerlo.
+        LaunchedEffect(state.messages.size, state.busy) {
+            val lastIndex = when {
+                state.messages.isEmpty() -> 0
+                state.busy -> state.messages.size
+                else -> state.messages.size - 1
+            }
+            listState.animateScrollToItem(lastIndex)
+        }
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -162,12 +176,20 @@ private fun ChatBubble(msg: ChatMessageUi) {
                 )
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            Text(
-                text = msg.text,
-                color = if (isUser) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            if (isUser) {
+                Text(
+                    text = msg.text,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                // Las respuestas de Gemini traen Markdown: se pinta formateado.
+                MarkdownText(
+                    text = msg.text,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 }
