@@ -93,7 +93,7 @@ def identify(images, organ="auto"):
 
     results = data.get("results") or []
     if not results:
-        return {"status": "unidentified", "message": "No se encontraron coincidencias."}
+        return {"status": "unidentified", "message": "No se encontraron coincidencias.", "raw": data}
 
     ranked = sorted(results, key=lambda r: r.get("score", 0), reverse=True)
     best = ranked[0]
@@ -113,15 +113,16 @@ def identify(images, organ="auto"):
         return {
             "status": "unidentified",
             "message": "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo.",
+            "raw": data,
         }
     if score < CONFIDENT_CONFIDENCE:
-        return {"status": "ambiguous", "candidates": candidates}
+        return {"status": "ambiguous", "candidates": candidates, "raw": data}
 
     try:
         plant = _run_full_pipeline(best)
     except gemini.GeminiError as exc:
-        return {"status": "failed", "message": str(exc)}
-    return {"status": "identified", "plant": plant, "candidates": candidates}
+        return {"status": "failed", "message": str(exc), "raw": data}
+    return {"status": "identified", "plant": plant, "candidates": candidates, "raw": data}
 
 
 def _run_full_pipeline(best):
@@ -186,3 +187,23 @@ def _run_full_pipeline(best):
         "confidence": float(best.get("score", 0)),
         "sections": sections,
     }
+
+
+def confirm(raw, scientific_name):
+    """Genera la ficha de la candidata elegida usando el JSON de Pl@ntNet guardado.
+
+    @param raw: JSON crudo de una corrida de Pl@ntNet.
+    @param scientific_name: especie elegida por el agricultor.
+    @return: dict de la ficha o None si la especie no está en la corrida.
+    """
+    results = (raw or {}).get("results") or []
+    target = None
+    for r in results:
+        sp = r.get("species") or {}
+        name = sp.get("scientificNameWithoutAuthor") or sp.get("scientificName", "")
+        if name.strip().lower() == scientific_name.strip().lower():
+            target = r
+            break
+    if target is None:
+        return None
+    return _run_full_pipeline(target)

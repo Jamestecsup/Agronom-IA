@@ -12,9 +12,9 @@ from django.conf import settings
 from django.http import JsonResponse
 from PIL import Image, UnidentifiedImageError
 
-from core.models import ChatMessage, PlantIdentification, PlantImage
+from core.models import ChatMessage, IdentificationRun, PlantIdentification, PlantImage
 from core.services import chat as chat_service
-from core.services import pipeline
+from core.services import gemini, pipeline
 
 # Formatos aceptados (por contenido, no por extensión).
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
@@ -118,6 +118,15 @@ def identify(request):
 
     result = pipeline.identify(blobs, organ=organ)
 
+    # Guardar la corrida (permite resolver luego la candidata elegida sin
+    # volver a llamar a Pl@ntNet).
+    IdentificationRun.objects.create(
+        batch_id=batch_id,
+        organ=organ,
+        status=result["status"],
+        raw_json=result.get("raw") or {},
+    )
+
     if result["status"] == "failed":
         return _error(502, result["message"])
 
@@ -137,7 +146,42 @@ def identify(request):
         response["candidates"] = result["candidates"]
     else:
         response["message"] = result["message"]
+    # Las candidatas también acompañan a una identificación validada (útil para
+    # el historial y para el panel web).
+    if result.get("candidates") and "candidates" not in response:
+        response["candidates"] = result["candidates"]
     return JsonResponse(response)
+
+
+def confirm(request):
+    """POST /agronomia-api/api/confirm — ficha de la candidata elegida."""
+    if request.method != "POST":
+        return _error(405, "Método no permitido; usa POST.")
+    batch_id = (request.POST.get("batch_id") or "").strip()
+    scientific_name = (request.POST.get("scientific_name") or "").strip()
+    if not batch_id or not scientific_name:
+        return _error(400, "Faltan batch_id o scientific_name.")
+
+    run = IdentificationRun.objects.filter(batch_id=batch_id).order_by("-created_at").first()
+    if run is None:
+        return _error(404, "No hay una identificación previa para ese batch_id.")
+
+    try:
+        plant = pipeline.confirm(run.raw_json, scientific_name)
+    except gemini.GeminiError as exc:
+        return _error(502, str(exc))
+    if plant is None:
+        return _error(404, "La especie elegida no está entre las candidatas de ese lote.")
+
+    PlantIdentification.objects.create(
+        batch_id=batch_id,
+        scientific_name=plant["scientific_name"],
+        common_name=plant.get("common_name", ""),
+        family=plant.get("family", ""),
+        confidence=plant["confidence"],
+        result_json=plant,
+    )
+    return JsonResponse({"success": True, "status": "identified", "plant": plant})
 
 
 def chat(request):
@@ -149,18 +193,23 @@ def chat(request):
     if not message:
         return _error(400, "Falta message.")
 
-    # Contexto: última identificación (si existe) para dar continuidad.
-    last = PlantIdentification.objects.order_by("-created_at").first()
-    if last:
-        plant = last.result_json
-        context = (
-            f"Nombre científico: {plant.get('scientific_name', '')}\n"
-            f"Nombre común: {plant.get('common_name', '')}\n"
-            f"Familia: {plant.get('family', '')}\n"
-            f"Similitud: {int(plant.get('confidence', 0) * 100)}%\n"
-        )
+    # Contexto: el que envíe la app (planta detectada) o, si no, la última
+    # identificación guardada.
+    context_param = (request.POST.get("context") or "").strip()
+    if context_param:
+        context = context_param
     else:
-        context = "Aún no se ha detectado ninguna planta. Sugeriere usar el escáner."
+        last = PlantIdentification.objects.order_by("-created_at").first()
+        if last:
+            plant = last.result_json
+            context = (
+                f"Nombre científico: {plant.get('scientific_name', '')}\n"
+                f"Nombre común: {plant.get('common_name', '')}\n"
+                f"Familia: {plant.get('family', '')}\n"
+                f"Similitud: {int(plant.get('confidence', 0) * 100)}%\n"
+            )
+        else:
+            context = "Aún no se ha detectado ninguna planta. Sugiere usar el escáner."
 
     history = [
         (m.role, m.content)
