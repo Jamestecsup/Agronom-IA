@@ -50,6 +50,24 @@ class PlantIdentification(models.Model):
         return f"{self.scientific_name} ({self.confidence:.2f})"
 
 
+class IdentificationRun(models.Model):
+    """Corrida de Pl@ntNet de un lote (para resolver la candidata elegida).
+
+    Guarda el JSON crudo de Pl@ntNet para que `/confirm` no tenga que volver a
+    identificar cuando el agricultor elige una especie entre las candidatas.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch_id = models.CharField(max_length=36, db_index=True)
+    organ = models.CharField(max_length=16, default="auto")
+    status = models.CharField(max_length=16)
+    raw_json = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.batch_id} ({self.status})"
+
+
 class ChatMessage(models.Model):
     """Historial del chat con Gemini."""
 
