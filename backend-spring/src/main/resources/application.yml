@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: agronomia-backend
+  datasource:
+    # Misma base que Django (XAMPP). Por defecto usa root sin contraseña,
+    # que es como viene XAMPP; en un equipo real define DB_USERNAME/DB_PASSWORD.
+    url: ${DB_URL:jdbc:mariadb://127.0.0.1:3306/agronomia}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.mariadb.jdbc.Driver
+  sql:
+    init:
+      mode: never
+  servlet:
+    multipart:
+      location: ${UPLOAD_TEMP_DIR:${java.io.tmpdir}/agronomia-upload-tmp}
+      # Permit PHP-compatible application validation at 15 MiB before the servlet transport cap.
+      max-file-size: 16MB
+      max-request-size: 80MB
+      file-size-threshold: 1MB
+  jackson:
+    default-property-inclusion: non_null
+  mvc:
+    problemdetails:
+      enabled: false
+
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8081}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+plant:
+  storage:
+    directory: ${PLANT_UPLOAD_DIR:C:/xampp/plant-images}
+
+# --- Panel de administración ---
+admin:
+  token:
+    # Cambia este secreto en cualquier equipo compartido (ADMIN_TOKEN_SECRET).
+    secret: ${ADMIN_TOKEN_SECRET:dev-only-change-me}
+    ttl-hours: ${ADMIN_TOKEN_TTL_HOURS:8}
+  cors:
+    origins: ${ADMIN_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
