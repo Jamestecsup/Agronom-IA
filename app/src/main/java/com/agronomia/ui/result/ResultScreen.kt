@@ -373,8 +373,19 @@ private fun UploadedPhotosStrip(imageUris: List<Uri>) {
  * resaltadas con su significado). Se usa en desambiguación y en no-detección.
  */
 @Composable
-private fun GuideCard() {
+private fun GuideCard(forDisambiguation: Boolean = true) {
     var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
+
+    // La misma guía sirve para dudas y para no-detección; solo cambia la
+    // introducción para no decir que "encontró plantas" cuando no encontró nada.
+    val guideText = remember(forDisambiguation) {
+        if (forDisambiguation) {
+            Constants.DISAMBIGUATION_GUIDE_TEXT
+        } else {
+            "No se reconoció ninguna planta. Para identificarla mejor, toma estas fotos:\n\n" +
+                Constants.DISAMBIGUATION_GUIDE_TEXT.substringAfter("\n\n")
+        }
+    }
 
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedCard(
@@ -395,9 +406,9 @@ private fun GuideCard() {
                 fontWeight = FontWeight.Bold,
                 textDecoration = TextDecoration.Underline
             )
-            val annotated = remember {
+            val annotated = remember(guideText) {
                 buildAnnotatedText(
-                    Constants.DISAMBIGUATION_GUIDE_TEXT,
+                    guideText,
                     Constants.DISAMBIGUATION_GUIDE_TERMS,
                     guideStyle
                 )
@@ -453,7 +464,7 @@ private fun UnidentifiedContent(
         style = MaterialTheme.typography.bodyMedium,
         textAlign = TextAlign.Center
     )
-    GuideCard()
+    GuideCard(forDisambiguation = false)
     Spacer(modifier = Modifier.height(4.dp))
     UploadedPhotosStrip(imageUris)
     Spacer(modifier = Modifier.height(16.dp))
