@@ -5,6 +5,23 @@ import com.agronomia.domain.model.WordMeaning
 
 object Constants {
     // ---------------- Proveedor de IA de texto/visión (compatible con OpenAI) ----------------
+    // ---------------- Backend Django (servicio de usuario) ----------------
+    /**
+     * URL base del backend Django. En el emulador, 10.0.2.2 apunta al host.
+     * En un móvil físico se configura BACKEND_BASE_URL en local.properties.
+     */
+    val BACKEND_BASE_URL: String = BuildConfig.BACKEND_BASE_URL
+    const val BACKEND_UPLOAD_PATH = "agronomia-api/api/images.php"
+    const val BACKEND_IDENTIFY_PATH = "agronomia-api/api/identify"
+    const val BACKEND_CONFIRM_PATH = "agronomia-api/api/confirm"
+    const val BACKEND_CHAT_PATH = "agronomia-api/api/chat"
+
+    /** Une la base del backend con una ruta relativa. */
+    fun backendUrl(path: String): String {
+        val base = if (BACKEND_BASE_URL.endsWith("/")) BACKEND_BASE_URL else "$BACKEND_BASE_URL/"
+        return base + path.removePrefix("/")
+    }
+
     val BASE_URL: String = BuildConfig.AI_BASE_URL
     val API_KEY: String = BuildConfig.AI_API_KEY
     val AI_MODEL: String = BuildConfig.AI_MODEL
@@ -53,8 +70,8 @@ object Constants {
      * read/write son más amplios que el de conexión.
      */
     const val CONNECT_TIMEOUT_SECONDS = 30L
-    const val READ_TIMEOUT_SECONDS = 90L
-    const val WRITE_TIMEOUT_SECONDS = 90L
+    const val READ_TIMEOUT_SECONDS = 180L
+    const val WRITE_TIMEOUT_SECONDS = 120L
 
     /**
      * Umbral mínimo de confianza para aceptar la identificación de Pl@ntNet.

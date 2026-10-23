@@ -4,6 +4,9 @@ import com.agronomia.data.remote.CategoryInfoDto
 import com.agronomia.data.remote.ChatCompletionRequest
 import com.agronomia.data.remote.ChatMessage
 import com.agronomia.data.remote.ContentPart
+import com.agronomia.data.remote.DjangoApiService
+import com.agronomia.data.remote.DjangoCandidateDto
+import com.agronomia.data.remote.DjangoPlantDto
 import com.agronomia.data.remote.GlossaryDto
 import com.agronomia.data.remote.GlossaryTermDto
 import com.agronomia.data.remote.ImageUrl
@@ -96,6 +99,8 @@ sealed interface AnalysisResult {
     data class Failed(val message: String) : AnalysisResult
 }
 
+private val TEXT_PLAIN = "text/plain".toMediaType()
+
 class PlantRepositoryImpl(
     private val json: Json = NetworkModule.json
 ) : PlantRepository {
@@ -103,6 +108,10 @@ class PlantRepositoryImpl(
     // Resolución perezosa: si la URL no está configurada preferimos devolver un
     // error legible en [identifyPlant] en lugar de lanzar al construir la clase.
     // Es genérico OpenAI-compatible: sirve para Gemini, Qwen 3.6 local, etc.
+    /** Último lote subido: lo usa [confirmCandidate] para reutilizar Pl@ntNet. */
+    private var lastBatchId: String? = null
+
+    private val djangoService: DjangoApiService by lazy { NetworkModule.djangoApiService }
     private val aiService: PlantApiService by lazy { NetworkModule.plantApiService }
     private val plantNetService: PlantNetApiService by lazy { NetworkModule.plantNetApiService }
 
@@ -123,47 +132,69 @@ class PlantRepositoryImpl(
                     "No hay imágenes para identificar. Vuelve a capturarla."
                 )
             }
-            val validImages = pairs.map { it.first }
-            val validOrgans = pairs.map { it.second }
 
             try {
-                // 1. Pl@ntNet con todas las fotos, cada una con su órgano.
-                val plantNetMatch = identifyWithPlantNetOrNull(validImages, validOrgans)
-                val plantNetScore = plantNetMatch?.confidence ?: 0f
-
-                // 50% o más: validada, cadena completa.
-                if (plantNetMatch != null &&
-                    plantNetScore >= Constants.PLANTNET_CONFIDENT_CONFIDENCE
-                ) {
-                    val chain = runInfoChain(plantNetMatch)
-                    return@withContext AnalysisResult.Identified(
-                        plantNetMatch.toPlantResult(chain.info, chain.sections)
+                // 1. Subir las fotos al backend Django (1 a 5).
+                val parts = pairs.mapIndexed { index, pair ->
+                    MultipartBody.Part.createFormData(
+                        "photos[]",
+                        "foto_$index.jpg",
+                        pair.first.toRequestBody("image/jpeg".toMediaType())
                     )
                 }
-
-                // 2. Respaldo con IA de visión (primera foto).
-                val visionMatch = identifyWithVisionOrNull(validImages.first())
-                if (visionMatch != null) {
-                    val chain = runInfoChain(visionMatch)
-                    return@withContext AnalysisResult.Identified(
-                        visionMatch.toPlantResult(chain.info, chain.sections)
-                    )
-                }
-
-                // 21% a 49%: con dudas, el agricultor elige entre similares.
-                if (plantNetScore >= Constants.PLANTNET_MIN_CONFIDENCE) {
-                    val candidates = plantNetMatch?.toCandidates().orEmpty()
-                    if (candidates.isNotEmpty()) {
-                        return@withContext AnalysisResult.Ambiguous(
-                            generateCandidateHints(enrichWithReferenceImages(candidates))
-                        )
-                    }
-                }
-
-                // 20% o menos: solo la guía de cómo tomar mejores fotos.
-                AnalysisResult.Unidentified(
-                    "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo."
+                val upload = djangoService.uploadImages(
+                    Constants.backendUrl(Constants.BACKEND_UPLOAD_PATH),
+                    parts
                 )
+                if (!upload.success || upload.batchId.isBlank()) {
+                    return@withContext AnalysisResult.Failed(
+                        upload.error ?: "No se pudieron subir las fotos."
+                    )
+                }
+                lastBatchId = upload.batchId
+
+                // 2. Django identifica (Pl@ntNet) y genera la ficha (Gemini).
+                // El backend usa un solo órgano por lote: si hay mezcla, auto.
+                val organ = pairs.map { it.second }.distinct().singleOrNull() ?: "auto"
+                val response = djangoService.identify(
+                    Constants.backendUrl(Constants.BACKEND_IDENTIFY_PATH),
+                    upload.batchId.toRequestBody(TEXT_PLAIN),
+                    organ.toRequestBody(TEXT_PLAIN)
+                )
+
+                when (response.status) {
+                    "identified" -> {
+                        val plant = response.plant
+                        if (plant != null) {
+                            AnalysisResult.Identified(plant.toPlantResult())
+                        } else {
+                            AnalysisResult.Failed(
+                                response.error ?: "El servidor no devolvió la ficha de la planta."
+                            )
+                        }
+                    }
+
+                    "ambiguous" -> {
+                        val candidates = response.candidates.map { it.toSpeciesCandidate() }
+                        if (candidates.isEmpty()) {
+                            AnalysisResult.Unidentified(
+                                response.message
+                                    ?: "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo."
+                            )
+                        } else {
+                            AnalysisResult.Ambiguous(candidates)
+                        }
+                    }
+
+                    "unidentified" -> AnalysisResult.Unidentified(
+                        response.message
+                            ?: "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo."
+                    )
+
+                    else -> AnalysisResult.Failed(
+                        response.error ?: "No se pudo identificar la planta."
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: HttpException) {
@@ -178,7 +209,8 @@ class PlantRepositoryImpl(
                 )
             } catch (e: ConnectException) {
                 AnalysisResult.Failed(
-                    "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo."
+                    "No se pudo conectar con el servidor. ¿Está corriendo el backend? " +
+                        "Verifica tu conexión e inténtalo de nuevo."
                 )
             } catch (e: SerializationException) {
                 AnalysisResult.Failed(
@@ -196,8 +228,8 @@ class PlantRepositoryImpl(
         }
 
     /**
-     * Ejecuta la cadena completa de información para la candidata elegida por
-     * el agricultor. [siblings] son las otras candidatas (dan contexto).
+     * Ejecuta la cadena completa para la candidata elegida por el agricultor.
+     * Django reutiliza el JSON de Pl@ntNet del lote y genera la ficha.
      */
     override suspend fun confirmCandidate(
         candidate: SpeciesCandidate,
@@ -205,28 +237,28 @@ class PlantRepositoryImpl(
     ): Result<PlantResult> =
         withContext(Dispatchers.IO) {
             try {
-                val species = SpeciesMatch(
-                    commonName = candidate.commonNames.firstOrNull().orEmpty(),
-                    scientificName = candidate.scientificName,
-                    family = candidate.family,
-                    confidence = candidate.confidence,
-                    plantNetSpecies = null,
-                    bestMatch = "",
-                    candidates = siblings
-                        .filter { it.scientificName != candidate.scientificName }
-                        .take(3).map {
-                            PlantCandidate(
-                                scientificName = it.scientificName,
-                                score = it.confidence,
-                                commonName = it.commonNames.firstOrNull().orEmpty()
-                            )
-                        },
-                    gbifId = candidate.gbifId,
-                    powoId = candidate.powoId,
-                    iucnCategory = candidate.iucnCategory
+                val batchId = lastBatchId
+                    ?: return@withContext Result.failure(
+                        PlantIdentificationException(
+                            "Vuelve a escanear la planta para generar su información."
+                        )
+                    )
+                val response = djangoService.confirm(
+                    Constants.backendUrl(Constants.BACKEND_CONFIRM_PATH),
+                    batchId.toRequestBody(TEXT_PLAIN),
+                    candidate.scientificName.toRequestBody(TEXT_PLAIN)
                 )
-                val chain = runInfoChain(species)
-                Result.success(species.toPlantResult(chain.info, chain.sections))
+                val plant = response.plant
+                if (response.success && plant != null) {
+                    Result.success(plant.toPlantResult())
+                } else {
+                    Result.failure(
+                        PlantIdentificationException(
+                            response.error
+                                ?: "No se pudo generar la información. Inténtalo de nuevo."
+                        )
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -238,6 +270,41 @@ class PlantRepositoryImpl(
                 )
             }
         }
+
+    /** Convierte la ficha del backend Django al modelo de la app. */
+    private fun DjangoPlantDto.toPlantResult(): PlantResult = PlantResult(
+        commonName = commonName,
+        scientificName = scientificName,
+        family = family,
+        confidence = confidence.toFloat(),
+        sections = sections.map { section ->
+            PlantSection(
+                key = section.key,
+                title = section.title,
+                body = section.body,
+                terms = section.terms.map { WordMeaning(it.word, it.meaning) },
+                materials = section.materials.map { MaterialItem(it.name, it.detail) }
+            )
+        }
+    )
+
+    /** Convierte una candidata del backend y le añade foto de referencia. */
+    private fun DjangoCandidateDto.toSpeciesCandidate(): SpeciesCandidate {
+        val referenceImage = try {
+            if (scientificName.isBlank()) "" else fetchCandidateImageUrl(scientificName)
+        } catch (_: Exception) {
+            ""
+        }
+        return SpeciesCandidate(
+            scientificName = scientificName,
+            commonNames = commonNames,
+            family = family,
+            confidence = confidence.toFloat(),
+            imageUrl = referenceImage,
+            hint = hint,
+            hintTerms = terms.map { WordMeaning(it.word, it.meaning) }
+        )
+    }
 
     /**
      * Genera los rasgos distintivos de cada candidata (una sola llamada que las
