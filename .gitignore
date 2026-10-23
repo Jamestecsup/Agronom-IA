@@ -25,3 +25,9 @@ backend-django/.env
 backend-django/.venv/
 media/
 
+# Spring Boot (Maven)
+backend-spring/target/
+
+# Node / React
+**/node_modules/
+
