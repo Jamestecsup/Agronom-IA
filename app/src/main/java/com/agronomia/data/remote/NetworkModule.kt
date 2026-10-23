@@ -95,4 +95,28 @@ object NetworkModule {
     }
 
     val plantNetApiService: PlantNetApiService by lazy { createPlantNetApiService() }
+
+    // ---------------- Backend Django (servicio de usuario) ----------------
+
+    /**
+     * Cliente del backend Django. No lleva Authorization: el backend guarda
+     * las claves de Pl@ntNet/Gemini en su propio `.env`.
+     */
+    fun createDjangoApiService(
+        baseUrl: String = Constants.BACKEND_BASE_URL
+    ): DjangoApiService {
+        require(baseUrl.isNotBlank()) {
+            "BACKEND_BASE_URL no está configurada en local.properties."
+        }
+        val normalizedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+
+        return Retrofit.Builder()
+            .baseUrl(normalizedBaseUrl)
+            .client(okHttpClient)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(DjangoApiService::class.java)
+    }
+
+    val djangoApiService: DjangoApiService by lazy { createDjangoApiService() }
 }

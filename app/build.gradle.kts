@@ -60,6 +60,14 @@ android {
             .trim()
             .removeSurrounding("\"")
 
+        // Backend Django (servicio de usuario). El emulador llega al host con
+        // 10.0.2.2; en un móvil físico usa la IP de la PC en la red local.
+        val backendBaseUrl: String = (localProperties.getProperty("BACKEND_BASE_URL")
+            ?: "http://10.0.2.2:8000/")
+            .trim()
+            .removeSurrounding("\"")
+
+        buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
         buildConfigField("String", "AI_BASE_URL", "\"$aiBaseUrl\"")
         buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
         buildConfigField("String", "AI_MODEL", "\"$aiModel\"")

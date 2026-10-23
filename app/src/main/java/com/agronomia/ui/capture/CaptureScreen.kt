@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -56,7 +58,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
-import com.agronomia.ui.components.AgronomIaBottomBar
 import com.agronomia.ui.components.AgronomIaTopBar
 import com.agronomia.ui.components.FullscreenImageDialog
 import com.agronomia.util.Constants
@@ -211,6 +212,50 @@ fun CaptureScreen(
         topBar = {
             AgronomIaTopBar()
         },
+        // La barra superior ya aplica el inset del sistema y el footer global
+        // reserva el inferior: no volver a restarlos aquí.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            // Acción principal: barra de acción (no es el footer de navegación).
+            // El Scaffold reserva su espacio, así no tapa las tarjetas.
+            if (imageUris.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            viewModel.identifyCurrentImage()
+                            onNavigateToResult()
+                        },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        icon = {
+                            if (uiState is IdentificationUiState.Loading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Icon(Icons.Outlined.Search, contentDescription = null)
+                            }
+                        },
+                        text = {
+                            Text(
+                                when {
+                                    uiState is IdentificationUiState.Loading -> "Identificando…"
+                                    imageUris.size > 1 -> "Identificar (${imageUris.size} fotos)"
+                                    else -> "Identificar"
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+        },
         modifier = modifier
     ) { innerPadding ->
         Column(
@@ -234,7 +279,7 @@ fun CaptureScreen(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(260.dp)
+                        .height(200.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .clickable { expandedImage = firstUri }
                 )
@@ -266,7 +311,7 @@ fun CaptureScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(320.dp)
+                        .height(170.dp)
                         .clip(RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -321,26 +366,6 @@ fun CaptureScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    // Lanza el procesado + envío en el ViewModel y navega al resultado.
-                    viewModel.identifyCurrentImage()
-                    onNavigateToResult()
-                },
-                enabled = imageUris.isNotEmpty() && uiState !is IdentificationUiState.Loading,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (uiState is IdentificationUiState.Loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                }
-                Text(if (imageUris.size > 1) "Identificar (${imageUris.size} fotos)" else "Identificar")
-            }
 
             expandedImage?.let { uri ->
                 FullscreenImageDialog(

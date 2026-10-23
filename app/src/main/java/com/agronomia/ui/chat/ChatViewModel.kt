@@ -3,9 +3,6 @@ package com.agronomia.ui.chat
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.agronomia.data.remote.ChatCompletionRequest
-import com.agronomia.data.remote.ChatMessage
-import com.agronomia.data.remote.ContentPart
 import com.agronomia.data.remote.NetworkModule
 import com.agronomia.domain.model.SpeciesCandidate
 import com.agronomia.util.Constants
@@ -15,6 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /** Mensaje del chat (usuario o asistente). */
 data class ChatMessageUi(
@@ -31,16 +30,18 @@ data class ChatUiState(
 )
 
 /**
- * ViewModel del chat botánico conectado a Gemini.
+ * ViewModel del chat botánico.
  *
- * - Sin planta detectada: saluda y sugiere usar el escáner.
- * - Con planta detectada: pregunta sobre ella usando la skill del chat
- *   (assets/skills/chat-assistant.md) y el contexto de la detección.
+ * Llama al backend Django (`/agronomia-api/api/chat`), que aplica la skill
+ * `chat-assistant.md` y usa como contexto la planta detectada. Así las claves
+ * de IA no viajan en el APK.
  */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val service = NetworkModule.plantApiService
-    private val json = NetworkModule.json
+    private val service = NetworkModule.djangoApiService
+
+    /** Sesión del chat: Django guarda el historial por este identificador. */
+    private val sessionId = "android_${System.currentTimeMillis()}"
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -66,7 +67,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                val answer = askGemini(question.trim())
+                val answer = askBackend(question.trim())
                 val botMsg = ChatMessageUi(
                     id = "b_${System.currentTimeMillis()}",
                     isUser = false,
@@ -80,7 +81,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val errMsg = ChatMessageUi(
                     id = "e_${System.currentTimeMillis()}",
                     isUser = false,
-                    text = "Error: ${e.message}"
+                    text = "No se pudo responder. Revisa tu conexión e inténtalo de nuevo."
                 )
                 _uiState.value = _uiState.value.copy(
                     messages = _uiState.value.messages + errMsg,
@@ -90,42 +91,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Pregunta a Gemini usando la skill del chat y el contexto de la detección. */
-    private suspend fun askGemini(question: String): String {
-        val app = getApplication<Application>()
-        val skillText = try {
-            app.assets.open("skills/chat-assistant.md").bufferedReader().use { it.readText() }
-        } catch (_: Exception) {
-            "Eres un asistente botánico útil. Responde en español claro."
-        }
-        val contextBlock = _uiState.value.lastDetected?.let {
-            "\n\nContexto de la planta detectada:\n" +
+    /** Pregunta al backend Django con el contexto de la planta detectada. */
+    private suspend fun askBackend(question: String): String {
+        val detected = _uiState.value.lastDetected
+        val contextBlock = detected?.let {
+            "Contexto de la planta detectada:\n" +
                 "- Nombre científico: ${it.scientificName}\n" +
                 "- Nombres comunes: ${it.commonNames.joinToString(", ")}\n" +
                 "- Familia: ${it.family}\n" +
                 "- Similitud: ${(it.confidence * 100).toInt()}%\n"
-        } ?: "\n\nAún no se ha detectado ninguna planta. Sugeriere usar el escáner."
+        } ?: "Aún no se ha detectado ninguna planta. Sugiere usar el escáner."
 
-        val request = ChatCompletionRequest(
-            model = Constants.AI_MODEL,
-            messages = listOf(
-                ChatMessage(
-                    role = "system",
-                    content = listOf(ContentPart(type = "text", text = skillText))
-                ),
-                ChatMessage(
-                    role = "user",
-                    content = listOf(ContentPart(type = "text", text = "$question$contextBlock"))
-                )
-            )
-        )
         val response = withContext(Dispatchers.IO) {
-            service.identifyPlant(
-                url = Constants.identifyEndpointUrl(),
-                authorization = "${Constants.AUTH_HEADER_PREFIX} ${Constants.API_KEY}",
-                request = request
+            service.chat(
+                url = Constants.backendUrl(Constants.BACKEND_CHAT_PATH),
+                message = question.toRequestBody(TEXT_PLAIN),
+                sessionId = sessionId.toRequestBody(TEXT_PLAIN),
+                context = contextBlock.toRequestBody(TEXT_PLAIN)
             )
         }
-        return response.choices.firstOrNull()?.message?.content ?: "Sin respuesta."
+        if (!response.success || response.reply.isBlank()) {
+            throw IllegalStateException(response.error ?: "Sin respuesta del servidor.")
+        }
+        return response.reply
+    }
+
+    private companion object {
+        val TEXT_PLAIN = "text/plain".toMediaType()
     }
 }
