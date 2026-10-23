@@ -31,4 +31,5 @@ backend-spring/target/
 # Node / React
 **/node_modules/
 web-admin/dist/
+web-user/dist/
 
