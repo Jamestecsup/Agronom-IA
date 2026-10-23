@@ -24,6 +24,10 @@ def identify(images, organ="auto", project="all", lang="es", api_key="", base_ur
     url = f"{base_url.rstrip('/')}/v2/identify/{project}"
     params = {"api-key": api_key, "lang": lang, "nb-results": nb_results}
     resp = requests.post(url, files=files, params=params, timeout=90)
+    if resp.status_code == 404:
+        # Pl@ntNet responde 404 "Species not found" cuando no reconoce ninguna
+        # planta: es el caso "sin detección", no un fallo del servicio.
+        return {"results": []}
     if resp.status_code != 200:
         raise PlantNetError(f"Pl@ntNet HTTP {resp.status_code}: {resp.text[:200]}")
     return resp.json()
