@@ -41,6 +41,18 @@ py manage.py migrate
 > Para pruebas rápidas sin MySQL: `$env:USE_SQLITE="1"` antes de `migrate`
 > y `runserver`.
 
+### Usuarios demo y versión de Django
+
+```powershell
+py manage.py seed_demo
+```
+
+Crea `admin` / `Admin12345` (rol admin) y `agricultor` / `Campo12345` (rol user).
+Solo para desarrollo local.
+
+La MariaDB de XAMPP es 10.4, por eso el proyecto fija **Django 4.2**: las
+versiones 5.x exigen MariaDB 10.5 o superior.
+
 ## Ejecutar
 
 ```powershell
@@ -55,6 +67,7 @@ El emulador Android llega al host con `http://10.0.2.2:8000`.
 | --- | --- | --- |
 | POST | `/agronomia-api/api/images.php` | Sube 1–5 fotos (`photos[]`). Devuelve `batch_id` + imágenes. |
 | POST | `/agronomia-api/api/identify` | `batch_id`, `organ`. Ejecuta Pl@ntNet + Gemini. |
+| POST | `/agronomia-api/api/confirm` | `batch_id`, `scientific_name`. Ficha de la candidata elegida reutilizando la corrida de Pl@ntNet. |
 | POST | `/agronomia-api/api/chat` | `message`, `session_id`. Chat con contexto de la planta. |
 | POST | `/agronomia-api/api/register` | `username`, `password`, `email`, `role` (`user`/`admin`). |
 | POST | `/agronomia-api/api/login` | `username`, `password`. Devuelve el rol. |
