@@ -28,8 +28,8 @@ CATEGORY_TITLES = {
 MATERIAL_CATEGORIES = ["light", "watering", "soil", "climate", "care"]
 
 # Umbrales de confianza (regla acordada con el usuario).
-MIN_CONFIDENCE = 0.20        # por debajo: sin detección
-CONFIDENT_CONFIDENCE = 0.50  # 50%+ = validada; 21-49% = dudas
+MIN_CONFIDENCE = 0.20        # menos de 20%: sin detección
+CONFIDENT_CONFIDENCE = 0.50  # 50%+ = validada; 20-49% = dudas
 
 
 def _model():
@@ -78,8 +78,8 @@ def identify(images, organ="auto"):
     """Identifica y genera la ficha completa.
 
     - {'status': 'identified', 'plant': {...}}   → 50% o más
-    - {'status': 'ambiguous', 'candidates': [...]} → 21-49%
-    - {'status': 'unidentified', 'message': ...}  → 20% o menos
+    - {'status': 'ambiguous', 'candidates': [...]} → 20-49%
+    - {'status': 'unidentified', 'message': ...}  → menos de 20%
     - {'status': 'failed', 'message': ...}        → error de red/servicio
     """
     try:
