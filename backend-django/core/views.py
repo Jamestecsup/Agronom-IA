@@ -1,6 +1,7 @@
 """Vistas del backend Django (servicio de usuario).
 
 Endpoints:
+  GET  /agronomia-api/api/health      → estado del servicio y de la base
   POST /agronomia-api/api/images.php  → subir 1-5 fotos (contrato de Fernando)
   POST /agronomia-api/api/identify    → pipeline Pl@ntNet + Gemini (con skills)
   POST /agronomia-api/api/confirm     → ficha de la candidata elegida
@@ -29,6 +30,33 @@ MAX_DIMENSION = 4096
 
 def _error(status, message):
     return JsonResponse({"success": False, "error": message}, status=status)
+
+
+def health(request):
+    """GET /agronomia-api/api/health — comprueba servicio y conexión a la base.
+
+    No llama a Pl@ntNet ni a la IA: sirve para saber si el backend está listo
+    antes de una demo o para un chequeo de despliegue.
+    """
+    if request.method != "GET":
+        return _error(405, "Método no permitido; usa GET.")
+
+    from django.db import connection
+
+    database_ok = True
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception:  # noqa: BLE001 - cualquier fallo de base cuenta como caída
+        database_ok = False
+
+    return JsonResponse({
+        "success": database_ok,
+        "status": "ok" if database_ok else "degraded",
+        "service": "agronomia-api",
+        "database": database_ok,
+    })
 
 
 def _validate_image(uploaded):

@@ -65,6 +65,7 @@ El emulador Android llega al host con `http://10.0.2.2:8000`.
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
+| GET | `/agronomia-api/api/health` | Estado del servicio y de la base (público, sin IA). |
 | POST | `/agronomia-api/api/images.php` | Sube 1–5 fotos (`photos[]`). Devuelve `batch_id` + imágenes. |
 | POST | `/agronomia-api/api/identify` | `batch_id`, `organ`. Ejecuta Pl@ntNet + Gemini. |
 | POST | `/agronomia-api/api/confirm` | `batch_id`, `scientific_name`. Ficha de la candidata elegida reutilizando la corrida de Pl@ntNet. |
