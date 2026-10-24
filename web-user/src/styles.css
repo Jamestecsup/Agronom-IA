@@ -217,6 +217,11 @@ h4 {
   color: var(--green-800);
 }
 
+.alert.warn {
+  background: #fff7e6;
+  color: #8a5a00;
+}
+
 .demo-note {
   margin-top: 18px;
   padding-top: 14px;
@@ -543,6 +548,17 @@ h4 {
 
 .section p:last-child {
   margin-bottom: 0;
+}
+
+.section .tips {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.section .tips li {
+  margin-bottom: 6px;
 }
 
 .term {

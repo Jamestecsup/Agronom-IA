@@ -101,6 +101,27 @@ export default function Result({ entry, onBack }) {
             )}
           </article>
         ))}
+
+        <article className="section" style={{ "--accent": "#2E7D32" }}>
+          <h3>
+            <span aria-hidden="true">✅</span>
+            Consejos generales
+          </h3>
+          <ul className="tips">
+            <li>
+              Riega cuando el sustrato esté seco al tacto y evita encharcar la
+              maceta.
+            </li>
+            <li>
+              Dale luz natural abundante y protégela de corrientes de aire
+              fuertes.
+            </li>
+            <li>
+              Revisa hojas y tallos cada semana: retira lo seco y actúa pronto
+              ante plagas.
+            </li>
+          </ul>
+        </article>
       </div>
 
       <div style={{ marginTop: 22, textAlign: "center" }}>

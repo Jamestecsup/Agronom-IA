@@ -24,6 +24,7 @@ export default function Scanner({ onResult }) {
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [messageTitle, setMessageTitle] = useState("No se pudo identificar.");
   const [candidates, setCandidates] = useState([]);
   const [batchId, setBatchId] = useState("");
 
@@ -45,6 +46,7 @@ export default function Scanner({ onResult }) {
     if (selected.length === 0) return;
     setError("");
     setMessage("");
+    setMessageTitle("No se pudo identificar.");
     setCandidates([]);
 
     const tooBig = selected.find((file) => file.size > MAX_BYTES);
@@ -84,6 +86,7 @@ export default function Scanner({ onResult }) {
     setOrgan("auto");
     setError("");
     setMessage("");
+    setMessageTitle("No se pudo identificar.");
     setCandidates([]);
     setBatchId("");
   }
@@ -92,6 +95,7 @@ export default function Scanner({ onResult }) {
     if (files.length === 0 || busy) return;
     setError("");
     setMessage("");
+    setMessageTitle("No se pudo identificar.");
     setCandidates([]);
 
     try {
@@ -110,7 +114,14 @@ export default function Scanner({ onResult }) {
       } else if (data.status === "ambiguous") {
         setCandidates(data.candidates || []);
       } else if (data.status === "unidentified") {
+        setMessageTitle("No se pudo identificar.");
         setMessage(data.message || "No se encontraron coincidencias.");
+      } else if (data.status === "insufficient") {
+        setMessageTitle("Información insuficiente.");
+        setMessage(
+          data.message ||
+            "Identificamos la planta, pero no encontramos información suficiente sobre sus cuidados."
+        );
       } else {
         setError(data.error || "No se pudo identificar la planta.");
       }
@@ -123,9 +134,18 @@ export default function Scanner({ onResult }) {
 
   async function choose(candidate) {
     setError("");
+    setMessage("");
     setPhase("confirming");
     try {
       const data = await confirmCandidate(batchId, candidate.scientific_name);
+      if (data.status === "insufficient") {
+        setMessageTitle("Información insuficiente.");
+        setMessage(
+          data.message ||
+            "Identificamos la planta, pero no encontramos información suficiente sobre sus cuidados."
+        );
+        return;
+      }
       if (!data.plant) {
         throw new Error("No se pudo generar la ficha de la planta elegida.");
       }
@@ -255,13 +275,20 @@ export default function Scanner({ onResult }) {
         )}
 
         {message && (
-          <div className="alert ok" style={{ marginTop: 16 }}>
-            <strong>No se pudo identificar.</strong> {message}
-            <ul className="steps">
-              <li>Acércate a la flor o a la hoja y evita el contraluz.</li>
-              <li>Usa luz natural y espera a que la cámara enfoque.</li>
-              <li>Prueba con 2 o 3 órganos distintos (flor, hoja, fruto).</li>
-            </ul>
+          <div
+            className={`alert ${
+              messageTitle === "Información insuficiente." ? "warn" : "ok"
+            }`}
+            style={{ marginTop: 16 }}
+          >
+            <strong>{messageTitle}</strong> {message}
+            {messageTitle !== "Información insuficiente." && (
+              <ul className="steps">
+                <li>Acércate a la flor o a la hoja y evita el contraluz.</li>
+                <li>Usa luz natural y espera a que la cámara enfoque.</li>
+                <li>Prueba con 2 o 3 órganos distintos (flor, hoja, fruto).</li>
+              </ul>
+            )}
           </div>
         )}
 
