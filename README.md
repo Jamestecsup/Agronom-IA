@@ -30,7 +30,8 @@ que comparte la misma base de datos MySQL.
 ```
 
 - **App Android** (`app/`): Kotlin + Jetpack Compose, paquete
-  `com.agronomia`. Escáner, ficha, chat, Mi Jardín y Calendario.
+  `com.agronomia`. Escáner, ficha y chat; Mi Jardín y Calendario están en
+  construcción (pantallas de aviso).
 - **Backend Django** (`backend-django/`): API del usuario. Ejecuta el pipeline
   de identificación y carga las *skills* en tiempo de ejecución desde
   `backend-django/skills/`.
@@ -80,9 +81,9 @@ py manage.py seed_demo         # usuarios de demo
 py manage.py runserver 0.0.0.0:8000
 ```
 
-Las claves (`GEMINI_API_KEY`, `PLANTNET_API_KEY`) van **solo** en `.env`, que
-está ignorado por Git. Sin MySQL se puede trabajar con SQLite:
-`$env:USE_SQLITE=1`.
+Las claves (`AI_API_KEY`, `PLANTNET_API_KEY`) van **solo** en `.env`, que
+está ignorado por Git. La app y las webs nunca reciben esas claves. Sin MySQL
+se puede trabajar con SQLite: `$env:USE_SQLITE=1`.
 
 Detalle: [`backend-django/README.md`](backend-django/README.md).
 
@@ -114,7 +115,7 @@ Crea `local.properties` con la ruta del SDK y la URL del backend:
 
 ```properties
 sdk.dir=C\:\\Android\\Sdk
-API_BASE_URL=http://10.0.2.2:8000/
+BACKEND_BASE_URL=http://10.0.2.2:8000/
 ```
 
 Luego `.\gradlew.bat installDebug`. El emulador llega al PC con `10.0.2.2`.
@@ -134,14 +135,13 @@ deja que un usuario se asigne el rol `admin` al registrarse.
 ## Cómo funciona la identificación
 
 1. **Pl@ntNet** devuelve la especie y su ficha. La confianza decide el caso:
-   - `< 0.20` → no identificada: se explica y se dan consejos de foto.
-   - `0.21 – 0.49` → ambigua: se muestran candidatas con rasgos para
-     distinguirlas; al elegir, se genera la ficha sin volver a llamar a
-     Pl@ntNet.
-   - `≥ 0.50` → identificada: se genera la ficha directamente.
+   - `< 20 %` → no identificada: se explica y se dan consejos de foto.
+   - `20 – 49 %` → ambigua: se muestran las candidatas; al elegir una, se
+     genera la ficha reutilizando la corrida de Pl@ntNet.
+   - `≥ 50 %` → identificada: se genera la ficha directamente.
 2. **Gemini** trabaja con las *skills* de `backend-django/skills/`
-   (refinar consulta, una por categoría, glosario, pistas de candidatas y guía
-   de fotos). Se hacen 4 llamadas en lote con reintento ante 429.
+   (refinar consulta, una por categoría, glosario y materiales). Se hacen 4
+   llamadas en lote con reintento ante 429.
 3. El **chat** recibe el contexto de la planta (nombre, familia, similitud) y
    responde en español con formato Markdown.
 
@@ -156,11 +156,15 @@ deja que un usuario se asigne el rol `admin` al registrarse.
 
 ## Seguridad
 
-- Ninguna clave vive en el repositorio: Django usa `.env` y la app
-  `local.properties` (ambos ignorados). `local.properties.example` y
-  `.env.example` solo muestran los nombres de las variables.
+- Ninguna clave vive en el repositorio: Django usa `backend-django/.env`
+  (ignorado por Git). `local.properties.example` y `.env.example` solo muestran
+  los nombres de las variables.
+- La app Android **no lleva claves**: solo conoce la URL de Django, que es
+  quien habla con Pl@ntNet y Gemini.
 - El servicio de administración usa un token HMAC firmado (8 h por defecto) y
   comprueba el rol en cada petición.
+- El autorregistro crea siempre cuentas con rol `user`; el rol `admin` solo se
+  asigna desde el servidor.
 - Comentarios del código, mensajes de interfaz y documentación en español.
 
 ## Estado

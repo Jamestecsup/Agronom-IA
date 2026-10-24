@@ -41,7 +41,7 @@ desarrollo local.
 - **Usuarios**: búsqueda, cambio de rol y activar/desactivar cuentas. El
   servidor impide que un administrador se quite su propio rol.
 - **Identificaciones**: especie, nombre común, familia, confianza y fecha.
-- **Chat**: últimos mensajes del asistente, con filtro por autor.
+- **Chat**: últimos mensajes de usuarios y del asistente, con filtro por autor.
 
 ## Estructura
 
