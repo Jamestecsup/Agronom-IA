@@ -69,7 +69,7 @@ El emulador Android llega al host con `http://10.0.2.2:8000`.
 | POST | `/agronomia-api/api/identify` | `batch_id`, `organ`. Ejecuta Pl@ntNet + Gemini. |
 | POST | `/agronomia-api/api/confirm` | `batch_id`, `scientific_name`. Ficha de la candidata elegida reutilizando la corrida de Pl@ntNet. |
 | POST | `/agronomia-api/api/chat` | `message`, `session_id`. Chat con contexto de la planta. |
-| POST | `/agronomia-api/api/register` | `username`, `password`, `email`, `role` (`user`/`admin`). |
+| POST | `/agronomia-api/api/register` | `username`, `password`, `email`. Siempre crea rol `user` (el admin se asigna en el servidor). |
 | POST | `/agronomia-api/api/login` | `username`, `password`. Devuelve el rol. |
 
 ### Respuesta de `identify`
@@ -90,20 +90,21 @@ El emulador Android llega al host con `http://10.0.2.2:8000`.
 }
 ```
 
-Cuando `status` es `ambiguous` llega `candidates` (21–49 % de confianza);
-cuando es `unidentified` llega `message` (≤ 20 %).
+Cuando `status` es `ambiguous` llega `candidates` (20–49 % de confianza);
+cuando es `unidentified` llega `message` (menos de 20 %).
 
 ## Skills
 
 Cada proceso y cada categoría tiene su propia skill en `skills/`:
 
-- Procesos: `refine-prompt`, `glossary`, `candidate-hints`,
-  `disambiguation-guide`, `materials`, `chat-assistant`.
+- Procesos: `refine-prompt`, `glossary`, `materials`, `chat-assistant`.
 - Categorías (`skills/categories/`): `description`, `light`, `watering`,
   `soil`, `climate`, `flowering`, `uses`, `care`.
+- La guía de «cómo tomar mejores fotos» es texto de interfaz y vive en la app
+  (constantes de Compose), no es una skill.
 
 Django las **carga en runtime** en cada petición (`core/skills.py`), así que
-se pueden editar sin reiniciar el pipeline lógico (solo recarga el proceso).
+se pueden editar sin recompilar (el proceso las relee en la siguiente petición).
 
 > Para no agotar la cuota gratuita de Gemini (429 por ráfagas), el pipeline
 > hace **4 llamadas**: refine, categorías, glosario y materiales. Las 8 skills
@@ -114,7 +115,8 @@ se pueden editar sin reiniciar el pipeline lógico (solo recarga el proceso).
 | Confianza Pl@ntNet | Resultado |
 | --- | --- |
 | ≥ 50 % | `identified` (ficha completa) |
-| 21–49 % | `ambiguous` (candidatas + guía) |
-| ≤ 20 % | `unidentified` (guía) |
+| 20–49 % | `ambiguous` (candidatas + guía) |
+| < 20 % | `unidentified` (guía) |
 
-Se ajustan en `core/services/pipeline.py`.
+Se ajustan en `core/services/pipeline.py` (`MIN_CONFIDENCE` y
+`CONFIDENT_CONFIDENCE`).

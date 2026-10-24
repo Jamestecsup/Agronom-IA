@@ -1,8 +1,8 @@
 """Autenticación con roles (login + roles).
 
 Endpoints:
-  POST /agronomia-api/api/register  → crea usuario (role user/admin)
-  POST /agronomia-api/api/login     → devuelve token + role
+  POST /agronomia-api/api/register  → crea usuario (siempre rol user)
+  POST /agronomia-api/api/login     → valida credenciales y devuelve role
 """
 import json
 
@@ -29,9 +29,10 @@ def register(request):
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
     email = (data.get("email") or "").strip()
-    role = (data.get("role") or "user").strip()
-    if role not in ("user", "admin"):
-        return _error(400, "Rol inválido (user|admin).")
+    # El autorregistro siempre crea cuentas de usuario. El rol admin se asigna
+    # desde el servidor (seed_demo o un administrador existente), nunca desde
+    # el cliente.
+    role = "user"
     if not username or not password:
         return _error(400, "Faltan username o password.")
     if User.objects.filter(username=username).exists():
