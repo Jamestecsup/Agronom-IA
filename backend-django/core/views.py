@@ -3,7 +3,10 @@
 Endpoints:
   POST /agronomia-api/api/images.php  → subir 1-5 fotos (contrato de Fernando)
   POST /agronomia-api/api/identify    → pipeline Pl@ntNet + Gemini (con skills)
+  POST /agronomia-api/api/confirm     → ficha de la candidata elegida
   POST /agronomia-api/api/chat        → chat post-detección
+  POST /agronomia-api/api/register    → autorregistro (rol user)
+  POST /agronomia-api/api/login       → validación de credenciales
 """
 import os
 import uuid

@@ -1,7 +1,7 @@
 """Cargador de skills en runtime.
 
 Las skills son archivos Markdown versionados en `skills/` que describen cada
-proceso del pipeline (refine, categorías, glosario, hints, guía) y el chat.
+proceso del pipeline (refine, categorías, glosario, materiales) y el chat.
 Se leen en cada uso para poder actualizarlas sin recompilar.
 """
 import os
