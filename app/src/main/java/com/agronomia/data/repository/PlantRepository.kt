@@ -45,12 +45,19 @@ import java.net.UnknownHostException
 class PlantIdentificationException(message: String, cause: Throwable? = null) :
     Exception(message, cause)
 
+/**
+ * La especie se identificó, pero la IA no tiene información de cuidado
+ * suficiente. No es un fallo de red: la UI lo explica sin pedir reintento.
+ */
+class InsufficientInfoException(val plantName: String, message: String) : Exception(message)
+
 interface PlantRepository {
     /**
      * Analiza las fotos y decide el camino:
      * [AnalysisResult.Identified] (50% o más, con toda la cadena),
      * [AnalysisResult.Ambiguous] (20% a 49%: el agricultor elige),
-     * [AnalysisResult.Unidentified] (menos de 20%: solo la guía) o
+     * [AnalysisResult.Unidentified] (menos de 20%: solo la guía),
+     * [AnalysisResult.Insufficient] (identificada, sin datos de cuidado) o
      * [AnalysisResult.Failed] (mensaje apto para UI).
      *
      * @param images JPEGs ya preparados (1 a 5).
@@ -81,6 +88,12 @@ sealed interface AnalysisResult {
      * sin lista de candidatas.
      */
     data class Unidentified(val message: String) : AnalysisResult
+
+    /**
+     * La especie se identificó, pero la IA no tiene datos de cuidado
+     * suficientes: se avisa sin mostrar una ficha vacía.
+     */
+    data class Insufficient(val plantName: String, val message: String) : AnalysisResult
 
     /** No se pudo identificar por un error (mensaje apto para UI). */
     data class Failed(val message: String) : AnalysisResult
@@ -173,6 +186,13 @@ class PlantRepositoryImpl(
                             ?: "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo."
                     )
 
+                    "insufficient" -> AnalysisResult.Insufficient(
+                        plantName = response.plantName,
+                        message = response.message
+                            ?: "Identificamos la planta, pero no encontramos información " +
+                            "suficiente sobre sus cuidados. Prueba con otra foto."
+                    )
+
                     else -> AnalysisResult.Failed(
                         response.error ?: "No se pudo identificar la planta."
                     )
@@ -231,7 +251,15 @@ class PlantRepositoryImpl(
                     candidate.scientificName.toRequestBody(TEXT_PLAIN)
                 )
                 val plant = response.plant
-                if (response.success && plant != null) {
+                if (response.status == "insufficient") {
+                    Result.failure(
+                        InsufficientInfoException(
+                            plantName = response.plantName,
+                            message = response.message
+                                ?: "No encontramos información suficiente sobre esta planta."
+                        )
+                    )
+                } else if (response.success && plant != null) {
                     Result.success(plant.toPlantResult())
                 } else {
                     Result.failure(

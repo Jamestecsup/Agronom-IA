@@ -77,6 +77,7 @@ data class IdentifyResponse(
     val status: String = "",
     val plant: DjangoPlantDto? = null,
     val candidates: List<DjangoCandidateDto> = emptyList(),
+    @SerialName("plant_name") val plantName: String = "",
     val message: String? = null,
     val error: String? = null
 )
