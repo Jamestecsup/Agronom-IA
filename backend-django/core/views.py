@@ -177,6 +177,8 @@ def identify(request):
         response["candidates"] = result["candidates"]
     else:
         response["message"] = result["message"]
+        if result["status"] == "insufficient":
+            response["plant_name"] = result.get("plant_name", "")
     # Las candidatas también acompañan a una identificación validada (útil para
     # el historial y para el panel web).
     if result.get("candidates") and "candidates" not in response:
@@ -199,6 +201,14 @@ def confirm(request):
 
     try:
         plant = pipeline.confirm(run.raw_json, scientific_name)
+    except pipeline.InsufficientInfoError as exc:
+        # La especie existe en la corrida, pero la IA no tiene sus cuidados.
+        return JsonResponse({
+            "success": True,
+            "status": "insufficient",
+            "message": str(exc),
+            "plant_name": scientific_name,
+        })
     except gemini.GeminiError as exc:
         return _error(502, str(exc))
     if plant is None:

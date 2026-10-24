@@ -59,9 +59,18 @@ repite el mismo consejo), no una skill.
 | 0.20 – 0.49 | `ambiguous` | Muestra las candidatas; al elegir una, `/confirm` reutiliza el JSON guardado de Pl@ntNet y genera la ficha sin volver a identificar. |
 | < 0.20 | `unidentified` | Explica el caso y da la guía de fotos. |
 
+Estados adicionales:
+
+| Situación | Resultado | Qué hace la app |
+|---|---|---|
+| Especie identificada, pero la IA no conoce sus cuidados | `insufficient` | Muestra «Información insuficiente», el nombre de la planta y ofrece otra foto. |
+| Falla la IA o la red | `failed` | Mensaje claro con reintento (no una ficha vacía). |
+
 Los valores son `MIN_CONFIDENCE` y `CONFIDENT_CONFIDENCE` en `pipeline.py`.
-Si la IA falla al generar la ficha, el estado es `failed` y se muestra un
-mensaje claro (no una ficha vacía).
+Cuando la IA devuelve `"unknown"` en una categoría, se trata como vacía; esa
+sección muestra un **texto de respaldo** con pautas generales
+(`FALLBACK_TEXTS`), así la ficha conserva sus 8 secciones y nunca aparece la
+palabra «unknown».
 
 ## Pl@ntNet
 
@@ -129,13 +138,24 @@ que responden:
 powershell -ExecutionPolicy Bypass -File scripts\check-servicios.ps1
 ```
 
+Pruebas automáticas del pipeline (sin gastar cuota, con Pl@ntNet y Gemini
+simulados):
+
+```powershell
+cd backend-django
+py manage.py test core.tests
+```
+
 Prueba final con cuota de IA (con las fotos de la galería del emulador):
 
-1. **Identificada**: girasol nítido → ficha de 8 secciones y glosario.
+1. **Identificada**: girasol nítido → ficha de 8 secciones, consejos generales
+   y glosario.
 2. **Con dudas**: foto recortada → candidatas; elige una → ficha sin volver a
    llamar a Pl@ntNet.
 3. **Sin detección**: imagen gris → mensaje y guía de fotos.
-4. **Chat**: pregunta por el riego con la planta detectada y verifica que la
+4. **Información insuficiente**: si la IA no conoce la especie, aparece el
+   aviso con el nombre y no una ficha vacía (cubierto por las pruebas).
+5. **Chat**: pregunta por el riego con la planta detectada y verifica que la
    respuesta es de esa especie.
-5. **Panel admin**: la identificación y el mensaje aparecen en Spring
+6. **Panel admin**: la identificación y el mensaje aparecen en Spring
    (http://localhost:5173).
