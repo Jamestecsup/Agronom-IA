@@ -148,6 +148,17 @@ fun ResultScreen(
                     imageUris = imageUris
                 )
 
+                is IdentificationUiState.Insufficient -> MessageContent(
+                    title = "Información insuficiente",
+                    message = buildString {
+                        if (state.plantName.isNotBlank()) {
+                            append("Planta identificada: ${state.plantName}.\n\n")
+                        }
+                        append(state.message)
+                    },
+                    onTakeAnotherPhoto = takeAnotherPhoto
+                )
+
                 is IdentificationUiState.Error -> MessageContent(
                     title = "No se pudo identificar la planta",
                     message = state.message,
@@ -224,6 +235,8 @@ private fun SuccessContent(
             onTermClick = { selectedTerm = it }
         )
     }
+
+    GeneralTipsCard()
 
     selectedTerm?.let { term ->
         AlertDialog(
@@ -674,6 +687,51 @@ private fun CandidateCard(
         )
     }
 }
+/**
+ * Consejos generales para mantener la planta saludable. Se muestran siempre,
+ * después de la ficha específica, como pautas mínimas de mantenimiento.
+ */
+@Composable
+private fun GeneralTipsCard() {
+    val accent = Color(0xFF2E7D32)
+    val tips = listOf(
+        "Riega cuando el sustrato esté seco al tacto y evita encharcar la maceta.",
+        "Dale luz natural abundante y protégela de corrientes de aire fuertes.",
+        "Revisa hojas y tallos cada semana: retira lo seco y actúa pronto ante plagas."
+    )
+
+    Spacer(modifier = Modifier.height(12.dp))
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = accent.copy(alpha = 0.08f)
+        ),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Consejos generales",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            tips.forEach { tip ->
+                Text(
+                    text = "• $tip",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+        }
+    }
+}
+
 /**
  * Bloque de una categoría en tarjeta delineada con su color esencial, con las
  * palabras difíciles resaltadas y (en categorías de cuidado) sus materiales y
