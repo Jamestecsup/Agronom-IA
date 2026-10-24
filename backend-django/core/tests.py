@@ -31,7 +31,8 @@ def _plantnet_result(score, name="Helianthus annuus", common="Girasol"):
 class PipelineTests(SimpleTestCase):
     """Umbrales, categorías vacías y textos de respaldo."""
 
-    def _identify(self, score=0.9, texts=None, categories_error=None):
+    def _identify(self, score=0.9, texts=None, categories_error=None,
+                  materials_error=None):
         """Ejecuta pipeline.identify con Pl@ntNet y Gemini simulados."""
         data = _plantnet_result(score)
         with patch(
@@ -45,7 +46,9 @@ class PipelineTests(SimpleTestCase):
         ), patch(
             "core.services.pipeline.gemini.glossary_batch", return_value={}
         ), patch(
-            "core.services.pipeline.gemini.materials_batch", return_value={}
+            "core.services.pipeline.gemini.materials_batch",
+            return_value={},
+            side_effect=materials_error,
         ):
             return pipeline.identify([b"foto"])
 
@@ -106,7 +109,57 @@ class PipelineTests(SimpleTestCase):
         self.assertEqual(result["status"], "failed")
         self.assertIn("no pudo generar la ficha", result["message"])
 
+    def test_materiales_fallidos_no_rompen_la_ficha(self):
+        """Si la IA devuelve un JSON roto en materiales, la ficha sigue."""
+        texts = {category: f"Texto de {category}." for category in pipeline.CATEGORIES}
+
+        result = self._identify(
+            score=0.9,
+            texts=texts,
+            materials_error=pipeline.gemini.GeminiError("JSON inválido"),
+        )
+
+        self.assertEqual(result["status"], "identified")
+        self.assertEqual(len(result["plant"]["sections"]), 8)
+        _, materials = next(
+            (s["key"], s["materials"])
+            for s in result["plant"]["sections"]
+            if s["key"] == "light"
+        )
+        self.assertEqual(materials, [])
+
     def test_clean_text_normaliza_unknown(self):
         self.assertEqual(pipeline._clean_text(" Unknown. "), "")
         self.assertEqual(pipeline._clean_text("desconocida"), "")
         self.assertEqual(pipeline._clean_text("Riega poco"), "Riega poco")
+
+    def test_json_invalido_es_error_de_ia(self):
+        """Un JSON roto no debe romper la vista con un 500."""
+        with self.assertRaises(pipeline.gemini.GeminiError):
+            pipeline.gemini._parse_json('{"a": "sin cerrar}')
+
+    def test_json_call_reintenta_una_vez(self):
+        responses = [
+            {"choices": [{"message": {"content": '{"a": 1,}'}}]},
+            {"choices": [{"message": {"content": '{"a": 1}'}}]},
+        ]
+        with patch(
+            "core.services.gemini._post", side_effect=responses
+        ) as post, patch("core.services.gemini.time.sleep"):
+            data = pipeline.gemini._json_call("s", "u", "m", "clave", "http://ia")
+
+        self.assertEqual(data, {"a": 1})
+        self.assertEqual(post.call_count, 2)
+
+    def test_json_call_falla_tras_dos_intentos(self):
+        responses = [
+            {"choices": [{"message": {"content": '{"a": 1,}'}}]},
+            {"choices": [{"message": {"content": '{"a": 2,}'}}]},
+        ]
+        with patch(
+            "core.services.gemini._post", side_effect=responses
+        ) as post, patch("core.services.gemini.time.sleep"):
+            with self.assertRaises(pipeline.gemini.GeminiError):
+                pipeline.gemini._json_call("s", "u", "m", "clave", "http://ia")
+
+        self.assertEqual(post.call_count, 2)

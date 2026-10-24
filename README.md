@@ -141,9 +141,10 @@ deja que un usuario se asigne el rol `admin` al registrarse.
    - `≥ 50 %` → identificada: se genera la ficha directamente.
 2. **Gemini** trabaja con las *skills* de `backend-django/skills/`
    (refinar consulta, una por categoría, glosario y materiales). Se hacen 4
-   llamadas en lote con reintento ante 429. Si no conoce la especie, la ficha
-   no se inventa: se avisa con el estado `insufficient`; si solo falta una
-   categoría, se muestra un texto de respaldo con pautas generales.
+   llamadas en lote con reintento ante 429 y ante JSON inválido. Si no conoce
+   la especie, la ficha no se inventa: se avisa con el estado `insufficient`;
+   si solo falta una categoría, se muestra un texto de respaldo con pautas
+   generales.
 3. El **chat** recibe el contexto de la planta (nombre, familia, similitud) y
    responde en español con formato Markdown.
 

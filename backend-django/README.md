@@ -132,5 +132,6 @@ py manage.py test core.tests
 ```
 
 Son pruebas del pipeline con Pl@ntNet y Gemini simulados (`unittest.mock`):
-umbrales, categorías «unknown», texto de respaldo y estado `insufficient`.
-No gastan cuota ni necesitan la base de datos.
+umbrales, categorías «unknown», texto de respaldo, estado `insufficient` y
+reintento del cliente de IA ante JSON inválido. No gastan cuota ni necesitan
+la base de datos.
