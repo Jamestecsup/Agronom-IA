@@ -60,7 +60,12 @@ def _parse_json(content):
     end = text.rfind("}")
     if start < 0 or end <= start:
         raise GeminiError("La IA no devolvió un JSON válido.")
-    return json.loads(text[start : end + 1])
+    try:
+        return json.loads(text[start : end + 1])
+    except json.JSONDecodeError as exc:
+        # La IA a veces devuelve comillas sin escapar: es un fallo de la IA,
+        # no del servidor (el pipeline puede usar su texto de respaldo).
+        raise GeminiError("La IA devolvió un JSON inválido.") from exc
 
 
 def _messages(system_text, user_text):
@@ -81,13 +86,25 @@ def _json_call(system_text, user_text, model, api_key, base_url, temperature=0.0
         "temperature": temperature,
         "response_format": {"type": "json_object"},
     }
-    data = _post(url, headers, body)
-    if data.get("error"):
-        raise GeminiError(data["error"].get("message", "error de la IA"))
-    content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
-    if not content:
-        raise GeminiError("La IA no devolvió contenido.")
-    return _parse_json(content)
+
+    # Un JSON inválido se reintenta una vez: la respuesta puede venir con
+    # comillas sin escapar. Si vuelve a fallar, se propaga como GeminiError.
+    last_error = None
+    for attempt in range(2):
+        data = _post(url, headers, body)
+        if data.get("error"):
+            raise GeminiError(data["error"].get("message", "error de la IA"))
+        content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+        if not content:
+            last_error = GeminiError("La IA no devolvió contenido.")
+        else:
+            try:
+                return _parse_json(content)
+            except GeminiError as exc:
+                last_error = exc
+        if attempt == 0:
+            time.sleep(2)
+    raise last_error
 
 
 def refine_prompt(ficha, skill, model, api_key, base_url):

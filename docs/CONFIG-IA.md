@@ -44,7 +44,10 @@ recompilar; el proceso toma los cambios en la siguiente solicitud.
 
 **Cuatro llamadas por ficha** (no 22): refine → categorías → glosario →
 materiales. `core/services/gemini.py` reintenta ante 429 respetando el
-`retryDelay` que devuelve la API.
+`retryDelay` que devuelve la API y, si la IA devuelve un JSON inválido,
+reintenta una vez; si vuelve a fallar, el pipeline usa el texto de respaldo (o
+devuelve `failed` si es la llamada de categorías). Un JSON roto nunca produce
+un error 500.
 
 La guía de «cómo tomar mejores fotos» es texto de interfaz (vive en la app y
 repite el mismo consejo), no una skill.
