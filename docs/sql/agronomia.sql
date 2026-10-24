@@ -1,7 +1,7 @@
 -- Base de datos compartida (Django + Spring Boot admin).
 -- Solo se crea aquí la tabla legada `plant_images`; las tablas nuevas
--- (plant_identifications, chat_messages, profile) las crea Django con
--- `py manage.py migrate`.
+-- (core_plantidentification, core_chatmessage, core_profile,
+-- core_identificationrun) las crea Django con `py manage.py migrate`.
 
 CREATE DATABASE IF NOT EXISTS agronomia
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS plant_images (
   INDEX idx_plant_images_created (created_at)
 ) ENGINE=InnoDB;
 
--- Cuenta de API local (ajusta la contraseña fuera del repositorio):
--- CREATE USER 'agronomia_api'@'127.0.0.1' IDENTIFIED BY 'cambia-esto';
--- GRANT SELECT, INSERT, UPDATE, DELETE ON agronomia.* TO 'agronomia_api'@'127.0.0.1';
+-- Cuenta de la API para desarrollo local (XAMPP, solo 127.0.0.1).
+-- La misma contraseña va en backend-django/.env (DB_PASSWORD) y en las
+-- variables DB_USERNAME/DB_PASSWORD de Spring. Cámbiala en un equipo real.
+CREATE USER IF NOT EXISTS 'agronomia_api'@'127.0.0.1' IDENTIFIED BY 'agronomia_local_2026';
+GRANT SELECT, INSERT, UPDATE, DELETE ON agronomia.* TO 'agronomia_api'@'127.0.0.1';
+FLUSH PRIVILEGES;
