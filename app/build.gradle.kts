@@ -28,55 +28,14 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val aiBaseUrl: String = (localProperties.getProperty("AI_BASE_URL") ?: "")
-            .trim()
-            .removeSurrounding("\"")
-        val aiApiKey: String = (localProperties.getProperty("AI_API_KEY") ?: "")
-            .trim()
-            .removeSurrounding("\"")
-        val aiModel: String = (localProperties.getProperty("AI_MODEL") ?: "gpt-4o-mini")
-            .trim()
-            .removeSurrounding("\"")
-        // Ruta del endpoint de chat, relativa a AI_BASE_URL.
-        // OpenAI: "v1/chat/completions"  |  Gemini: "chat/completions"
-        val aiIdentifyPath: String = (
-            localProperties.getProperty("AI_IDENTIFY_PATH") ?: "v1/chat/completions"
-            )
-            .trim()
-            .removeSurrounding("\"")
-
-        // Pl@ntNet: identificacion de especie por imagen.
-        val plantNetBaseUrl: String = (localProperties.getProperty("PLANTNET_BASE_URL")
-            ?: "https://my-api.plantnet.org/")
-            .trim()
-            .removeSurrounding("\"")
-        val plantNetApiKey: String = (localProperties.getProperty("PLANTNET_API_KEY") ?: "")
-            .trim()
-            .removeSurrounding("\"")
-        val plantNetProject: String = (localProperties.getProperty("PLANTNET_PROJECT") ?: "all")
-            .trim()
-            .removeSurrounding("\"")
-        val plantNetLang: String = (localProperties.getProperty("PLANTNET_LANG") ?: "es")
-            .trim()
-            .removeSurrounding("\"")
-
-        // Backend Django (servicio de usuario). El emulador llega al host con
-        // 10.0.2.2; en un móvil físico usa la IP de la PC en la red local.
         val backendBaseUrl: String = (localProperties.getProperty("BACKEND_BASE_URL")
             ?: "http://10.0.2.2:8000/")
             .trim()
             .removeSurrounding("\"")
 
+        // La app solo habla con el backend Django. Las claves de Pl@ntNet y de
+        // Gemini viven en backend-django/.env: nunca se empaquetan en el APK.
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
-        buildConfigField("String", "AI_BASE_URL", "\"$aiBaseUrl\"")
-        buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
-        buildConfigField("String", "AI_MODEL", "\"$aiModel\"")
-        buildConfigField("String", "AI_IDENTIFY_PATH", "\"$aiIdentifyPath\"")
-
-        buildConfigField("String", "PLANTNET_BASE_URL", "\"$plantNetBaseUrl\"")
-        buildConfigField("String", "PLANTNET_API_KEY", "\"$plantNetApiKey\"")
-        buildConfigField("String", "PLANTNET_PROJECT", "\"$plantNetProject\"")
-        buildConfigField("String", "PLANTNET_LANG", "\"$plantNetLang\"")
     }
 
     buildTypes {
