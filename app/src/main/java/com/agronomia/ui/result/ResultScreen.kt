@@ -445,7 +445,7 @@ private fun GuideCard(forDisambiguation: Boolean = true) {
 }
 
 /**
- * Sin detección (20% o menos): mensaje + solo la guía, sin candidatas.
+ * Sin detección (menos de 20%): mensaje + solo la guía, sin candidatas.
  */
 @Composable
 private fun UnidentifiedContent(

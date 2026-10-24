@@ -41,7 +41,7 @@ sealed interface IdentificationUiState {
     data class Disambiguation(val candidates: List<SpeciesCandidate>) : IdentificationUiState
 
     /**
-     * Sin detección (20% o menos): solo la guía de cómo tomar mejores fotos,
+     * Sin detección (menos de 20%): solo la guía de cómo tomar mejores fotos,
      * sin lista de candidatas.
      */
     data class Unidentified(val message: String) : IdentificationUiState
