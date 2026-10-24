@@ -40,7 +40,9 @@ pantalla de acceso (crea cuentas con rol `user`).
   similitud y permite elegir; la ficha se genera sin volver a llamar a Pl@ntNet.
 - **Ficha**: nombre común y científico, familia, confianza y las 8 categorías
   (descripción, luz, riego, suelo, clima, floración, usos y cuidados) con
-  glosario pulsable y materiales recomendados.
+  glosario pulsable, materiales recomendados y consejos generales. Si la IA no
+  conoce la especie se muestra «Información insuficiente» en vez de una ficha
+  vacía.
 - **Mi jardín**: últimas 30 fichas guardadas en el navegador con una miniatura
   de la foto.
 - **Chat flotante**: consulta sobre la planta detectada; el contexto viaja a

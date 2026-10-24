@@ -141,13 +141,17 @@ deja que un usuario se asigne el rol `admin` al registrarse.
    - `≥ 50 %` → identificada: se genera la ficha directamente.
 2. **Gemini** trabaja con las *skills* de `backend-django/skills/`
    (refinar consulta, una por categoría, glosario y materiales). Se hacen 4
-   llamadas en lote con reintento ante 429.
+   llamadas en lote con reintento ante 429. Si no conoce la especie, la ficha
+   no se inventa: se avisa con el estado `insufficient`; si solo falta una
+   categoría, se muestra un texto de respaldo con pautas generales.
 3. El **chat** recibe el contexto de la planta (nombre, familia, similitud) y
    responde en español con formato Markdown.
 
 ## Documentación
 
 - [`docs/CONFIG-IA.md`](docs/CONFIG-IA.md): pipeline de IA y skills.
+- [`docs/HU-07.md`](docs/HU-07.md): trazabilidad de la historia de cuidado de
+  la planta (tareas del sprint, estados y pruebas).
 - [`docs/sql/agronomia.sql`](docs/sql/agronomia.sql): base de datos compartida.
 - [`backend-django/README.md`](backend-django/README.md): endpoints del usuario.
 - [`backend-spring/README.md`](backend-spring/README.md): endpoints del admin.
