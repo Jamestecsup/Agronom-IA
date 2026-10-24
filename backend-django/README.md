@@ -78,7 +78,7 @@ El emulador Android llega al host con `http://10.0.2.2:8000`.
 ```json
 {
   "success": true,
-  "status": "identified | ambiguous | unidentified",
+  "status": "identified | ambiguous | unidentified | insufficient",
   "plant": {
     "scientific_name": "Helianthus giganteus",
     "common_name": "Girasol gigante",
@@ -92,7 +92,10 @@ El emulador Android llega al host con `http://10.0.2.2:8000`.
 ```
 
 Cuando `status` es `ambiguous` llega `candidates` (20–49 % de confianza);
-cuando es `unidentified` llega `message` (menos de 20 %).
+cuando es `unidentified` llega `message` (menos de 20 %). Si la especie se
+identificó pero la IA no tiene datos de cuidado, el estado es `insufficient`
+y llega `message` + `plant_name`; las categorías sin datos muestran un texto
+de respaldo con pautas generales (nunca la palabra «unknown»).
 
 ## Skills
 
@@ -121,3 +124,13 @@ se pueden editar sin recompilar (el proceso las relee en la siguiente petición)
 
 Se ajustan en `core/services/pipeline.py` (`MIN_CONFIDENCE` y
 `CONFIDENT_CONFIDENCE`).
+
+## Pruebas
+
+```powershell
+py manage.py test core.tests
+```
+
+Son pruebas del pipeline con Pl@ntNet y Gemini simulados (`unittest.mock`):
+umbrales, categorías «unknown», texto de respaldo y estado `insufficient`.
+No gastan cuota ni necesitan la base de datos.
