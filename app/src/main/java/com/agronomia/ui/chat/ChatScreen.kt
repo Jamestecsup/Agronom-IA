@@ -43,7 +43,7 @@ import com.agronomia.ui.components.MarkdownText
  *
  * - Sin planta detectada: saluda y sugiere usar el escáner.
  * - Con planta detectada: pregunta sobre ella usando la skill del chat
- *   (assets/skills/chat-assistant.md) y el contexto de la detección.
+ *   (backend-django/skills/chat-assistant.md) y el contexto de la detección.
  */
 @Composable
 fun ChatScreen(
