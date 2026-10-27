@@ -61,6 +61,25 @@ que comparte la misma base de datos MySQL.
 
 ## Puesta en marcha
 
+### Inicio rápido para la demo
+
+Con MySQL, las dependencias de Python/Node y el jar de Spring ya instalados:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\iniciar-demo.ps1 -ConEmulador
+```
+
+Arranca en orden MySQL → Django → Spring → webs → emulador, respeta lo que ya
+esté corriendo y al final ejecuta `check-servicios.ps1`. Sin emulador, omite
+`-ConEmulador`. Cada servicio queda en su propia ventana: no las cierres
+durante la demo.
+
+**Recorrido sugerido:** identificación clara → ficha; foto con dudas →
+candidatas → ficha; imagen sin planta → guía; chat con la planta detectada; y
+panel de administración con los datos compartidos. Las cuentas están más abajo.
+
+Los pasos detallados de instalación siguen a continuación.
+
 ### 1. Base de datos
 
 1. Abre XAMPP y arranca **MySQL**.
