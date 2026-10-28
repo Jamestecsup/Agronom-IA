@@ -1,179 +1,164 @@
-# Configuración de la app
+# Configuración de IA
 
-La app identifica plantas con este flujo:
-
-1. **Pl@ntNet** identifica la **especie** y devuelve su ficha extendida: mejor
-   coincidencia (nombre científico, autoría, todos los nombres comunes, género,
-   familia, score) + hasta 3 especies candidatas alternativas + IDs
-   GBIF/POWO/IUCN (vienen a nivel de resultado, no dentro de `species`).
-2. **La IA (paso 1)** genera un **prompt optimizado de investigación** a partir
-   de esa ficha (interno, no se muestra).
-3. **La IA (paso 2)** ejecuta **UN prompt por categoría de cuidado, en paralelo**
-   (descripción, luz, riego, suelo, clima, floración, usos, cuidados). Cada uno
-   recibe la ficha extendida + el prompt de investigación y devuelve el texto
-   extenso de SU categoría en JSON `{"text": "..."}`, con datos concretos
-   (horarios, frecuencias, cantidades, medidas). Nada de consejos vagos.
-4. **La IA (paso 3)** genera el **glosario contextual** de cada categoría, en
-   paralelo: con el texto ya generado elige las palabras difíciles y explica
-   cada una de forma sencilla DENTRO DEL CONTEXTO (`{"terms": [{"word",
-   "meaning"}]}`). En la app esas palabras salen resaltadas y al tocarlas se
-   abre su significado.
-5. **La IA (paso 4)** lista **materiales y alternativas** solo en categorías de
-   cuidado (luz, riego, suelo, clima, cuidados), en paralelo: productos y
-   herramientas con marcas de ejemplo más alternativas viables si la estación
-   no acompaña (p. ej. forzado en ambiente controlado)
-   (`{"items": [{"name", "detail"}]}`). Se muestran en tarjetas de tonos que
-   combinan con el color esencial de su categoría.
-
-Si Pl@ntNet no da una coincidencia confiable, se usa **la IA de visión** como
-respaldo (la cadena se aplica igual, con la información disponible).
-Si en ese respaldo la IA no alcanza la certeza exigida (100 % por defecto), se
-muestra un error pidiendo al usuario **más imágenes** (flor, hoja, tallo).
+La inteligencia artificial corre **solo en el backend Django**
+(`backend-django/`). La app Android y las dos webs no tienen claves: piden la
+ficha ya armada al backend. Así las claves nunca viajan en un APK ni en el
+JavaScript de una web.
 
 ## Dónde se configura
 
-Todo vive **solo** en `local.properties` (no versionado, está en `.gitignore`).
-Los valores se inyectan como `BuildConfig` y los consume
-`com.agronomia.util.Constants`.
+Todo vive en `backend-django/.env`, que está en `.gitignore`. `.env.example`
+muestra los nombres de las variables:
 
-| Clave | Uso |
+| Variable | Uso |
 |---|---|
-| `AI_BASE_URL` | URL base de la IA de texto/visión (compatible OpenAI: Gemini, Qwen 3.6 local...). |
-| `AI_API_KEY` | Clave de la IA de texto/visión (si el servidor la exige). |
-| `AI_MODEL` | Modelo de la IA de texto/visión. |
-| `AI_IDENTIFY_PATH` | Ruta del endpoint de chat relativa a la base. |
-| `PLANTNET_BASE_URL` | URL base de Pl@ntNet. |
-| `PLANTNET_API_KEY` | Clave privada de Pl@ntNet. |
-| `PLANTNET_PROJECT` | Flora/proyecto (`all` por defecto). |
+| `PLANTNET_API_KEY` | Clave de Pl@ntNet (identificación de especie). |
+| `PLANTNET_BASE_URL` | URL base; por defecto `https://my-api.plantnet.org/`. |
+| `PLANTNET_PROJECT` | Flora/proyecto (`all`). |
 | `PLANTNET_LANG` | Idioma de los nombres comunes (`es`). |
+| `AI_API_KEY` | Clave de Gemini. |
+| `AI_BASE_URL` | Endpoint compatible con OpenAI (Gemini por defecto). |
+| `AI_MODEL` | Modelo de texto (`gemini-3.5-flash-lite`). |
+| `PLANT_UPLOAD_DIR` | Carpeta donde se guardan las fotos subidas. |
 
----
+Para arrancar sin MySQL: `USE_SQLITE=1` en el `.env`.
 
-## Pl@ntNet (identificación de especie) — PRIMARIA
+## Pipeline (skills en `backend-django/skills/`)
+
+Cada paso es una **skill**: un archivo Markdown con las instrucciones para la
+IA. `core/skills.py` las lee en cada petición, así que se pueden editar sin
+recompilar; el proceso toma los cambios en la siguiente solicitud.
+
+1. **`refine-prompt.md`** — con la ficha de Pl@ntNet genera un prompt de
+   investigación (interno, no se muestra).
+2. **`categories/*.md`** — una skill por categoría: descripción, luz, riego,
+   suelo, clima, floración, usos y cuidados. Las ocho se envían **juntas** en
+   una sola llamada, cada una con sus datos concretos (horarios, cantidades,
+   medidas).
+3. **`glossary.md`** — elige las palabras difíciles de cada categoría y las
+   explica en contexto. En la app y en la web salen resaltadas y al pulsarlas
+   se abre su significado.
+4. **`materials.md`** — materiales, productos y alternativas para las
+   categorías de cuidado.
+5. **`chat-assistant.md`** — personalidad y reglas del chat posterior.
+
+**Cuatro llamadas por ficha** (no 22): refine → categorías → glosario →
+materiales. `core/services/gemini.py` reintenta ante 429 respetando el
+`retryDelay` que devuelve la API y, si la IA devuelve un JSON inválido,
+reintenta una vez; si vuelve a fallar, el pipeline usa el texto de respaldo (o
+devuelve `failed` si es la llamada de categorías). Un JSON roto nunca produce
+un error 500.
+
+La guía de «cómo tomar mejores fotos» es texto de interfaz (vive en la app y
+repite el mismo consejo), no una skill.
+
+## Flujo y umbrales
+
+`core/services/pipeline.py` decide según el score de Pl@ntNet:
+
+| Confianza | Resultado | Qué hace la app |
+|---|---|---|
+| ≥ 0.50 | `identified` | Genera la ficha completa (8 secciones). |
+| 0.20 – 0.49 | `ambiguous` | Muestra las candidatas; al elegir una, `/confirm` reutiliza el JSON guardado de Pl@ntNet y genera la ficha sin volver a identificar. |
+| < 0.20 | `unidentified` | Explica el caso y da la guía de fotos. |
+
+Estados adicionales:
+
+| Situación | Resultado | Qué hace la app |
+|---|---|---|
+| Especie identificada, pero la IA no conoce sus cuidados | `insufficient` | Muestra «Información insuficiente», el nombre de la planta y ofrece otra foto. |
+| Falla la IA o la red | `failed` | Mensaje claro con reintento (no una ficha vacía). |
+
+Los valores son `MIN_CONFIDENCE` y `CONFIDENT_CONFIDENCE` en `pipeline.py`.
+Cuando la IA devuelve `"unknown"` en una categoría, se trata como vacía; esa
+sección muestra un **texto de respaldo** con pautas generales
+(`FALLBACK_TEXTS`), así la ficha conserva sus 8 secciones y nunca aparece la
+palabra «unknown».
+
+## Pl@ntNet
+
+- Endpoint: `POST {PLANTNET_BASE_URL}v2/identify/{project}?api-key=...&lang=...&nb-results=10`.
+- Cuerpo **multipart**: una parte `images` (JPEG) y una parte `organs` por cada
+  foto (hasta 5 de la misma planta: flor, hoja, tallo), emparejadas por orden.
+- Un 404 *Species not found* se trata como «sin resultados» (estado
+  `unidentified`), no como error del servidor.
+- La clave viaja en la URL: no se registra en logs ni se devuelve al cliente.
+- Genera tu clave en https://my.plantnet.org/settings/api-key
+
+## Gemini
+
+- `AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`
+  (ojo: **sin** el `/v1/` de OpenAI).
+- Endpoint final: `.../openai/chat/completions`.
+- Modelo probado: `gemini-3.5-flash-lite`. Es rápido y estable; modelos más
+  grandes tardaron o devolvieron 503.
+- Las respuestas de ficha se piden en **JSON** (`response_format`); el chat
+  responde texto Markdown.
+
+## Chat
+
+`POST /agronomia-api/api/chat` recibe `message`, `session_id` y un `context`
+opcional con la planta detectada. Django aplica `chat-assistant.md`, recupera
+el historial de la sesión desde `core_chatmessage` y responde en español. La
+app móvil y la web de usuario renderizan el Markdown con títulos, viñetas,
+negrita y código.
+
+## Alternativas de proveedor (documentadas, no implementadas)
+
+El cliente es compatible con OpenAI; para cambiar de proveedor bastaría editar
+`AI_BASE_URL` y `AI_MODEL` en `.env` y reiniciar Django:
+
+| Proveedor | `AI_BASE_URL` | `AI_MODEL` de ejemplo |
+|---|---|---|
+| OpenAI | `https://api.openai.com/` | `gpt-4o-mini` |
+| Ollama (local) | `http://<IP-PC>:11434/v1/` | `llama3.2-vision` |
+| LM Studio (local) | `http://<IP-PC>:1234/v1/` | el modelo cargado |
+| Qwen local | `http://<IP-PC>:8000/v1/` | `qwen-3.6` |
+
+En esta entrega solo está probado Gemini: las demás filas son referencia.
+
+## IA institucional (red privada)
+
+Si se prueba en la red del instituto:
 
 ```properties
-PLANTNET_BASE_URL=https://my-api.plantnet.org/
-PLANTNET_API_KEY=<tu key de Pl@ntNet>
-PLANTNET_PROJECT=all
-PLANTNET_LANG=es
-```
-
-- Endpoint: `POST {PLANTNET_BASE_URL}v2/identify/{project}?api-key=...&lang=...&nb-results=...`
-  (`nb-results=10`; la app usa la mejor + hasta 3 alternativas para la ficha).
-- Cuerpo **multipart**: UNA parte `images` (JPEG) + UNA parte `organs` POR
-  CADA foto (hasta 5 de la misma planta: flor, hoja, tallo), emparejadas por orden.
-  El órgano de cada foto lo elige el usuario en su tarjeta (auto por defecto).
-  El respaldo con IA de visión usa solo la primera foto.
-- Genera/consulta tu key en https://my.plantnet.org/settings/api-key
-- **La api-key viaja en la URL**, por eso Pl@ntNet usa un cliente OkHttp **sin
-  logging** (ver `NetworkModule`) para no filtrarla en logcat.
-
-## Google Gemini (información / respaldo visión) — ACTUAL
-
-```properties
-AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
-AI_API_KEY=<tu key de Gemini>
-AI_MODEL=gemini-3.5-flash-lite
-AI_IDENTIFY_PATH=chat/completions
-```
-
-- Endpoint final: `.../openai/chat/completions` (ojo: **sin** el `/v1/` de OpenAI).
-- Modelo probado: `gemini-3.5-flash-lite` (rápido y estable). `gemini-3.8-flash`
-  resultó lento/saturado (503) y con nuestro timeout fallaría.
-- Se usa porque habla el **mismo formato OpenAI** que la IA privada oficial;
-  cuando estés en su red, solo cambia `local.properties` (sin tocar código).
-
-## Qwen 3.6 local / IA privada oficial (cuando estés en su red)
-
-```properties
-# Ejemplo (ajusta a tu servidor):
-# AI_BASE_URL=http://192.168.17.11:3000/
-# AI_API_KEY=<la API key del servidor, si exige>
-# AI_MODEL=qwen-3.6 (o el nombre que exponga el servidor)
-# AI_IDENTIFY_PATH=v1/chat/completions
-```
-
-- El cliente ya es OpenAI-compatible (texto + visión por `image_url` + JSON);
-  no hay que tocar código, solo `local.properties` + recompilar.
-- La visión (respaldo) envía la imagen ya preparada como JPEG Base64
-  (`ImageUtils.uriToJpegBytes` → `toBase64Jpeg`).
-
----
-
-## IA ORIGINAL (institucional / red WiFi privada)
-
-Para volver a probar contra la IA del instituto cuando estés en su red:
-
-```properties
-AI_BASE_URL=http://192.168.17.11:3000/
-AI_API_KEY=<la API key original>
+AI_BASE_URL=http://192.168.17.11:3000/v1/
 AI_MODEL=gpt-4o-mini
-AI_IDENTIFY_PATH=v1/chat/completions
 ```
 
-- Endpoint final: `http://192.168.17.11:3000/v1/chat/completions`
-- Es **HTTP en claro**: en builds `debug` ya está permitido
-  (`app/src/debug/AndroidManifest.xml`); en `release` sigue bloqueado.
-- La key original se quitó de `local.properties.example` (commit `a720f7e`);
-  si la necesitas está en el historial de git, pero **conviene rotarla**.
+- Es **HTTP en claro**: `app/src/debug/AndroidManifest.xml` lo permite en
+  builds de desarrollo; la build de release lo bloquea y exige HTTPS (igual que
+  un backend Django local).
+- La clave original se quitó de `local.properties.example` en el commit
+  `a720f7e`, pero sigue en el historial de Git: **conviene rotarla**.
 
-## Otras alternativas de IA (mismo formato OpenAI)
+## Cómo probar
 
-| Proveedor | `AI_BASE_URL` | `AI_MODEL` ejemplo | `AI_IDENTIFY_PATH` |
-|---|---|---|---|
-| OpenAI | `https://api.openai.com/` | `gpt-4o-mini` | `v1/chat/completions` |
-| Ollama (local) | `http://<IP-PC>:11434/v1/` | `llama3.2-vision` | `chat/completions` |
-| LM Studio (local) | `http://<IP-PC>:1234/v1/` | el cargado | `chat/completions` |
-
----
-
-## Mejoras de detección (implementadas)
-
-1. **Top-3 elegible**: en dudas (21% a 49%) se muestran las similares para
-   que el agricultor elija (con foto y score).
-   Cada candidata trae foto de referencia de internet (Wikimedia Commons, sin
-   clave, vía Coil) y hasta 3 nombres comunes de ejemplo. Wikimedia exige
-   `User-Agent` identificatorio: la app envía `Agronom-IA/1.0 (Android)` tanto
-   al buscar la foto como al descargarla (sin él responde 403 y sale en blanco).
-   Además cada similar trae 1-2 frases con sus rasgos únicos (color/forma de
-   flor y hoja, tamaño) para distinguirlas.
-2. **Chequeo de calidad previo** (implementado): avisa antes de enviar si la
-   foto está oscura o movida, con opción de continuar.
-3. **Selector de órgano** (implementado): elegir hoja/flor/fruto por foto en
-   vez de `auto` (una tarjeta de órgano con su descripción por cada foto).
-4. **Umbrales por niveles** (implementado): ver regla abajo.
-5. **Guía ligada** (implementada): el top-3 va ligado al chequeo de calidad y
-   al selector de órgano, explicando QUÉ foto tomar (flor, hoja, tallo) con
-   palabras resaltadas y significado en contexto, como el glosario — para
-   subir la chance de detectar bien.
-
-## Umbrales (en `Constants.kt`)
-
-Regla acordada:
-
-- **20% o menos** = sin detección: guía de fotos + tomar otra foto.
-- **21% a 49%** = dudas: similares con foto y nombres para elegir.
-- **50% o más** = validada: ficha completa con su % visible.
-
-- `PLANTNET_MIN_CONFIDENCE` (0.2): por debajo se usa el respaldo con IA de visión.
-- `PLANTNET_CONFIDENT_CONFIDENCE` (0.5): 50% o más = validada directa.
-- `AI_FALLBACK_MIN_CONFIDENCE` (1.0 = 100 %): en el respaldo, si la IA no
-  llega a esta certeza, se pide al usuario más imágenes.
-
-## Cómo probar rápido (texto o imagen)
-
-Script: `scripts/test-ia.ps1` (lee la key de `local.properties`, nunca la imprime).
+Antes de la demo, arranca MySQL, Django, Spring y las dos webs, y comprueba
+que responden:
 
 ```powershell
-# Prueba de texto contra la IA
-powershell -ExecutionPolicy Bypass -File scripts\test-ia.ps1 -Prompt "Dime el nombre cientifico del girasol"
-
-# Prueba con imagen
-powershell -ExecutionPolicy Bypass -File scripts\test-ia.ps1 -ImagePath "C:\ruta\planta.jpg"
+powershell -ExecutionPolicy Bypass -File scripts\check-servicios.ps1
 ```
 
-## Cómo cambiar de proveedor (para una IA que lea esto)
+Pruebas automáticas del pipeline (sin gastar cuota, con Pl@ntNet y Gemini
+simulados):
 
-1. Edita las claves en `local.properties`.
-2. Recompila (`./gradlew assembleDebug` o Run en Android Studio).
-3. El cliente de IA ya es OpenAI-compatible; no hay que tocar código.
+```powershell
+cd backend-django
+py manage.py test core.tests
+```
+
+Prueba final con cuota de IA (con las fotos de la galería del emulador):
+
+1. **Identificada**: girasol nítido → ficha de 8 secciones, consejos generales
+   y glosario.
+2. **Con dudas**: foto recortada → candidatas; elige una → ficha sin volver a
+   llamar a Pl@ntNet.
+3. **Sin detección**: imagen gris → mensaje y guía de fotos.
+4. **Información insuficiente**: si la IA no conoce la especie, aparece el
+   aviso con el nombre y no una ficha vacía (cubierto por las pruebas).
+5. **Chat**: pregunta por el riego con la planta detectada y verifica que la
+   respuesta es de esa especie.
+6. **Panel admin**: la identificación y el mensaje aparecen en Spring
+   (http://localhost:5173).
