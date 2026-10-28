@@ -28,47 +28,14 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val aiBaseUrl: String = (localProperties.getProperty("AI_BASE_URL") ?: "")
-            .trim()
-            .removeSurrounding("\"")
-        val aiApiKey: String = (localProperties.getProperty("AI_API_KEY") ?: "")
-            .trim()
-            .removeSurrounding("\"")
-        val aiModel: String = (localProperties.getProperty("AI_MODEL") ?: "gpt-4o-mini")
-            .trim()
-            .removeSurrounding("\"")
-        // Ruta del endpoint de chat, relativa a AI_BASE_URL.
-        // OpenAI: "v1/chat/completions"  |  Gemini: "chat/completions"
-        val aiIdentifyPath: String = (
-            localProperties.getProperty("AI_IDENTIFY_PATH") ?: "v1/chat/completions"
-            )
+        val backendBaseUrl: String = (localProperties.getProperty("BACKEND_BASE_URL")
+            ?: "http://10.0.2.2:8000/")
             .trim()
             .removeSurrounding("\"")
 
-        // Pl@ntNet: identificacion de especie por imagen.
-        val plantNetBaseUrl: String = (localProperties.getProperty("PLANTNET_BASE_URL")
-            ?: "https://my-api.plantnet.org/")
-            .trim()
-            .removeSurrounding("\"")
-        val plantNetApiKey: String = (localProperties.getProperty("PLANTNET_API_KEY") ?: "")
-            .trim()
-            .removeSurrounding("\"")
-        val plantNetProject: String = (localProperties.getProperty("PLANTNET_PROJECT") ?: "all")
-            .trim()
-            .removeSurrounding("\"")
-        val plantNetLang: String = (localProperties.getProperty("PLANTNET_LANG") ?: "es")
-            .trim()
-            .removeSurrounding("\"")
-
-        buildConfigField("String", "AI_BASE_URL", "\"$aiBaseUrl\"")
-        buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
-        buildConfigField("String", "AI_MODEL", "\"$aiModel\"")
-        buildConfigField("String", "AI_IDENTIFY_PATH", "\"$aiIdentifyPath\"")
-
-        buildConfigField("String", "PLANTNET_BASE_URL", "\"$plantNetBaseUrl\"")
-        buildConfigField("String", "PLANTNET_API_KEY", "\"$plantNetApiKey\"")
-        buildConfigField("String", "PLANTNET_PROJECT", "\"$plantNetProject\"")
-        buildConfigField("String", "PLANTNET_LANG", "\"$plantNetLang\"")
+        // La app solo habla con el backend Django. Las claves de Pl@ntNet y de
+        // Gemini viven en backend-django/.env: nunca se empaquetan en el APK.
+        buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
     }
 
     buildTypes {
@@ -88,6 +55,10 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -122,7 +93,6 @@ dependencies {
     implementation(libs.androidx.exifinterface)
 
     testImplementation(libs.junit)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

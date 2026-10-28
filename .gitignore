@@ -16,3 +16,20 @@ build/
 local.properties
 .kotlin
 .idea/
+
+# Python / Django
+__pycache__/
+*.py[cod]
+backend-django/db.sqlite3
+backend-django/.env
+backend-django/.venv/
+media/
+
+# Spring Boot (Maven)
+backend-spring/target/
+
+# Node / React
+**/node_modules/
+web-admin/dist/
+web-user/dist/
+
