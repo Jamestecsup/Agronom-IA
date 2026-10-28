@@ -13,8 +13,8 @@ import java.io.ByteArrayOutputStream
 
 object ImageUtils {
 
-    const val MAX_SIDE_PX = 800
-    const val JPEG_QUALITY = 75
+    const val MAX_SIDE_PX = 1024
+    const val JPEG_QUALITY = 80
 
     /**
      * Máximo de imágenes por identificación (límite de Pl@ntNet: hasta 5
