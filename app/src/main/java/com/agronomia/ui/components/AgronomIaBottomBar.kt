@@ -1,22 +1,27 @@
 package com.agronomia.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -24,9 +29,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.agronomia.ui.theme.AgronomIaTheme
+import com.agronomia.ui.theme.LocalAccessibilityState
 
 /** Ícono de Jardín / Planta (Filled) */
 private val GardenFilledIcon: ImageVector
@@ -116,6 +122,11 @@ val bottomNavItems = listOf(
         unselectedIcon = Icons.Outlined.Search
     ),
     BottomNavItem(
+        title = "Chat",
+        selectedIcon = Icons.Filled.Send,
+        unselectedIcon = Icons.Outlined.Send
+    ),
+    BottomNavItem(
         title = "Mi Jardín",
         selectedIcon = GardenFilledIcon,
         unselectedIcon = GardenOutlinedIcon
@@ -133,12 +144,11 @@ val bottomNavItems = listOf(
 )
 
 /**
- * Barra de navegación inferior flotante tipo píldora (pill-shaped) para Agronom-IA.
+ * Barra de navegación inferior flotante personalizada estilo Material Design 3 Expressive.
  *
- * Características:
- * - Contenedor externo transparente con padding lateral de 24.dp y vertical de 16.dp.
- * - Respeta los gestos del sistema Android con `navigationBarsPadding()`.
- * - Forma de píldora tipo `CircleShape` / `RoundedCornerShape(100.dp)` con sombra y superficie clara.
+ * Se adapta al modo de Alto Contraste cambiando la píldora activa y los íconos a la paleta
+ * de alto contraste de Canvas Tecsup, y mantiene 1 sola línea por etiqueta para no alterar
+ * la estructura visual en ningún tamaño de fuente.
  */
 @Composable
 fun AgronomIaBottomBar(
@@ -146,18 +156,28 @@ fun AgronomIaBottomBar(
     selectedIndex: Int = 0,
     onItemSelected: (Int) -> Unit = {}
 ) {
-    Surface(
+    val highContrast = LocalAccessibilityState.current.highContrast
+
+    Card(
         modifier = modifier
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+        shape = RoundedCornerShape(100.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (highContrast) 0.dp else 8.dp),
+        border = if (highContrast) BorderStroke(2.dp, Color(0xFF000000)) else null,
+        colors = CardDefaults.cardColors(
+            containerColor = if (highContrast) {
+                Color(0xFFE4ECF7)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            }
+        )
     ) {
         NavigationBar(
             containerColor = Color.Transparent,
-            windowInsets = WindowInsets(0, 0, 0, 0)
+            windowInsets = WindowInsets(0, 0, 0, 0),
+            modifier = Modifier.fillMaxWidth()
         ) {
             bottomNavItems.forEachIndexed { index, item ->
                 val isSelected = selectedIndex == index
@@ -173,26 +193,39 @@ fun AgronomIaBottomBar(
                     label = {
                         Text(
                             text = item.title,
-                            style = MaterialTheme.typography.labelSmall
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (highContrast || isSelected) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     },
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = Color(0xFFC8E6C9), // Verde claro para la píldora activa
-                        selectedIconColor = Color(0xFF1B5E20), // Verde oscuro para el ícono activo
-                        selectedTextColor = Color(0xFF1B5E20), // Verde oscuro para el texto activo
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    colors = if (highContrast) {
+                        NavigationBarItemDefaults.colors(
+                            indicatorColor = Color(0xFF002855),
+                            selectedIconColor = Color(0xFFFFEA00),
+                            selectedTextColor = Color(0xFF000000),
+                            unselectedIconColor = Color(0xFF000000),
+                            unselectedTextColor = Color(0xFF000000)
+                        )
+                    } else {
+                        NavigationBarItemDefaults.colors(
+                            indicatorColor = Color(0xFFC8E6C9),
+                            selectedIconColor = Color(0xFF1B5E20),
+                            selectedTextColor = Color(0xFF1B5E20),
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 )
             }
         }
     }
 }
 
-@Preview(showBackground = true)
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
 @Composable
 private fun AgronomIaBottomBarPreview() {
-    AgronomIaTheme {
+    com.agronomia.ui.theme.AgronomIaTheme {
         AgronomIaBottomBar()
     }
 }

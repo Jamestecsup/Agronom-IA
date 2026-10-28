@@ -1,6 +1,7 @@
 package com.agronomia.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.agronomia.ui.theme.AgronomIaTheme
+import com.agronomia.ui.theme.LocalAccessibilityState
 
 /** Ícono personalizado de Hoja/Eco */
 private val EcoLeafIcon: ImageVector
@@ -61,58 +64,83 @@ private var _ecoLeafIcon: ImageVector? = null
  * TopBar personalizada simplificada para Agronom-IA.
  *
  * Muestra el ícono/logo y la identificación de la aplicación e institución ("Agronom-IA" y "TECSUP").
+ * Se adapta automáticamente al modo de alto contraste.
  */
 @Composable
 fun AgronomIaTopBar(
     modifier: Modifier = Modifier
 ) {
+    val highContrast = LocalAccessibilityState.current.highContrast
+
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp
+        color = if (highContrast) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.surface,
+        tonalElevation = if (highContrast) 0.dp else 3.dp
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            // Alineación Izquierda: Logo + Agronom-IA / TECSUP
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.Start
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF2E7D32).copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = EcoLeafIcon,
-                        contentDescription = "Logo Agronom-IA",
-                        tint = Color(0xFF1B5E20),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                    val circleBg = if (highContrast) {
+                        Color(0xFF002855)
+                    } else {
+                        Color(0xFF2E7D32).copy(alpha = 0.15f)
+                    }
+                    val iconTint = if (highContrast) {
+                        Color(0xFFFFEA00)
+                    } else {
+                        Color(0xFF1B5E20)
+                    }
 
-                Column {
-                    Text(
-                        text = "Agronom-IA",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1B5E20)
-                    )
-                    Text(
-                        text = "TECSUP",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF003366)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(circleBg)
+                            .then(
+                                if (highContrast) {
+                                    Modifier.border(2.dp, Color.Black, CircleShape)
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = EcoLeafIcon,
+                            contentDescription = "Logo Agronom-IA",
+                            tint = iconTint,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = "Agronom-IA",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (highContrast) FontWeight.ExtraBold else FontWeight.Bold,
+                            color = if (highContrast) Color(0xFF000000) else Color(0xFF1B5E20)
+                        )
+                        Text(
+                            text = "TECSUP",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (highContrast) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (highContrast) Color(0xFF002855) else Color(0xFF003366)
+                        )
+                    }
                 }
+            }
+            if (highContrast) {
+                HorizontalDivider(thickness = 2.dp, color = Color(0xFF000000))
             }
         }
     }

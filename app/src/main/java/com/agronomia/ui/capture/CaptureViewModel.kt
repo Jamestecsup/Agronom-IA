@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agronomia.data.repository.AnalysisResult
+import com.agronomia.data.repository.InsufficientInfoException
 import com.agronomia.data.repository.PlantRepository
 import com.agronomia.data.repository.PlantRepositoryImpl
 import com.agronomia.domain.model.PlantResult
@@ -41,10 +42,16 @@ sealed interface IdentificationUiState {
     data class Disambiguation(val candidates: List<SpeciesCandidate>) : IdentificationUiState
 
     /**
-     * Sin detección (20% o menos): solo la guía de cómo tomar mejores fotos,
+     * Sin detección (menos de 20%): solo la guía de cómo tomar mejores fotos,
      * sin lista de candidatas.
      */
     data class Unidentified(val message: String) : IdentificationUiState
+
+    /**
+     * La especie se identificó, pero la IA no tiene datos de cuidado
+     * suficientes: se muestra el nombre y un aviso, no una ficha vacía.
+     */
+    data class Insufficient(val plantName: String, val message: String) : IdentificationUiState
 
     /** Ocurrió un error (red, formato, sin certeza, etc.). */
     data class Error(val message: String) : IdentificationUiState
@@ -199,6 +206,12 @@ class CaptureViewModel @JvmOverloads constructor(
                 is AnalysisResult.Unidentified -> {
                     _uiState.value = IdentificationUiState.Unidentified(result.message)
                 }
+                is AnalysisResult.Insufficient -> {
+                    _uiState.value = IdentificationUiState.Insufficient(
+                        result.plantName,
+                        result.message
+                    )
+                }
                 is AnalysisResult.Failed -> {
                     _uiState.value = IdentificationUiState.Error(result.message)
                 }
@@ -229,9 +242,17 @@ class CaptureViewModel @JvmOverloads constructor(
         result.fold(
             onSuccess = { IdentificationUiState.Success(it) },
             onFailure = { error ->
-                IdentificationUiState.Error(
-                    error.message ?: "No se pudo identificar la planta. Inténtalo de nuevo."
-                )
+                if (error is InsufficientInfoException) {
+                    IdentificationUiState.Insufficient(
+                        plantName = error.plantName,
+                        message = error.message
+                            ?: "No encontramos información suficiente sobre esta planta."
+                    )
+                } else {
+                    IdentificationUiState.Error(
+                        error.message ?: "No se pudo identificar la planta. Inténtalo de nuevo."
+                    )
+                }
             }
         )
 }

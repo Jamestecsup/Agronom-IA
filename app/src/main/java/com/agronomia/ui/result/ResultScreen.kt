@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,6 +60,7 @@ import com.agronomia.ui.capture.CaptureViewModel
 import com.agronomia.ui.capture.IdentificationUiState
 import com.agronomia.ui.components.FullscreenImageDialog
 import com.agronomia.ui.components.AgronomIaTopBar
+import com.agronomia.ui.theme.LocalAccessibilityState
 import com.agronomia.util.Constants
 import kotlin.math.roundToInt
 
@@ -84,6 +86,8 @@ fun ResultScreen(
         topBar = {
             AgronomIaTopBar()
         },
+        // Evita restar dos veces el inset inferior que ya reserva el footer global.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier
     ) { innerPadding ->
         Column(
@@ -143,6 +147,17 @@ fun ResultScreen(
                     message = state.message,
                     onTakeAnotherPhoto = takeAnotherPhoto,
                     imageUris = imageUris
+                )
+
+                is IdentificationUiState.Insufficient -> MessageContent(
+                    title = "Información insuficiente",
+                    message = buildString {
+                        if (state.plantName.isNotBlank()) {
+                            append("Planta identificada: ${state.plantName}.\n\n")
+                        }
+                        append(state.message)
+                    },
+                    onTakeAnotherPhoto = takeAnotherPhoto
                 )
 
                 is IdentificationUiState.Error -> MessageContent(
@@ -221,6 +236,8 @@ private fun SuccessContent(
             onTermClick = { selectedTerm = it }
         )
     }
+
+    GeneralTipsCard()
 
     selectedTerm?.let { term ->
         AlertDialog(
@@ -370,8 +387,19 @@ private fun UploadedPhotosStrip(imageUris: List<Uri>) {
  * resaltadas con su significado). Se usa en desambiguación y en no-detección.
  */
 @Composable
-private fun GuideCard() {
+private fun GuideCard(forDisambiguation: Boolean = true) {
     var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
+
+    // La misma guía sirve para dudas y para no-detección; solo cambia la
+    // introducción para no decir que "encontró plantas" cuando no encontró nada.
+    val guideText = remember(forDisambiguation) {
+        if (forDisambiguation) {
+            Constants.DISAMBIGUATION_GUIDE_TEXT
+        } else {
+            "No se reconoció ninguna planta. Para identificarla mejor, toma estas fotos:\n\n" +
+                Constants.DISAMBIGUATION_GUIDE_TEXT.substringAfter("\n\n")
+        }
+    }
 
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedCard(
@@ -392,9 +420,9 @@ private fun GuideCard() {
                 fontWeight = FontWeight.Bold,
                 textDecoration = TextDecoration.Underline
             )
-            val annotated = remember {
+            val annotated = remember(guideText) {
                 buildAnnotatedText(
-                    Constants.DISAMBIGUATION_GUIDE_TEXT,
+                    guideText,
                     Constants.DISAMBIGUATION_GUIDE_TERMS,
                     guideStyle
                 )
@@ -431,7 +459,7 @@ private fun GuideCard() {
 }
 
 /**
- * Sin detección (20% o menos): mensaje + solo la guía, sin candidatas.
+ * Sin detección (menos de 20%): mensaje + solo la guía, sin candidatas.
  */
 @Composable
 private fun UnidentifiedContent(
@@ -450,7 +478,7 @@ private fun UnidentifiedContent(
         style = MaterialTheme.typography.bodyMedium,
         textAlign = TextAlign.Center
     )
-    GuideCard()
+    GuideCard(forDisambiguation = false)
     Spacer(modifier = Modifier.height(4.dp))
     UploadedPhotosStrip(imageUris)
     Spacer(modifier = Modifier.height(16.dp))
@@ -661,6 +689,55 @@ private fun CandidateCard(
     }
 }
 /**
+ * Consejos generales para mantener la planta saludable. Se muestran siempre,
+ * después de la ficha específica, como pautas mínimas de mantenimiento.
+ */
+@Composable
+private fun GeneralTipsCard() {
+    val highContrast = LocalAccessibilityState.current.highContrast
+    val accent = if (highContrast) Color(0xFF002855) else Color(0xFF2E7D32)
+    val tips = listOf(
+        "Riega cuando el sustrato esté seco al tacto y evita encharcar la maceta.",
+        "Dale luz natural abundante y protégela de corrientes de aire fuertes.",
+        "Revisa hojas y tallos cada semana: retira lo seco y actúa pronto ante plagas."
+    )
+
+    Spacer(modifier = Modifier.height(12.dp))
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (highContrast) Color(0xFFE4ECF7) else accent.copy(alpha = 0.08f)
+        ),
+        border = BorderStroke(
+            width = if (highContrast) 2.dp else 1.dp,
+            color = if (highContrast) Color(0xFF000000) else accent.copy(alpha = 0.45f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Consejos generales",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            tips.forEach { tip ->
+                Text(
+                    text = "• $tip",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+        }
+    }
+}
+
+/**
  * Bloque de una categoría en tarjeta delineada con su color esencial, con las
  * palabras difíciles resaltadas y (en categorías de cuidado) sus materiales y
  * alternativas. No se muestra si el cuerpo está vacío.
@@ -671,16 +748,20 @@ private fun SectionCard(
     onTermClick: (WordMeaning) -> Unit
 ) {
     if (section.body.isBlank()) return
-    val accent = categoryAccent(section.key)
+    val highContrast = LocalAccessibilityState.current.highContrast
+    val accent = if (highContrast) Color(0xFF002855) else categoryAccent(section.key)
 
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.outlinedCardColors(
-            containerColor = accent.copy(alpha = 0.08f)
+            containerColor = if (highContrast) Color(0xFFFFFFFF) else accent.copy(alpha = 0.08f)
         ),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.45f))
+        border = BorderStroke(
+            width = if (highContrast) 2.dp else 1.dp,
+            color = if (highContrast) Color(0xFF000000) else accent.copy(alpha = 0.45f)
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -694,10 +775,11 @@ private fun SectionCard(
             Spacer(modifier = Modifier.height(8.dp))
             val highlightStyle = SpanStyle(
                 color = accent,
+                background = if (highContrast) Color(0xFFFFEA00) else Color.Transparent,
                 fontWeight = FontWeight.Bold,
                 textDecoration = TextDecoration.Underline
             )
-            val annotated = remember(section.body, section.terms) {
+            val annotated = remember(section.body, section.terms, highContrast) {
                 buildAnnotatedText(section.body, section.terms, highlightStyle)
             }
             ClickableText(
@@ -751,13 +833,17 @@ private fun SectionCard(
  */
 @Composable
 private fun MaterialChip(item: MaterialItem, accent: Color) {
+    val highContrast = LocalAccessibilityState.current.highContrast
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = accent.copy(alpha = 0.14f)
+            containerColor = if (highContrast) Color(0xFFE4ECF7) else accent.copy(alpha = 0.14f)
         ),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.30f))
+        border = BorderStroke(
+            width = if (highContrast) 2.dp else 1.dp,
+            color = if (highContrast) Color(0xFF002855) else accent.copy(alpha = 0.30f)
+        )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
