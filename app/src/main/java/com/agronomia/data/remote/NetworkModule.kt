@@ -12,8 +12,8 @@ import java.util.concurrent.TimeUnit
 /**
  * Fábrica central de Retrofit/OkHttp.
  *
- * La URL base y la API key se leen desde BuildConfig a través de [Constants]
- * (Constants.BASE_URL <- BuildConfig.AI_BASE_URL, Constants.API_KEY <- BuildConfig.AI_API_KEY).
+ * Solo hay un cliente: el backend Django ([Constants.BACKEND_BASE_URL]). Las
+ * claves de Pl@ntNet y de la IA viven en el `.env` del backend, nunca aquí.
  */
 object NetworkModule {
 
@@ -23,36 +23,37 @@ object NetworkModule {
         explicitNulls = false
         isLenient = true
         coerceInputValues = true
-        // Clave para que la API de IA funcione: kotlinx.serialization omite por
-        // defecto los valores que son iguales al default (p. ej. type="json_object"
-        // de ResponseFormat o temperature=0.0). Sin esto el servidor recibe
-        // "response_format":{} y responde 400 "Invalid response format type".
         encodeDefaults = true
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         // BASIC solo registra método, URL y código de estado.
-        // NO usar Level.BODY/HEADERS: imprimiría la cabecera Authorization
-        // (API key) y el Base64 completo de la imagen.
+        // NO usar Level.BODY: imprimiría cuerpos con datos del usuario.
         level = HttpLoggingInterceptor.Level.BASIC
-        // Defensa extra por si en el futuro se sube el nivel de logging.
         redactHeader("Authorization")
-        redactHeader("x-goog-api-key")
     }
 
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(Constants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            // Lectura/escritura amplias: subir la imagen y esperar a la IA puede tardar.
+            // Lectura/escritura amplias: subir fotos y esperar el análisis tarda.
             .readTimeout(Constants.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(Constants.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .addInterceptor(loggingInterceptor)
             .build()
     }
 
-    fun createPlantApiService(baseUrl: String = Constants.BASE_URL): PlantApiService {
+    // ---------------- Backend Django (servicio de usuario) ----------------
+
+    /**
+     * Cliente del backend Django. No lleva Authorization: el backend guarda
+     * las claves de Pl@ntNet/Gemini en su propio `.env`.
+     */
+    fun createDjangoApiService(
+        baseUrl: String = Constants.BACKEND_BASE_URL
+    ): DjangoApiService {
         require(baseUrl.isNotBlank()) {
-            "AI_BASE_URL no está configurada en local.properties."
+            "BACKEND_BASE_URL no está configurada en local.properties."
         }
         val normalizedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
 
@@ -61,38 +62,21 @@ object NetworkModule {
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
-            .create(PlantApiService::class.java)
+            .create(DjangoApiService::class.java)
     }
 
-    val plantApiService: PlantApiService by lazy { createPlantApiService() }
+    val djangoApiService: DjangoApiService by lazy { createDjangoApiService() }
 
     /**
-     * Cliente OkHttp para Pl@ntNet SIN interceptor de logging: su api-key viaja
-     * como query en la URL y no debe quedar registrada en logcat.
+     * Cliente de la API de Canvas LMS del instituto/universidad.
      */
-    private val plantNetOkHttpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(Constants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(Constants.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .writeTimeout(Constants.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .build()
-    }
-
-    fun createPlantNetApiService(
-        baseUrl: String = Constants.PLANTNET_BASE_URL
-    ): PlantNetApiService {
-        require(baseUrl.isNotBlank()) {
-            "PLANTNET_BASE_URL no está configurada en local.properties."
-        }
-        val normalizedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-
+    fun createCanvasApiService(baseUrl: String): com.agronomia.data.canvas.CanvasApiService {
+        val cleanUrl = baseUrl.trim().trimEnd('/') + "/"
         return Retrofit.Builder()
-            .baseUrl(normalizedBaseUrl)
-            .client(plantNetOkHttpClient)
+            .baseUrl(cleanUrl)
+            .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
-            .create(PlantNetApiService::class.java)
+            .create(com.agronomia.data.canvas.CanvasApiService::class.java)
     }
-
-    val plantNetApiService: PlantNetApiService by lazy { createPlantNetApiService() }
 }
