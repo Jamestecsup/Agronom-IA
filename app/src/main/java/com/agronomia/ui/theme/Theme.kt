@@ -1,13 +1,16 @@
 package com.agronomia.ui.theme
 
-import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 private val DarkColorScheme = darkColorScheme(
     primary = Green80,
@@ -22,11 +25,44 @@ private val LightColorScheme = lightColorScheme(
 )
 
 /**
+ * Esquema de colores de Alto Contraste inspirado en Canvas de Tecsup (WCAG AAA).
+ * Transforma completamente la paleta de botones, textos, contenedores y bordes.
+ */
+private val HighContrastColorScheme = lightColorScheme(
+    primary = HcPrimary,
+    onPrimary = HcOnPrimary,
+    primaryContainer = HcPrimaryContainer,
+    onPrimaryContainer = HcOnPrimaryContainer,
+    secondary = HcSecondary,
+    onSecondary = HcOnSecondary,
+    secondaryContainer = HcSecondaryContainer,
+    onSecondaryContainer = HcOnSecondaryContainer,
+    tertiary = HcTertiary,
+    onTertiary = HcOnTertiary,
+    tertiaryContainer = HcTertiaryContainer,
+    onTertiaryContainer = HcOnTertiaryContainer,
+    background = HcBackground,
+    onBackground = HcOnBackground,
+    surface = HcSurface,
+    onSurface = HcOnSurface,
+    surfaceVariant = HcSurfaceVariant,
+    onSurfaceVariant = HcOnSurfaceVariant,
+    surfaceContainer = HcSurfaceContainer,
+    surfaceContainerHigh = HcSurfaceVariant,
+    surfaceContainerLow = HcSurface,
+    outline = HcOutline,
+    outlineVariant = HcOutlineVariant,
+    error = HcError,
+    onError = HcOnError
+)
+
+/**
  * Tema principal de Agronom-IA.
  *
- * Se ha bloqueado la aplicación para forzar siempre el esquema de colores claros (LightColorScheme)
- * e ignorar la configuración de modo oscuro del sistema (isSystemInDarkTheme), garantizando que el
- * fondo permanezca claro y se respeten los colores de la marca en todo momento.
+ * Aplica reactivamente las preferencias de accesibilidad:
+ * - Escalado de tamaño de fuente (Pequeño, Mediano, Grande) mediante [LocalDensity] sin alterar
+ *   las dimensiones estructurales en dp.
+ * - Modo de Alto Contraste (estilo Canvas Tecsup) cambiando toda la paleta de textos y botones.
  */
 @Composable
 fun AgronomIaTheme(
@@ -34,27 +70,35 @@ fun AgronomIaTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    // Forzado a utilizar siempre LightColorScheme
-    val colorScheme = LightColorScheme
-
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as? Activity)?.window
-            if (window != null) {
-                // Fuerza íconos oscuros en la barra de estado e inferior para que sean
-                // legibles sobre fondos claros, aun con el modo oscuro activado en el celular.
-                WindowCompat.getInsetsController(window, view).apply {
-                    isAppearanceLightStatusBars = true
-                    isAppearanceLightNavigationBars = true
-                }
-            }
-        }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        AccessibilityPreferences.init(context)
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+    val accessibilityState by AccessibilityPreferences.state.collectAsState()
+    val currentDensity = LocalDensity.current
+
+    val customDensity = Density(
+        density = currentDensity.density,
+        fontScale = accessibilityState.fontScaleMode.scaleFactor
     )
+
+    val colorScheme = if (accessibilityState.highContrast) {
+        HighContrastColorScheme
+    } else {
+        LightColorScheme
+    }
+
+    val activeTypography = buildTypography(highContrast = accessibilityState.highContrast)
+
+    CompositionLocalProvider(
+        LocalAccessibilityState provides accessibilityState,
+        LocalDensity provides customDensity
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = activeTypography,
+            content = content
+        )
+    }
 }
