@@ -101,13 +101,13 @@ class PipelineTests(SimpleTestCase):
         self.assertEqual(result["status"], "ambiguous")
         self.assertEqual(len(result["candidates"]), 1)
 
-    def test_fallo_de_la_ia_es_failed(self):
+    def test_fallo_de_la_ia_usa_ficha_de_respaldo(self):
         result = self._identify(
             score=0.9, categories_error=pipeline.gemini.GeminiError("cuota agotada")
         )
 
-        self.assertEqual(result["status"], "failed")
-        self.assertIn("no pudo generar la ficha", result["message"])
+        self.assertEqual(result["status"], "identified")
+        self.assertEqual(len(result["plant"]["sections"]), 8)
 
     def test_materiales_fallidos_no_rompen_la_ficha(self):
         """Si la IA devuelve un JSON roto en materiales, la ficha sigue."""

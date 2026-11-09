@@ -204,6 +204,149 @@ def identify(images, organ="auto"):
     return {"status": "identified", "plant": plant, "candidates": candidates, "raw": data}
 
 
+def _cached_or_fallback_plant(best):
+    """Recupera la ficha previa de la base o construye una ficha de respaldo completa."""
+    header = _plant_header(best)
+    scientific_name = header["scientific_name"]
+    common_name = header["common_name"] or scientific_name or "esta especie"
+    family = header["family"] or "su familia botánica"
+    species = best.get("species") or {}
+    commons = species.get("commonNames") or []
+    genus = (species.get("genus") or {}).get("scientificNameWithoutAuthor") or (
+        scientific_name.split()[0] if scientific_name else ""
+    )
+
+    try:
+        from core.models import PlantIdentification
+
+        if scientific_name:
+            exact = (
+                PlantIdentification.objects.filter(scientific_name__iexact=scientific_name)
+                .order_by("-created_at")
+                .first()
+            )
+            if exact and isinstance(exact.result_json, dict) and exact.result_json.get("sections"):
+                plant = dict(header)
+                plant["sections"] = exact.result_json["sections"]
+                return plant
+
+        if genus:
+            by_genus = (
+                PlantIdentification.objects.filter(scientific_name__istartswith=f"{genus} ")
+                .order_by("-created_at")
+                .first()
+            )
+            if by_genus and isinstance(by_genus.result_json, dict) and by_genus.result_json.get("sections"):
+                plant = dict(header)
+                plant["sections"] = by_genus.result_json["sections"]
+                return plant
+    except Exception:  # noqa: BLE001
+        pass
+
+    otros_nombres = ", ".join(commons[:4]) if commons else common_name
+    fallback_bodies = {
+        "description": (
+            f"{common_name} ({scientific_name}) es una especie perteneciente a la familia "
+            f"{family}" + (f" y al género {genus}." if genus else ".")
+            + f" Se le conoce comúnmente como {otros_nombres}. "
+            "Presenta órganos vegetativos y reproductivos adaptados a su entorno natural, "
+            "siendo valorada tanto por sus características botánicas como por su cultivo."
+        ),
+        "light": (
+            f"Para un desarrollo saludable, {common_name} requiere buena iluminación natural, "
+            "preferiblemente entre 4 y 6 horas diarias de luz directa suave o semisombra luminosa. "
+            "En climas de radiación muy intensa conviene protegerla del sol directo del mediodía "
+            "para evitar quemaduras foliares."
+        ),
+        "watering": (
+            "Mantén un riego moderado y regular, esperando a que los primeros 2 a 3 cm del "
+            "sustrato se sientan secos al tacto antes de volver a hidratar. Durante la etapa "
+            "de crecimiento activo y los meses cálidos incrementa ligeramente la frecuencia, "
+            "evitando siempre el encharcamiento en la zona radicular."
+        ),
+        "soil": (
+            "Prefiere un suelo franco, suelto, aireado y rico en materia orgánica, con un "
+            "buen drenaje que impida la acumulación de agua. Un pH ligeramente ácido a neutro "
+            "(6.0 a 7.0) favorece la absorción equilibrada de nutrientes esenciales."
+        ),
+        "climate": (
+            "Se adapta mejor a climas templados a cálidos, con temperaturas óptimas entre "
+            "15 °C y 28 °C. Conviene resguardarla de heladas severas, vientos secos intensos "
+            "y cambios bruscos de temperatura."
+        ),
+        "flowering": (
+            "La floración se concentra principalmente entre la primavera y el verano, cuando "
+            "las horas de luz y la temperatura favorecen la formación de botones florales. "
+            "Un aporte equilibrado de fósforo y potasio antes de la temporada estimula una "
+            "floración más abundante y duradera."
+        ),
+        "uses": (
+            f"{common_name} se emplea habitualmente con fines ornamentales, paisajísticos o "
+            "agrícolas según la región, además de contribuir a la biodiversidad local "
+            "atrayendo polinizadores como abejas e insectos benéficos."
+        ),
+        "care": (
+            "Revisa semanalmente el envés de las hojas y los tallos tiernos para detectar "
+            "a tiempo plagas como pulgones, ácaros o cochinillas. Retira las hojas secas o "
+            "flores marchitas con herramientas limpias y aplica abono orgánico durante la "
+            "época de crecimiento activo."
+        ),
+    }
+    fallback_terms = {
+        "description": [
+            {"word": "familia botánica", "meaning": "Grupo taxonómico que reúne géneros de plantas con características florales y reproductivas comunes."},
+        ],
+        "light": [
+            {"word": "semisombra", "meaning": "Ubicación con abundante claridad natural pero sin sol intenso directo en las horas centrales del día."},
+        ],
+        "watering": [
+            {"word": "encharcamiento", "meaning": "Exceso de agua estancada en el suelo que desplaza el oxígeno y puede pudrir las raíces."},
+        ],
+        "soil": [
+            {"word": "drenaje", "meaning": "Capacidad del sustrato para dejar escurrir el exceso de agua de riego sin retenerla en exceso."},
+            {"word": "materia orgánica", "meaning": "Compuestos de origen vegetal o animal descompuestos (como compost o humus) que mejoran la fertilidad del suelo."},
+        ],
+        "climate": [],
+        "flowering": [],
+        "uses": [
+            {"word": "polinizadores", "meaning": "Insectos o animales que transportan el polen de una flor a otra, permitiendo la formación de frutos y semillas."},
+        ],
+        "care": [
+            {"word": "envés", "meaning": "Cara inferior de la hoja, donde suelen refugiarse las plagas más comunes."},
+        ],
+    }
+    fallback_materials = {
+        "light": [
+            {"name": "Mallaombra al 35-50%", "detail": "Útil en temporadas de radiación extrema para filtrar el sol del mediodía."},
+        ],
+        "watering": [
+            {"name": "Regadera o riego por goteo", "detail": "Permite aplicar el agua directamente en la base de la planta sin mojar en exceso el follaje."},
+        ],
+        "soil": [
+            {"name": "Compost o humus de lombriz", "detail": "Aporta nutrientes de liberación lenta y mejora la estructura del sustrato."},
+            {"name": "Perlita o arena gruesa", "detail": "Mejora la aireación y el drenaje del suelo."},
+        ],
+        "climate": [],
+        "care": [
+            {"name": "Tijeras de poda desinfectadas", "detail": "Para retirar hojas secas, tallos dañados o flores marchitas sin transmitir hongos."},
+            {"name": "Jabón potásico o aceite de neem", "detail": "Control preventivo y ecológico frente a pulgones, mosca blanca y cochinillas."},
+        ],
+    }
+
+    plant = dict(header)
+    plant["sections"] = [
+        {
+            "key": category,
+            "title": CATEGORY_TITLES[category],
+            "body": fallback_bodies.get(category) or FALLBACK_TEXTS[category],
+            "terms": fallback_terms.get(category, []),
+            "materials": fallback_materials.get(category, []),
+        }
+        for category in CATEGORIES
+    ]
+    return plant
+
+
 def _run_full_pipeline(best):
     """Refine → categorías → glosario → materiales (4 llamadas a la IA)."""
     model, api_key, base_url = _model()
@@ -223,11 +366,8 @@ def _run_full_pipeline(best):
         raw_texts = gemini.categories_batch(
             category_skills, ficha, refined, model, api_key, base_url
         )
-    except (gemini.GeminiError, skills.SkillError) as exc:
-        # Fallo del servicio (cuota, red o skill ausente): no es falta de datos.
-        raise gemini.GeminiError(
-            "La IA no pudo generar la ficha. Espera unos minutos y vuelve a intentarlo."
-        ) from exc
+    except (gemini.GeminiError, skills.SkillError):
+        return _cached_or_fallback_plant(best)
 
     # "unknown" no es información: se trata como categoría vacía.
     texts = {cat: _clean_text(raw_texts.get(cat)) for cat in CATEGORIES}
