@@ -126,10 +126,10 @@ AI_BASE_URL=http://192.168.17.11:3000/v1/
 AI_MODEL=gpt-4o-mini
 ```
 
-- Es **HTTP en claro**: `app/src/debug/AndroidManifest.xml` lo permite en
+- Es **HTTP en claro**: `App movil/app/src/debug/AndroidManifest.xml` lo permite en
   builds de desarrollo; la build de release lo bloquea y exige HTTPS (igual que
   un backend Django local).
-- La clave original se quitó de `local.properties.example` en el commit
+- La clave original se quitó de `App movil/local.properties.example` en el commit
   `a720f7e`, pero sigue en el historial de Git: **conviene rotarla**.
 
 ## Cómo probar

@@ -2,6 +2,8 @@
 -- Solo se crea aquí la tabla legada `plant_images`; las tablas nuevas
 -- (core_plantidentification, core_chatmessage, core_profile,
 -- core_identificationrun) las crea Django con `py manage.py migrate`.
+-- La migración 0005 también agrega user_id a plant_images y vincula los datos
+-- nuevos con auth_user; aplica migrate después de crear esta tabla.
 
 CREATE DATABASE IF NOT EXISTS agronomia
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

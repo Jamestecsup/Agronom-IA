@@ -5,6 +5,8 @@ Orquesta: Pl@ntNet (identificar) → Gemini refine → categorías → glosario
 
 Para respetar la cuota gratuita se hacen 4 llamadas a la IA (no 22): las
 categorías, el glosario y los materiales se agrupan en una llamada cada uno.
+Solo cuando la identificación es ambigua se añade una llamada extra para
+describir las candidatas (pista visual + glosario).
 """
 from django.conf import settings
 
@@ -144,6 +146,30 @@ def build_ficha(result):
     return "\n".join(lines)
 
 
+def _enrich_candidates(candidates):
+    """Añade pista visual y glosario a las candidatas (sin bloquear la elección).
+
+    Solo se llama cuando la identificación es ambigua: es una llamada extra a
+    la IA. Si falla, las candidatas quedan con hint/terms vacíos y la web
+    muestra la información básica igualmente.
+    """
+    if not candidates:
+        return candidates
+    model, api_key, base_url = _model()
+    try:
+        details = gemini.candidate_hints(
+            candidates, skills.load_skill("candidate-hints"),
+            model, api_key, base_url,
+        )
+    except (gemini.GeminiError, skills.SkillError):
+        details = {}
+    for candidate in candidates:
+        extra = details.get(candidate.get("scientific_name", ""), {})
+        candidate["hint"] = extra.get("hint", "")
+        candidate["terms"] = extra.get("terms", [])
+    return candidates
+
+
 def identify(images, organ="auto"):
     """Identifica y genera la ficha completa.
 
@@ -187,6 +213,7 @@ def identify(images, organ="auto"):
             "raw": data,
         }
     if score < CONFIDENT_CONFIDENCE:
+        candidates = _enrich_candidates(candidates)
         return {"status": "ambiguous", "candidates": candidates, "raw": data}
 
     try:

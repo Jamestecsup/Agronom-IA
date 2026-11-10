@@ -11,6 +11,7 @@ from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from core.authentication import issue_user_token
 from core.models import Profile
 
 
@@ -57,4 +58,9 @@ def login(request):
     if user is None:
         return _error(401, "Credenciales inválidas.")
     role = getattr(user.profile, "role", "user")
-    return JsonResponse({"success": True, "username": user.username, "role": role})
+    return JsonResponse({
+        "success": True,
+        "username": user.username,
+        "role": role,
+        "token": issue_user_token(user),
+    })

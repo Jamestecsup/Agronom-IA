@@ -16,6 +16,10 @@ class PlantImage(models.Model):
     """Imagen subida por el usuario (tabla legada `plant_images`)."""
 
     id = models.CharField(max_length=36, primary_key=True)
+    user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        db_column="user_id", related_name="plant_images",
+    )
     batch_id = models.CharField(max_length=36)
     relative_path = models.CharField(max_length=255, unique=True)
     mime_type = models.CharField(max_length=32)
@@ -37,6 +41,10 @@ class PlantIdentification(models.Model):
     """Resultado del pipeline de identificación + información."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="plant_identifications",
+    )
     batch_id = models.CharField(max_length=36, db_index=True)
     scientific_name = models.CharField(max_length=255, db_index=True)
     common_name = models.CharField(max_length=255, blank=True)
@@ -58,6 +66,10 @@ class IdentificationRun(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="identification_runs",
+    )
     batch_id = models.CharField(max_length=36, db_index=True)
     organ = models.CharField(max_length=16, default="auto")
     status = models.CharField(max_length=16)
@@ -72,6 +84,10 @@ class ChatMessage(models.Model):
     """Historial del chat con Gemini."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="chat_messages",
+    )
     session_id = models.CharField(max_length=64, db_index=True)
     role = models.CharField(max_length=16)  # user | assistant
     content = models.TextField()
@@ -79,6 +95,26 @@ class ChatMessage(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:40]}"
+
+
+class ChatProgressImage(models.Model):
+    """Imagen de progreso adjunta a un mensaje del chat de una planta."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="plant_progress_images")
+    plant = models.ForeignKey(PlantIdentification, on_delete=models.CASCADE, related_name="progress_images")
+    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name="progress_images")
+    relative_path = models.CharField(max_length=512, unique=True)
+    mime_type = models.CharField(max_length=32)
+    file_size = models.BigIntegerField()
+    caption = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("created_at",)
+
+    def __str__(self):
+        return f"Progreso de {self.plant_id} ({self.created_at:%Y-%m-%d})"
 
 
 class Profile(models.Model):

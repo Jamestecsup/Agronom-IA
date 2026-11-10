@@ -32,7 +32,8 @@ class PipelineTests(SimpleTestCase):
     """Umbrales, categorías vacías y textos de respaldo."""
 
     def _identify(self, score=0.9, texts=None, categories_error=None,
-                  materials_error=None):
+                  materials_error=None, candidate_hints=None,
+                  candidate_hints_error=None):
         """Ejecuta pipeline.identify con Pl@ntNet y Gemini simulados."""
         data = _plantnet_result(score)
         with patch(
@@ -49,6 +50,10 @@ class PipelineTests(SimpleTestCase):
             "core.services.pipeline.gemini.materials_batch",
             return_value={},
             side_effect=materials_error,
+        ), patch(
+            "core.services.pipeline.gemini.candidate_hints",
+            return_value=candidate_hints or {},
+            side_effect=candidate_hints_error,
         ):
             return pipeline.identify([b"foto"])
 
@@ -100,6 +105,59 @@ class PipelineTests(SimpleTestCase):
 
         self.assertEqual(result["status"], "ambiguous")
         self.assertEqual(len(result["candidates"]), 1)
+
+    def test_candidatas_incluyen_pista_y_glosario(self):
+        details = {
+            "Helianthus annuus": {
+                "hint": "Flor amarilla con centro oscuro; hoja áspera.",
+                "terms": [{"word": "capítulo", "meaning": "Conjunto de flores."}],
+            }
+        }
+
+        result = self._identify(score=0.35, candidate_hints=details)
+
+        self.assertEqual(result["status"], "ambiguous")
+        candidate = result["candidates"][0]
+        self.assertIn("Flor amarilla", candidate["hint"])
+        self.assertEqual(candidate["terms"][0]["word"], "capítulo")
+
+    def test_fallo_de_pistas_no_rompe_ambiguous(self):
+        result = self._identify(
+            score=0.35,
+            candidate_hints_error=pipeline.gemini.GeminiError("sin cuota"),
+        )
+
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertEqual(result["candidates"][0]["hint"], "")
+        self.assertEqual(result["candidates"][0]["terms"], [])
+
+    def test_candidate_hints_normaliza_y_limpia(self):
+        data = {
+            "helianthus annuus": {
+                "hint": "  Flor amarilla.  ",
+                "terms": [
+                    {"word": "capítulo", "meaning": "Conjunto de flores."},
+                    {"word": "", "meaning": "sin palabra"},
+                    "dato inválido",
+                ],
+            },
+            "Otra": {"hint": "unknown", "terms": "no es una lista"},
+        }
+        with patch(
+            "core.services.gemini._json_call", return_value=data
+        ):
+            result = pipeline.gemini.candidate_hints(
+                [
+                    {"scientific_name": "Helianthus annuus"},
+                    {"scientific_name": "Otra"},
+                ],
+                "skill", "modelo", "clave", "http://ia",
+            )
+
+        self.assertEqual(result["Helianthus annuus"]["hint"], "Flor amarilla.")
+        self.assertEqual(len(result["Helianthus annuus"]["terms"]), 1)
+        self.assertEqual(result["Otra"]["hint"], "")
+        self.assertEqual(result["Otra"]["terms"], [])
 
     def test_fallo_de_la_ia_es_failed(self):
         result = self._identify(

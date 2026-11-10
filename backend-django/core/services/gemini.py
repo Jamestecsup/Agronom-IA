@@ -186,6 +186,80 @@ def materials_batch(skill, plant_name, texts, categories, model, api_key, base_u
     return result
 
 
+def _clean_hint(value):
+    """Normaliza la pista de una candidata; "unknown" no es información."""
+    text = str(value or "").strip()
+    if text.lower().rstrip(".") in {
+        "unknown", "desconocido", "desconocida", "no disponible", "n/a",
+        "no se conoce", "sin informacion", "sin información",
+    }:
+        return ""
+    return text[:800]
+
+
+def _clean_terms(value):
+    """Deja solo términos válidos del glosario de una candidata."""
+    if not isinstance(value, list):
+        return []
+    terms = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        word = str(item.get("word") or "").strip()
+        meaning = str(item.get("meaning") or "").strip()
+        if word and meaning:
+            terms.append({"word": word[:80], "meaning": meaning[:300]})
+        if len(terms) >= 6:
+            break
+    return terms
+
+
+def candidate_hints(candidates, skill, model, api_key, base_url):
+    """Paso extra solo cuando hay dudas: pista visual y glosario por candidata.
+
+    Se hace UNA llamada para todas las candidatas. Si la IA falla, el pipeline
+    sigue mostrando la lista sin descripciones (no bloquea la elección).
+    """
+    if not candidates:
+        return {}
+
+    system = (
+        skill
+        + "\n\nRecibirás una lista de especies candidatas. Devuelve un único "
+        "JSON con una clave por nombre científico EXACTO y, en cada una, "
+        '{"hint": "...", "terms": [{"word": "...", "meaning": "..."}]}.'
+    )
+    payload = [
+        {
+            "scientific_name": candidate.get("scientific_name", ""),
+            "common_names": candidate.get("common_names", []),
+            "family": candidate.get("family", ""),
+            "confidence": round(float(candidate.get("confidence", 0) or 0) * 100),
+        }
+        for candidate in candidates
+    ]
+    user = "Especies candidatas:\n" + json.dumps(payload, ensure_ascii=False)
+    data = _json_call(system, user, model, api_key, base_url, temperature=0.2)
+    if not isinstance(data, dict):
+        return {}
+
+    # El modelo puede cambiar mayúsculas o añadir la autoría a la clave.
+    normalized = {
+        str(key).strip().lower(): value
+        for key, value in data.items()
+        if isinstance(value, dict)
+    }
+    result = {}
+    for candidate in candidates:
+        name = str(candidate.get("scientific_name", "")).strip()
+        item = normalized.get(name.lower(), {})
+        result[name] = {
+            "hint": _clean_hint(item.get("hint")),
+            "terms": _clean_terms(item.get("terms")),
+        }
+    return result
+
+
 def chat_reply(messages, model, api_key, base_url, temperature=0.2):
     """Chat post-detección: responde en texto (Markdown), no JSON."""
     if not api_key:

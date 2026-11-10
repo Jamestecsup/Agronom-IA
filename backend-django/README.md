@@ -38,6 +38,9 @@ C:\xampp\mysql\bin\mysql.exe -u root < ..\docs\sql\agronomia.sql
 py manage.py migrate
 ```
 
+Vuelve a ejecutar `migrate` después de actualizar el proyecto para crear la
+tabla de fotos de progreso (`ChatProgressImage`).
+
 > Para pruebas rápidas sin MySQL: `$env:USE_SQLITE="1"` antes de `migrate`
 > y `runserver`.
 
@@ -66,12 +69,35 @@ El emulador Android llega al host con `http://10.0.2.2:8000`.
 | Método | Ruta | Descripción |
 | --- | --- | --- |
 | GET | `/agronomia-api/api/health` | Estado del servicio y de la base (público, sin IA). |
+| GET | `/agronomia-api/api/plants` | Plantas identificadas guardadas por la cuenta autenticada. |
+| GET | `/agronomia-api/api/plants/<uuid>/cover` | Foto de identificación para las tarjetas del chat. |
+| GET | `/agronomia-api/api/chat/history?plant_id=<uuid>` | Recupera el chat persistente de una identificación propia. |
+| GET | `/agronomia-api/api/chat/images?plant_id=<uuid>` | Galería de progreso del chat de una planta. |
 | POST | `/agronomia-api/api/images.php` | Sube 1–5 fotos (`photos[]`). Devuelve `batch_id` + imágenes. |
 | POST | `/agronomia-api/api/identify` | `batch_id`, `organ`. Ejecuta Pl@ntNet + Gemini. |
 | POST | `/agronomia-api/api/confirm` | `batch_id`, `scientific_name`. Ficha de la candidata elegida reutilizando la corrida de Pl@ntNet. |
-| POST | `/agronomia-api/api/chat` | `message`, `session_id`. Chat con contexto de la planta. |
+| POST | `/agronomia-api/api/chat` | `message`, `plant_id` y foto opcional `image`. Analiza y guarda el progreso dentro del chat de esa planta. |
 | POST | `/agronomia-api/api/register` | `username`, `password`, `email`. Siempre crea rol `user` (el admin se asigna en el servidor). |
-| POST | `/agronomia-api/api/login` | `username`, `password`. Devuelve el rol. |
+| POST | `/agronomia-api/api/login` | `username`, `password`. Devuelve rol y token firmado. |
+
+Las rutas de fotos, identificación, confirmación, lista de plantas e historial/chat requieren el token
+devuelto por `/login` en `Authorization: Bearer <token>`.
+
+Las fotos enviadas desde el chat se guardan vinculadas a su mensaje, planta y
+cuenta. La galería de Mi Jardín solo lista esas fotos de progreso; las fotos de
+identificación se usan únicamente como portada de las tarjetas del chat.
+
+### Autenticación y propiedad de los datos
+
+`POST /login` devuelve un token firmado válido por 14 días. La web y la app
+móvil lo envían como `Authorization: Bearer <token>` al subir fotos, identificar,
+confirmar candidatas y conversar. Django usa el usuario del token para guardar
+`user_id` en las fotos, corridas, fichas y mensajes; nunca confía en un nombre
+de usuario enviado por el cliente.
+
+Las filas antiguas conservan `user_id = NULL` porque no existe una forma segura
+de atribuirlas retrospectivamente. La estructura está descrita en
+[`docs/BASE-DATOS.md`](../docs/BASE-DATOS.md).
 
 ### Respuesta de `identify`
 
