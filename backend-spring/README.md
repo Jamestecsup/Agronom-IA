@@ -78,8 +78,8 @@ Puedes cambiarlas con `DEMO_ADMIN_PASSWORD` / `DEMO_USER_PASSWORD` y
 | `GET /api/admin/stats` | Totales, especies más identificadas y actividad de 14 días |
 | `GET /api/admin/users?q=&limit=` | Usuarios con su rol y estado |
 | `PATCH /api/admin/users/{id}` | Cambia `role` y/o `active` (no puedes quitarte tu propio rol) |
-| `GET /api/admin/plants?limit=` | Identificaciones recientes |
-| `GET /api/admin/chats?limit=` | Mensajes de chat recientes |
+| `GET /api/admin/plants?limit=` | Identificaciones recientes con usuario propietario |
+| `GET /api/admin/chats?limit=` | Mensajes recientes con usuario propietario |
 | `POST /agronomia-api/api/images.php` | Contrato heredado de Fernando para subir fotos (el flujo activo usa el de Django). |
 
 Las rutas protegidas esperan `Authorization: Bearer <token>`.

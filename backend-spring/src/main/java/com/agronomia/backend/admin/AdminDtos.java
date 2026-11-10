@@ -43,6 +43,8 @@ public final class AdminDtos {
 
     public record PlantRow(
             String id,
+            Long userId,
+            String username,
             String scientificName,
             String commonName,
             String family,
@@ -53,6 +55,8 @@ public final class AdminDtos {
 
     public record ChatRow(
             String id,
+            Long userId,
+            String username,
             String sessionId,
             String role,
             String content,

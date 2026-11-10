@@ -153,13 +153,17 @@ public class AdminDataService {
         int safeLimit = Math.max(1, Math.min(limit, 200));
         return jdbcTemplate.query(
                 """
-                SELECT id, scientific_name, common_name, family, confidence, created_at
-                FROM core_plantidentification
-                ORDER BY created_at DESC
+                SELECT p.id, p.user_id, COALESCE(u.username, 'Sin usuario') AS username,
+                       p.scientific_name, p.common_name, p.family, p.confidence, p.created_at
+                FROM core_plantidentification p
+                LEFT JOIN auth_user u ON u.id = p.user_id
+                ORDER BY p.created_at DESC
                 LIMIT ?
                 """,
                 (resultSet, index) -> new AdminDtos.PlantRow(
                         resultSet.getString("id"),
+                        nullableLong(resultSet.getObject("user_id")),
+                        resultSet.getString("username"),
                         resultSet.getString("scientific_name"),
                         resultSet.getString("common_name"),
                         resultSet.getString("family"),
@@ -174,13 +178,17 @@ public class AdminDataService {
         int safeLimit = Math.max(1, Math.min(limit, 200));
         return jdbcTemplate.query(
                 """
-                SELECT id, session_id, role, content, created_at
-                FROM core_chatmessage
-                ORDER BY created_at DESC
+                SELECT m.id, m.user_id, COALESCE(u.username, 'Sin usuario') AS username,
+                       m.session_id, m.role, m.content, m.created_at
+                FROM core_chatmessage m
+                LEFT JOIN auth_user u ON u.id = m.user_id
+                ORDER BY m.created_at DESC
                 LIMIT ?
                 """,
                 (resultSet, index) -> new AdminDtos.ChatRow(
                         resultSet.getString("id"),
+                        nullableLong(resultSet.getObject("user_id")),
+                        resultSet.getString("username"),
                         resultSet.getString("session_id"),
                         resultSet.getString("role"),
                         resultSet.getString("content"),
@@ -220,6 +228,10 @@ public class AdminDataService {
     private long count(String sql) {
         Long value = jdbcTemplate.queryForObject(sql, Long.class);
         return value == null ? 0 : value;
+    }
+
+    private Long nullableLong(Object value) {
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     private String formatTimestamp(Timestamp timestamp) {
