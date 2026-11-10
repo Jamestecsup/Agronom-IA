@@ -29,9 +29,9 @@ que comparte la misma base de datos MySQL.
                     └──────────────────────────┘
 ```
 
-- **App Android** (`app/`): Kotlin + Jetpack Compose, paquete
-  `com.agronomia`. Escáner, ficha y chat; Mi Jardín y Calendario están en
-  construcción (pantallas de aviso).
+- **App Android** (`App movil/app/`): Kotlin + Jetpack Compose, paquete
+  `com.agronomia`. Inicio de sesión, escáner, ficha y chat; Mi Jardín y
+  Calendario están en construcción (pantallas de aviso).
 - **Backend Django** (`backend-django/`): API del usuario. Ejecuta el pipeline
   de identificación y carga las *skills* en tiempo de ejecución desde
   `backend-django/skills/`.
@@ -39,7 +39,7 @@ que comparte la misma base de datos MySQL.
   las mismas cuentas de Django y emite su propio token; nunca toca las claves
   de IA.
 - **Web de usuario** (`web-user/`): React. Escáner, ficha, glosario, jardín y
-  chat flotante.
+  conversaciones persistentes por planta.
 - **Panel de administración** (`web-admin/`): React. Resumen, usuarios, plantas
   y chat.
 
@@ -75,8 +75,9 @@ esté corriendo y al final ejecuta `check-servicios.ps1`. Sin emulador, omite
 durante la demo.
 
 **Recorrido sugerido:** identificación clara → ficha; foto con dudas →
-candidatas → ficha; imagen sin planta → guía; chat con la planta detectada; y
-panel de administración con los datos compartidos. Las cuentas están más abajo.
+candidatas → ficha; imagen sin planta → guía; abre Chat para escoger una planta
+y continuar su conversación desde la web o el móvil; y panel de administración
+con los datos compartidos. Las cuentas están más abajo.
 
 Los pasos detallados de instalación siguen a continuación.
 
@@ -130,14 +131,17 @@ Detalle: [`web-user/README.md`](web-user/README.md) y
 
 ### 5. App Android
 
-Crea `local.properties` con la ruta del SDK y la URL del backend:
+Abre la carpeta `App movil/` en Android Studio. Crea allí `local.properties`
+con la ruta del SDK y la URL del backend:
 
 ```properties
 sdk.dir=C\:\\Android\\Sdk
 BACKEND_BASE_URL=http://10.0.2.2:8000/
 ```
 
-Luego `.\gradlew.bat installDebug`. El emulador llega al PC con `10.0.2.2`.
+Luego ejecuta `App movil\gradlew.bat installDebug`. El emulador llega al PC
+con `10.0.2.2`. Consulta [`App movil/README.md`](<App movil/README.md>) para
+los detalles.
 
 ## Cuentas de demo
 
@@ -169,6 +173,8 @@ deja que un usuario se asigne el rol `admin` al registrarse.
 
 ## Documentación
 
+- [`docs/BASE-DATOS.md`](docs/BASE-DATOS.md): tablas y relaciones de usuarios,
+  fotos, identificaciones y chat.
 - [`docs/CONFIG-IA.md`](docs/CONFIG-IA.md): pipeline de IA y skills.
 - [`docs/HU-07.md`](docs/HU-07.md): trazabilidad de la historia de cuidado de
   la planta (tareas del sprint, estados y pruebas).
@@ -181,12 +187,14 @@ deja que un usuario se asigne el rol `admin` al registrarse.
 ## Seguridad
 
 - Ninguna clave vive en el repositorio: Django usa `backend-django/.env`
-  (ignorado por Git). `local.properties.example` y `.env.example` solo muestran
+  (ignorado por Git). `App movil/local.properties.example` y `.env.example` solo muestran
   los nombres de las variables.
 - La app Android **no lleva claves**: solo conoce la URL de Django, que es
   quien habla con Pl@ntNet y Gemini.
 - El servicio de administración usa un token HMAC firmado (8 h por defecto) y
   comprueba el rol en cada petición.
+- El login de usuario emite un token firmado de 14 días. Django lo verifica en
+  las rutas de fotos, identificación y chat y almacena `user_id` en MySQL.
 - El autorregistro crea siempre cuentas con rol `user`; el rol `admin` solo se
   asigna desde el servidor.
 - Comentarios del código, mensajes de interfaz y documentación en español.
