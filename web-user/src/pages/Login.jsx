@@ -22,7 +22,7 @@ export default function Login({ onLogin }) {
         await register(username.trim(), password, email.trim());
       }
       const data = await login(username.trim(), password);
-      onLogin({ username: data.username, role: data.role });
+      onLogin({ username: data.username, role: data.role, token: data.token });
     } catch (problem) {
       setError(problem.message);
     } finally {

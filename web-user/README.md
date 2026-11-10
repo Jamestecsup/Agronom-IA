@@ -36,8 +36,10 @@ pantalla de acceso (crea cuentas con rol `user`).
 - **Escáner**: hasta 5 fotos (arrastrar o elegir), selector de órgano
   (automático, flor, hoja, fruto, corteza, planta entera) y estados de
   identificación.
-- **Candidatas**: cuando Pl@ntNet duda, muestra las especies parecidas con su
-  similitud y permite elegir; la ficha se genera sin volver a llamar a Pl@ntNet.
+- **Candidatas**: cuando Pl@ntNet duda, muestra una foto de referencia de
+  Wikimedia Commons, nombres, familia, similitud y una descripción de rasgos
+  distintivos generada por la IA. Los términos del glosario se pueden pulsar;
+  la ficha se genera sin volver a llamar a Pl@ntNet.
 - **Ficha**: nombre común y científico, familia, confianza y las 8 categorías
   (descripción, luz, riego, suelo, clima, floración, usos y cuidados) con
   glosario pulsable, materiales recomendados y consejos generales. Si la IA no
@@ -60,6 +62,6 @@ pantalla de acceso (crea cuentas con rol `user`).
 
 ## Notas
 
-- La sesión web guarda solo el usuario y su rol (el backend de usuario no
-  emite token; el panel de administración sí lo hace).
+- La sesión web guarda el token firmado de Django junto al usuario y su rol;
+  el backend usa ese token para asociar identificaciones y mensajes a la cuenta.
 - `npm run build` genera `dist/` para publicarlo como sitio estático.

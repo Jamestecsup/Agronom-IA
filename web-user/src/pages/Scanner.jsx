@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { confirmCandidate, identify, uploadImages } from "../api";
+import CandidateCard from "../components/CandidateCard";
+import TermDialog from "../components/TermDialog";
 
 const MAX_FILES = 5;
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -27,6 +29,7 @@ export default function Scanner({ onResult }) {
   const [messageTitle, setMessageTitle] = useState("No se pudo identificar.");
   const [candidates, setCandidates] = useState([]);
   const [batchId, setBatchId] = useState("");
+  const [selectedTerm, setSelectedTerm] = useState(null);
 
   const inputRef = useRef(null);
   const filesRef = useRef(files);
@@ -48,6 +51,17 @@ export default function Scanner({ onResult }) {
     setMessage("");
     setMessageTitle("No se pudo identificar.");
     setCandidates([]);
+    setSelectedTerm(null);
+
+    const unsupported = selected.find((file) => {
+      const supportedMime = file.type === "image/jpeg" || file.type === "image/png";
+      const supportedExtension = /\.(jpe?g|png)$/i.test(file.name);
+      return !supportedMime && !supportedExtension;
+    });
+    if (unsupported) {
+      setError(`"${unsupported.name}" no es compatible. Elige una foto JPG o PNG.`);
+      return;
+    }
 
     const tooBig = selected.find((file) => file.size > MAX_BYTES);
     if (tooBig) {
@@ -88,6 +102,7 @@ export default function Scanner({ onResult }) {
     setMessage("");
     setMessageTitle("No se pudo identificar.");
     setCandidates([]);
+    setSelectedTerm(null);
     setBatchId("");
   }
 
@@ -97,12 +112,13 @@ export default function Scanner({ onResult }) {
     setMessage("");
     setMessageTitle("No se pudo identificar.");
     setCandidates([]);
+    setSelectedTerm(null);
 
     try {
       setPhase("uploading");
       const upload = await uploadImages(files.map((item) => item.file));
       if (!upload || !upload.batch_id) {
-        throw new Error("El servidor no devolvió el lote de fotos.");
+        throw new Error("No pudimos recibir las fotos. Inténtalo de nuevo.");
       }
       setBatchId(upload.batch_id);
 
@@ -123,7 +139,7 @@ export default function Scanner({ onResult }) {
             "Identificamos la planta, pero no encontramos información suficiente sobre sus cuidados."
         );
       } else {
-        setError(data.error || "No se pudo identificar la planta.");
+        setError("No pudimos analizar la planta. Revisa la foto e inténtalo de nuevo.");
       }
     } catch (problem) {
       setError(problem.message);
@@ -206,7 +222,7 @@ export default function Scanner({ onResult }) {
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
           multiple
           hidden
           onChange={(event) => {
@@ -301,33 +317,19 @@ export default function Scanner({ onResult }) {
             </p>
             <div className="candidates">
               {candidates.map((candidate) => (
-                <div className="candidate" key={candidate.scientific_name}>
-                  <div className="names">
-                    <strong>
-                      {(candidate.common_names || []).slice(0, 3).join(", ") ||
-                        candidate.scientific_name}
-                    </strong>
-                    <em>{candidate.scientific_name}</em>
-                    <div className="meta">
-                      Familia: {candidate.family || "sin dato"}
-                    </div>
-                  </div>
-                  <div className="similarity">
-                    {Math.round((candidate.confidence || 0) * 100)}%
-                  </div>
-                  <button
-                    className="btn small"
-                    onClick={() => choose(candidate)}
-                    disabled={busy}
-                  >
-                    Elegir esta planta
-                  </button>
-                </div>
+                <CandidateCard
+                  key={candidate.scientific_name}
+                  candidate={candidate}
+                  busy={busy}
+                  onChoose={choose}
+                  onTerm={setSelectedTerm}
+                />
               ))}
             </div>
           </div>
         )}
       </div>
+      <TermDialog term={selectedTerm} onClose={() => setSelectedTerm(null)} />
     </>
   );
 }

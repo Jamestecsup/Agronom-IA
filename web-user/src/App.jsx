@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Header from "./components/Header";
-import ChatPanel from "./components/ChatPanel";
 import Login from "./pages/Login";
+import Chat from "./pages/Chat";
 import Scanner from "./pages/Scanner";
 import Result from "./pages/Result";
 import Garden from "./pages/Garden";
@@ -15,14 +15,13 @@ import {
 } from "./storage";
 
 /**
- * Web de usuario: login, escáner, ficha, jardín y chat flotante.
+ * Web de usuario: login, escáner, ficha, jardín y conversaciones por planta.
  */
 export default function App() {
   const [session, setSession] = useState(() => loadSession());
   const [view, setView] = useState("scanner");
   const [garden, setGarden] = useState(() => loadGarden());
   const [result, setResult] = useState(null);
-  const [chatOpen, setChatOpen] = useState(false);
 
   function handleLogin(user) {
     saveSession(user);
@@ -34,7 +33,6 @@ export default function App() {
     setSession(null);
     setResult(null);
     setView("scanner");
-    setChatOpen(false);
   }
 
   async function handleResult(plant, file) {
@@ -103,19 +101,8 @@ export default function App() {
               una planta.
             </p>
           ))}
+        {view === "chat" && <Chat />}
       </main>
-
-      <button
-        className="chat-fab"
-        onClick={() => setChatOpen((open) => !open)}
-        aria-expanded={chatOpen}
-      >
-        {chatOpen ? "Cerrar chat" : "💬 Preguntar"}
-      </button>
-
-      {chatOpen && (
-        <ChatPanel plant={result?.plant} onClose={() => setChatOpen(false)} />
-      )}
     </div>
   );
 }

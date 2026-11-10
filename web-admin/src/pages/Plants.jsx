@@ -46,6 +46,7 @@ export default function Plants() {
         <table>
           <thead>
             <tr>
+              <th>Usuario</th>
               <th>Especie</th>
               <th>Nombre común</th>
               <th>Familia</th>
@@ -56,6 +57,7 @@ export default function Plants() {
           <tbody>
             {plants.map((plant) => (
               <tr key={plant.id}>
+                <td>{plant.username || "Sin usuario"}</td>
                 <td>
                   <em>{plant.scientificName}</em>
                 </td>

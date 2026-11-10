@@ -25,6 +25,12 @@ export default function Header({ username, view, onNavigate, onLogout }) {
         >
           Mi jardín
         </button>
+        <button
+          className={view === "chat" ? "active" : ""}
+          onClick={() => onNavigate("chat")}
+        >
+          Chat
+        </button>
       </nav>
 
       <div className="spacer" />

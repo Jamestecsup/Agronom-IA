@@ -1,13 +1,13 @@
 /**
- * Persistencia local del navegador: sesión, jardín y sesión de chat.
+ * Persistencia local del navegador: sesión y jardín.
  */
 const SESSION_KEY = "agronomia.user.session";
 const GARDEN_KEY = "agronomia.user.garden";
-const CHAT_KEY = "agronomia.user.chatSession";
 
 export function loadSession() {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    return session?.token ? session : null;
   } catch {
     return null;
   }
@@ -19,15 +19,6 @@ export function saveSession(session) {
 
 export function clearSession() {
   localStorage.removeItem(SESSION_KEY);
-}
-
-export function chatSessionId() {
-  let id = localStorage.getItem(CHAT_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(CHAT_KEY, id);
-  }
-  return id;
 }
 
 export function loadGarden() {

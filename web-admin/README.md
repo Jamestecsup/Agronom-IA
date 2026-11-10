@@ -40,8 +40,10 @@ desarrollo local.
   días y especies más identificadas.
 - **Usuarios**: búsqueda, cambio de rol y activar/desactivar cuentas. El
   servidor impide que un administrador se quite su propio rol.
-- **Identificaciones**: especie, nombre común, familia, confianza y fecha.
-- **Chat**: últimos mensajes de usuarios y del asistente, con filtro por autor.
+- **Identificaciones**: usuario propietario, especie, nombre común, familia,
+  confianza y fecha.
+- **Chat**: usuario propietario, últimos mensajes de usuarios y del asistente,
+  con filtro por autor.
 
 ## Estructura
 

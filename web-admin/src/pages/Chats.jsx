@@ -68,8 +68,8 @@ export default function Chats() {
             >
               <div className="meta">
                 <span>
-                  {message.role === "user" ? "Usuario" : "Asistente"} · sesión{" "}
-                  {message.sessionId.slice(0, 8)}
+                  {message.role === "user" ? "Usuario" : "Asistente"} · cuenta{" "}
+                  {message.username || "Sin usuario"} · sesión {message.sessionId.slice(0, 8)}
                 </span>
                 <span>{formatDateTime(message.createdAt)}</span>
               </div>
