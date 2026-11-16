@@ -117,6 +117,42 @@ class ChatProgressImage(models.Model):
         return f"Progreso de {self.plant_id} ({self.created_at:%Y-%m-%d})"
 
 
+class PendingScheduleImport(models.Model):
+    """Horario subido, analizado y pendiente de confirmación del estudiante."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="pending_schedule_imports")
+    source_pdf = models.FileField(upload_to="schedules/pending/%Y/%m/")
+    parsed_classes = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class WeeklySchedule(models.Model):
+    """Horario oficial semanal confirmado por el usuario."""
+
+    user = models.OneToOneField(User, primary_key=True, on_delete=models.CASCADE, related_name="weekly_schedule")
+    classes = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class CarePlanTask(models.Model):
+    """Acción de cuidado recurrente que el usuario confirmó en su plan semanal."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="care_plan_tasks")
+    plant = models.ForeignKey(PlantIdentification, on_delete=models.CASCADE, related_name="scheduled_care")
+    title = models.CharField(max_length=180)
+    instructions = models.TextField(blank=True)
+    day_of_week = models.PositiveSmallIntegerField()
+    start_time = models.TimeField()
+    duration_minutes = models.PositiveSmallIntegerField(default=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("day_of_week", "start_time")
+        indexes = [models.Index(fields=("user", "day_of_week", "start_time"), name="core_carepl_user_id_43a280_idx")]
+
+
 class Profile(models.Model):
     """Rol del usuario para el login con roles."""
 

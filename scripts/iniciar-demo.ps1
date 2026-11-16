@@ -22,6 +22,29 @@ $mysqlIni = "C:\xampp\mysql\bin\my.ini"
 $adb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
 $emuladorExe = Join-Path $env:LOCALAPPDATA "Android\Sdk\emulator\emulator.exe"
 $jarSpring = Join-Path $raiz "backend-spring\target\agronomia-backend-0.1.0-SNAPSHOT.jar"
+$archivoEnvDjango = Join-Path $raiz "backend-django\.env"
+
+# Spring procesa los horarios y necesita la misma configuración privada de IA
+# y la clave interna que Django usa para llamarlo. No se muestran en consola.
+if (Test-Path $archivoEnvDjango) {
+    foreach ($line in Get-Content $archivoEnvDjango) {
+        if ($line -match '^\s*(AI_API_KEY|AI_BASE_URL|AI_MODEL|SCHEDULE_INTERNAL_TOKEN)\s*=\s*(.*)\s*$') {
+            $nombreVariable = $Matches[1]
+            $valorVariable = $Matches[2].Trim()
+            if ($valorVariable.Length -ge 2 -and
+                (($valorVariable.StartsWith('"') -and $valorVariable.EndsWith('"')) -or
+                 ($valorVariable.StartsWith("'") -and $valorVariable.EndsWith("'")))) {
+                $valorVariable = $valorVariable.Substring(1, $valorVariable.Length - 2)
+            }
+            if (-not [Environment]::GetEnvironmentVariable($nombreVariable)) {
+                [Environment]::SetEnvironmentVariable($nombreVariable, $valorVariable, "Process")
+            }
+        }
+    }
+}
+if (-not $env:SCHEDULE_INTERNAL_TOKEN) {
+    $env:SCHEDULE_INTERNAL_TOKEN = "dev-only-agronomia-schedule"
+}
 
 function Puerto-Abierto {
     param([int]$Puerto, [string]$Equipo = "127.0.0.1")
@@ -76,11 +99,11 @@ if (Puerto-Abierto 8000) {
     Write-Host "      Django listo en http://127.0.0.1:8000"
 }
 
-# 3. Spring (servicio de administracion) -----------------------------------
+# 3. Spring (administracion y procesamiento interno de horarios) ------------
 if (Puerto-Abierto 8081) {
     Write-Host "[3/5] Spring ya esta corriendo."
 } else {
-    Write-Host "[3/5] Iniciando Spring Boot (panel de administracion)..."
+    Write-Host "[3/5] Iniciando Spring Boot (administracion y horarios)..."
     if (-not (Test-Path $jarSpring)) {
         Write-Host "      Construyendo el jar (solo la primera vez)..."
         Push-Location (Join-Path $raiz "backend-spring")

@@ -154,3 +154,79 @@ data class DjangoChatResponse(
     val reply: String = "",
     val error: String? = null
 )
+
+@Serializable
+data class WeeklyClassDto(
+    @SerialName("course_code") val courseCode: String = "",
+    @SerialName("course_name") val courseName: String = "",
+    @SerialName("day_of_week") val dayOfWeek: Int = 1,
+    @SerialName("start_time") val startTime: String = "08:00",
+    @SerialName("end_time") val endTime: String = "09:00",
+    val section: String = ""
+)
+
+@Serializable
+data class CarePlanTaskDto(
+    val id: String = "",
+    @SerialName("plant_id") val plantId: String = "",
+    @SerialName("plant_name") val plantName: String = "",
+    val title: String = "",
+    val instructions: String = "",
+    @SerialName("day_of_week") val dayOfWeek: Int = 1,
+    @SerialName("start_time") val startTime: String = "08:00",
+    @SerialName("duration_minutes") val durationMinutes: Int = 20
+)
+
+@Serializable
+data class PendingScheduleDto(
+    val id: String = "",
+    val classes: List<WeeklyClassDto> = emptyList()
+)
+
+@Serializable
+data class WeeklyScheduleResponse(
+    val success: Boolean = false,
+    val classes: List<WeeklyClassDto> = emptyList(),
+    @SerialName("care_tasks") val careTasks: List<CarePlanTaskDto> = emptyList(),
+    @SerialName("pending_import") val pendingImport: PendingScheduleDto? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class ScheduleImportResponse(
+    val success: Boolean = false,
+    @SerialName("import_id") val importId: String = "",
+    val classes: List<WeeklyClassDto> = emptyList(),
+    @SerialName("pdf_removed") val pdfRemoved: Boolean = false,
+    val error: String? = null
+)
+
+@Serializable
+data class ScheduleClassesRequest(val classes: List<WeeklyClassDto>)
+
+@Serializable
+data class CarePlanRequest(val tasks: List<CarePlanTaskDto>)
+
+@Serializable
+data class CarePlanResponse(
+    val success: Boolean = false,
+    val tasks: List<CarePlanTaskDto> = emptyList(),
+    @SerialName("care_tasks") val careTasks: List<CarePlanTaskDto> = emptyList(),
+    val error: String? = null
+)
+
+@Serializable
+data class CareTaskTimeRequest(
+    @SerialName("day_of_week") val dayOfWeek: Int,
+    @SerialName("start_time") val startTime: String
+)
+
+@Serializable
+data class CarePlanTaskResponse(
+    val success: Boolean = false,
+    @SerialName("care_task") val careTask: CarePlanTaskDto? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class SimpleActionResponse(val success: Boolean = false, val error: String? = null)

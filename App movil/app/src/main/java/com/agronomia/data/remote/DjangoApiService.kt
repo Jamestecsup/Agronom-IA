@@ -2,11 +2,14 @@ package com.agronomia.data.remote
 
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
-import retrofit2.http.Multipart
 import retrofit2.http.Body
+import retrofit2.http.DELETE
+import retrofit2.http.GET
+import retrofit2.http.Multipart
+import retrofit2.http.PATCH
+import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.Part
-import retrofit2.http.GET
 import retrofit2.http.Query
 import retrofit2.http.Url
 
@@ -73,4 +76,38 @@ interface DjangoApiService {
         @Part("plant_id") plantId: RequestBody,
         @Part image: MultipartBody.Part? = null
     ): DjangoChatResponse
+
+    @Multipart
+    @POST("agronomia-api/api/schedule/import")
+    suspend fun importSchedulePdf(@Part pdf: MultipartBody.Part): ScheduleImportResponse
+
+    @GET("agronomia-api/api/schedule")
+    suspend fun weeklySchedule(): WeeklyScheduleResponse
+
+    @GET("agronomia-api/api/schedule/import/{importId}")
+    suspend fun pendingScheduleImport(@Path("importId") importId: String): ScheduleImportResponse
+
+    @POST("agronomia-api/api/schedule/import/{importId}")
+    suspend fun confirmScheduleImport(
+        @Path("importId") importId: String,
+        @Body request: ScheduleClassesRequest
+    ): ScheduleImportResponse
+
+    @DELETE("agronomia-api/api/schedule/import/{importId}")
+    suspend fun cancelScheduleImport(@Path("importId") importId: String): SimpleActionResponse
+
+    @POST("agronomia-api/api/schedule/care-plan/draft")
+    suspend fun draftCarePlan(): CarePlanResponse
+
+    @POST("agronomia-api/api/schedule/care-plan/confirm")
+    suspend fun confirmCarePlan(@Body request: CarePlanRequest): CarePlanResponse
+
+    @PATCH("agronomia-api/api/schedule/care-plan/tasks/{taskId}")
+    suspend fun rescheduleCareTask(
+        @Path("taskId") taskId: String,
+        @Body request: CareTaskTimeRequest
+    ): CarePlanTaskResponse
+
+    @DELETE("agronomia-api/api/schedule/care-plan/tasks/{taskId}")
+    suspend fun deleteCareTask(@Path("taskId") taskId: String): SimpleActionResponse
 }

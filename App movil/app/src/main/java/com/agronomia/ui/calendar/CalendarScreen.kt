@@ -75,7 +75,7 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 @Composable
-fun CalendarScreen(
+internal fun CanvasTasksScreen(
     modifier: Modifier = Modifier,
     viewModel: CalendarViewModel = viewModel()
 ) {
@@ -603,7 +603,7 @@ private fun SelectedDateActivitiesSection(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "${events.size} actividad(es)",
+                text = "${events.size} clase(s) o entrega(s)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -43,3 +43,12 @@ admin:
     ttl-hours: ${ADMIN_TOKEN_TTL_HOURS:8}
   cors:
     origins: ${ADMIN_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
+schedule:
+  internal:
+    token: ${SCHEDULE_INTERNAL_TOKEN:dev-only-agronomia-schedule}
+
+ai:
+  api-key: ${AI_API_KEY:}
+  base-url: ${AI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai/}
+  model: ${AI_MODEL:gemini-3.5-flash-lite}

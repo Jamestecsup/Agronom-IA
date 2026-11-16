@@ -31,13 +31,16 @@ que comparte la misma base de datos MySQL.
 
 - **App Android** (`App movil/app/`): Kotlin + Jetpack Compose, paquete
   `com.agronomia`. Inicio de sesión, escáner, ficha y chat; Mi Jardín y
-  Calendario están en construcción (pantallas de aviso).
+  Calendario. El horario semanal se importa desde el PDF oficial, se revisa en
+  el móvil y se guarda por usuario en MySQL. Django autentica y delega la lectura
+  del PDF y la propuesta de cuidados a Spring. Las entregas de Canvas aparecen
+  en una pestaña aparte y no intervienen en el plan de cuidados.
 - **Backend Django** (`backend-django/`): API del usuario. Ejecuta el pipeline
   de identificación y carga las *skills* en tiempo de ejecución desde
   `backend-django/skills/`.
-- **Backend Spring Boot** (`backend-spring/`): API del administrador. Valida
-  las mismas cuentas de Django y emite su propio token; nunca toca las claves
-  de IA.
+- **Backend Spring Boot** (`backend-spring/`): API del administrador y servicio
+  interno protegido para analizar el PDF del horario y proponer cuidados con IA.
+  Django mantiene la autenticación del usuario móvil.
 - **Web de usuario** (`web-user/`): React. Escáner, ficha, glosario, jardín y
   conversaciones persistentes por planta.
 - **Panel de administración** (`web-admin/`): React. Resumen, usuarios, plantas
@@ -102,20 +105,28 @@ py manage.py runserver 0.0.0.0:8000
 ```
 
 Las claves (`AI_API_KEY`, `PLANTNET_API_KEY`) van **solo** en `.env`, que
-está ignorado por Git. La app y las webs nunca reciben esas claves. Sin MySQL
+está ignorado por Git. La app y las webs nunca reciben esas claves. El script
+de demo comparte con Spring la clave interna `SCHEDULE_INTERNAL_TOKEN` y la
+configuración de IA para el procesamiento de horarios. Tras agregar las tablas,
+ejecuta `py manage.py migrate`. Sin MySQL
 se puede trabajar con SQLite: `$env:USE_SQLITE=1`.
 
 Detalle: [`backend-django/README.md`](backend-django/README.md).
 
-### 3. Backend Spring Boot (servicio de administración)
+### 3. Backend Spring Boot (administración y análisis del horario)
 
 ```powershell
 cd backend-spring
 .\mvnw.cmd -q -DskipTests package
 $env:DB_USERNAME="agronomia_api"; $env:DB_PASSWORD="..."
 $env:ADMIN_TOKEN_SECRET="un-secreto-largo"
+$env:AI_API_KEY="..."; $env:SCHEDULE_INTERNAL_TOKEN="..."
 java -jar target/agronomia-backend-0.1.0-SNAPSHOT.jar
 ```
+
+El servicio interno de horarios se limita a `127.0.0.1` por defecto y acepta
+llamadas de Django con `X-Schedule-Service-Key`. La app móvil nunca llama a
+Spring directamente.
 
 Detalle: [`backend-spring/README.md`](backend-spring/README.md).
 

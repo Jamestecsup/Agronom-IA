@@ -114,6 +114,10 @@ AI_BASE_URL = os.environ.get(
 AI_MODEL = os.environ.get("AI_MODEL", "gemini-3.5-flash-lite")
 
 PLANT_UPLOAD_DIR = os.environ.get("PLANT_UPLOAD_DIR", "C:/xampp/plant-images")
+MEDIA_ROOT = os.environ.get("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
+SPRING_SCHEDULE_URL = os.environ.get("SPRING_SCHEDULE_URL", "http://127.0.0.1:8081")
+SCHEDULE_INTERNAL_TOKEN = os.environ.get("SCHEDULE_INTERNAL_TOKEN", "dev-only-agronomia-schedule")
+MAX_SCHEDULE_PDF_BYTES = 15 * 1024 * 1024
 
 # Skills del pipeline (archivos Markdown cargados en runtime).
 SKILLS_DIR = os.path.join(BASE_DIR, "skills")
