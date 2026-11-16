@@ -69,6 +69,23 @@ function Iniciar-Ventana {
         -WindowStyle Normal | Out-Null
 }
 
+function Spring-BootJar-Valido {
+    param([string]$Ruta)
+    if (-not (Test-Path $Ruta)) { return $false }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archivoZip = [System.IO.Compression.ZipFile]::OpenRead($Ruta)
+    try {
+        $tieneClases = $archivoZip.Entries | Where-Object { $_.FullName -like "BOOT-INF/classes/*" } | Select-Object -First 1
+        $tieneDependencias = $archivoZip.Entries | Where-Object { $_.FullName -like "BOOT-INF/lib/*" } | Select-Object -First 1
+        return [bool]($tieneClases -and $tieneDependencias)
+    } catch {
+        return $false
+    } finally {
+        $archivoZip.Dispose()
+    }
+}
+
 Write-Host ""
 Write-Host "=== Agronom-IA | inicio de la demo ===" -ForegroundColor Green
 Write-Host ""
@@ -104,10 +121,15 @@ if (Puerto-Abierto 8081) {
     Write-Host "[3/5] Spring ya esta corriendo."
 } else {
     Write-Host "[3/5] Iniciando Spring Boot (administracion y horarios)..."
-    if (-not (Test-Path $jarSpring)) {
-        Write-Host "      Construyendo el jar (solo la primera vez)..."
+    if (-not (Spring-BootJar-Valido $jarSpring)) {
+        Write-Host "      Construyendo el jar de Spring Boot..."
         Push-Location (Join-Path $raiz "backend-spring")
-        try { .\mvnw.cmd -q -DskipTests package } finally { Pop-Location }
+        try {
+            .\mvnw.cmd -q -DskipTests package
+            if ($LASTEXITCODE -ne 0 -or -not (Spring-BootJar-Valido $jarSpring)) {
+                throw "No se pudo generar un jar ejecutable de Spring Boot."
+            }
+        } finally { Pop-Location }
     }
     $dbUsuario = if ($env:DB_USERNAME) { $env:DB_USERNAME } else { "agronomia_api" }
     $dbClave = if ($env:DB_PASSWORD) { $env:DB_PASSWORD } else { "agronomia_local_2026" }
