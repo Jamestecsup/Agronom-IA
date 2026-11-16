@@ -3,12 +3,13 @@ import Dashboard from "../pages/Dashboard";
 import Users from "../pages/Users";
 import Plants from "../pages/Plants";
 import Chats from "../pages/Chats";
+import Icon from "./Icon";
 
 const VIEWS = [
-  { id: "dashboard", label: "Resumen", icon: "📊" },
-  { id: "users", label: "Usuarios", icon: "👥" },
-  { id: "plants", label: "Identificaciones", icon: "🌿" },
-  { id: "chats", label: "Chat", icon: "💬" },
+  { id: "dashboard", label: "Resumen", icon: "overview" },
+  { id: "users", label: "Usuarios", icon: "users" },
+  { id: "plants", label: "Identificaciones", icon: "plant" },
+  { id: "chats", label: "Chat", icon: "chat" },
 ];
 
 /**
@@ -22,7 +23,7 @@ export default function Shell({ session, onLogout }) {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">🌿</div>
+          <div className="brand-mark"><Icon name="plant" size={23} /></div>
           <div>
             <h1>Agronom-IA</h1>
             <span>ADMINISTRACIÓN</span>
@@ -36,7 +37,7 @@ export default function Shell({ session, onLogout }) {
               className={item.id === view ? "active" : ""}
               onClick={() => setView(item.id)}
             >
-              <span aria-hidden="true">{item.icon}</span>
+              <Icon name={item.icon} size={18} />
               {item.label}
             </button>
           ))}

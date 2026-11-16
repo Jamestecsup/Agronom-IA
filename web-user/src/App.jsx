@@ -77,7 +77,7 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      <main className="page">
+      <main className={`page ${view === "chat" ? "page-chat" : ""}`}>
         {view === "scanner" && <Scanner onResult={handleResult} />}
 
         {view === "garden" && (

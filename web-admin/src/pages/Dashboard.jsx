@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { formatDay } from "../format";
+import Icon from "../components/Icon";
 
 /**
  * Resumen general: totales, especies más identificadas y actividad reciente.
@@ -31,33 +32,47 @@ export default function Dashboard() {
   }
 
   const maxDaily = Math.max(1, ...stats.daily.map((day) => day.count));
+  const metrics = [
+    { label: "Usuarios", value: stats.users, icon: "users", note: "cuentas registradas", tone: "sage" },
+    { label: "Identificaciones", value: stats.plants, icon: "plant", note: "plantas reconocidas", tone: "leaf" },
+    { label: "Fotos subidas", value: stats.images, icon: "photos", note: "imágenes analizadas", tone: "amber" },
+    { label: "Mensajes de chat", value: stats.chats, icon: "messages", note: "interacciones botánicas", tone: "blue" },
+  ];
 
   return (
     <>
+      <section className="dashboard-welcome">
+        <div className="welcome-copy">
+          <span className="eyebrow"><span className="status-dot" /> PANEL DE CONTROL</span>
+          <h1>Actividad de Agronom-IA</h1>
+          <p>Un vistazo claro a la comunidad, las plantas identificadas y el uso de la aplicación.</p>
+        </div>
+        <div className="welcome-art" aria-hidden="true">
+          <span className="art-orbit orbit-one" />
+          <span className="art-orbit orbit-two" />
+          <div className="art-leaf"><Icon name="plant" size={52} strokeWidth={1.35} /></div>
+          <div className="art-spark"><Icon name="sparkle" size={25} /></div>
+        </div>
+      </section>
+
       <section className="cards">
-        <article className="card stat">
-          <div className="label">Usuarios</div>
-          <div className="value">{stats.users}</div>
-        </article>
-        <article className="card stat">
-          <div className="label">Identificaciones</div>
-          <div className="value">{stats.plants}</div>
-        </article>
-        <article className="card stat">
-          <div className="label">Fotos subidas</div>
-          <div className="value">{stats.images}</div>
-        </article>
-        <article className="card stat">
-          <div className="label">Mensajes de chat</div>
-          <div className="value">{stats.chats}</div>
-        </article>
+        {metrics.map((metric) => (
+          <article className={`card stat stat-${metric.tone}`} key={metric.label}>
+            <div className="stat-topline">
+              <span className="stat-icon"><Icon name={metric.icon} size={21} /></span>
+              <span className="stat-label">{metric.label}</span>
+            </div>
+            <div className="value">{metric.value.toLocaleString("es-PE")}</div>
+            <div className="stat-note">{metric.note}</div>
+          </article>
+        ))}
       </section>
 
       <section className="two-cols">
         <article className="panel">
           <div className="panel-head">
             <h3>Actividad de los últimos 14 días</h3>
-            <span className="muted">identificaciones por día</span>
+            <span className="panel-kicker"><Icon name="chart" size={15} /> últimos 14 días</span>
           </div>
           {stats.daily.length === 0 ? (
             <div className="empty">Todavía no hay identificaciones registradas.</div>
@@ -87,12 +102,12 @@ export default function Dashboard() {
             <div className="rank">
               {stats.topSpecies.map((species, index) => (
                 <div className="rank-row" key={species.scientificName}>
-                  <div className="pos">{index + 1}</div>
+                  <div className="species-icon"><Icon name="plant" size={17} /></div>
                   <div className="names">
                     <strong>{species.commonName || species.scientificName}</strong>
                     <span>{species.scientificName}</span>
                   </div>
-                  <div className="count">{species.count}</div>
+                  <div className="species-count"><span>{species.count}</span><small>veces</small></div>
                 </div>
               ))}
             </div>

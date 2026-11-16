@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import Markdown from "../components/Markdown";
-import { getChatHistory, listIdentifiedPlants, sendChat } from "../api";
+import PlantPhoto from "../components/PlantPhoto";
+import { getChatHistory, getPlantCoverUrl, listIdentifiedPlants, sendChat } from "../api";
 
 export default function Chat() {
   const [plants, setPlants] = useState([]);
+  const [coverUrls, setCoverUrls] = useState({});
   const [selectedId, setSelectedId] = useState("");
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
@@ -12,6 +14,7 @@ export default function Chat() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const bodyRef = useRef(null);
+  const coverUrlsRef = useRef([]);
   const activePlantId = useRef(selectedId);
   activePlantId.current = selectedId;
   const selectedPlant = plants.find((plant) => plant.id === selectedId);
@@ -23,6 +26,15 @@ export default function Chat() {
         if (!active) return;
         const items = data.plants || [];
         setPlants(items);
+        Promise.all(items.map(async (plant) => [plant.id, await getPlantCoverUrl(plant.id)]))
+          .then((entries) => {
+            const next = Object.fromEntries(entries.filter(([, url]) => url));
+            if (active) {
+              coverUrlsRef.current = Object.values(next);
+              setCoverUrls(next);
+            }
+            else Object.values(next).forEach((url) => URL.revokeObjectURL(url));
+          });
         setSelectedId((current) =>
           items.some((plant) => plant.id === current) ? current : items[0]?.id || "",
         );
@@ -31,6 +43,8 @@ export default function Chat() {
       .finally(() => active && setLoadingPlants(false));
     return () => {
       active = false;
+      coverUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      coverUrlsRef.current = [];
     };
   }, []);
 
@@ -106,7 +120,11 @@ export default function Chat() {
                 className={`chat-plant-option ${selectedId === plant.id ? "active" : ""}`}
                 onClick={() => setSelectedId(plant.id)}
               >
-                <span className="chat-plant-icon">🌱</span>
+                <PlantPhoto
+                  className="chat-plant-thumb"
+                  src={coverUrls[plant.id]}
+                  alt={`Foto de ${plant.common_name || plant.scientific_name}`}
+                />
                 <span className="chat-plant-copy">
                   <strong>{plant.common_name || plant.scientific_name}</strong>
                   <em>{plant.scientific_name}</em>
@@ -120,8 +138,13 @@ export default function Chat() {
 
       <div className="chat-conversation">
         <header className="chat-conversation-head">
-          <div className="brand-mark">🌿</div>
+          <PlantPhoto
+            className="chat-active-photo"
+            src={selectedPlant ? coverUrls[selectedPlant.id] : null}
+            alt={selectedPlant ? `Foto de ${selectedPlant.common_name || selectedPlant.scientific_name}` : ""}
+          />
           <div>
+            <span className="chat-head-eyebrow">CONVERSACIÓN DE CUIDADO</span>
             <strong>{selectedPlant?.common_name || selectedPlant?.scientific_name || "Chat botánico"}</strong>
             <span>
               {selectedPlant
@@ -134,7 +157,7 @@ export default function Chat() {
         <div className="chat-conversation-body" ref={bodyRef}>
           {!selectedPlant && !loadingPlants && (
             <div className="chat-welcome">
-              <span>🌿</span>
+              <PlantPhoto className="chat-welcome-photo" alt="Ilustración botánica" />
               <h3>Tu asistente botánico</h3>
               <p>Identifica una planta para iniciar una conversación que podrás retomar cuando quieras.</p>
             </div>
@@ -142,7 +165,11 @@ export default function Chat() {
           {selectedPlant && loadingHistory && <p className="muted">Recuperando conversación…</p>}
           {selectedPlant && !loadingHistory && messages.length === 0 && (
             <div className="chat-welcome">
-              <span>🌿</span>
+              <PlantPhoto
+                className="chat-welcome-photo"
+                src={coverUrls[selectedPlant.id]}
+                alt={`Foto de ${selectedPlant.common_name || selectedPlant.scientific_name}`}
+              />
               <h3>Conversemos sobre {selectedPlant.common_name || selectedPlant.scientific_name}</h3>
               <p>Pregúntame sobre sus cuidados, riego, luz, suelo o posibles plagas.</p>
             </div>

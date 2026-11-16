@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { login, saveSession } from "../api";
+import Icon from "../components/Icon";
 
 /**
  * Pantalla de acceso. Solo las cuentas con rol admin pueden entrar; el
@@ -35,7 +36,7 @@ export default function Login({ onLogin }) {
     <div className="login-page">
       <div className="login-card">
         <div className="brand">
-          <div className="brand-mark">🌿</div>
+          <div className="brand-mark"><Icon name="plant" size={23} /></div>
           <div>
             <h1>Agronom-IA</h1>
             <span>ADMINISTRACIÓN</span>

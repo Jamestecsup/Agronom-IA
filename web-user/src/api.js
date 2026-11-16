@@ -97,6 +97,19 @@ export function listIdentifiedPlants() {
   return request(`${API}/plants`);
 }
 
+export async function getPlantCoverUrl(plantId) {
+  try {
+    const response = await fetch(
+      `${API}/plants/${encodeURIComponent(plantId)}/cover`,
+      { headers: authenticatedHeaders() },
+    );
+    if (!response.ok) return null;
+    return URL.createObjectURL(await response.blob());
+  } catch {
+    return null;
+  }
+}
+
 export function getChatHistory(plantId) {
   return request(`${API}/chat/history?plant_id=${encodeURIComponent(plantId)}`);
 }
