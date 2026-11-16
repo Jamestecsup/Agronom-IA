@@ -45,6 +45,7 @@ class Command(BaseCommand):
                 user.set_password(password)
             user.email = user.email or email
             user.is_staff = role == Profile.Role.ADMIN
+            user.is_superuser = role == Profile.Role.ADMIN
             user.save()
             Profile.objects.update_or_create(user=user, defaults={"role": role})
             self.stdout.write(

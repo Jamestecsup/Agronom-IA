@@ -26,7 +26,7 @@ Copy-Item .env.example .env    # rellena las claves
 ### Base de datos
 
 1. Arranca MySQL desde el panel de XAMPP.
-2. Crea la base y la tabla legada `plant_images`:
+2. Crea la base y la tabla inicial de imágenes `plant_images`:
 
 ```powershell
 C:\xampp\mysql\bin\mysql.exe -u root < ..\docs\sql\agronomia.sql
@@ -38,8 +38,9 @@ C:\xampp\mysql\bin\mysql.exe -u root < ..\docs\sql\agronomia.sql
 py manage.py migrate
 ```
 
-Vuelve a ejecutar `migrate` después de actualizar el proyecto para crear la
-tabla de fotos de progreso (`ChatProgressImage`).
+La migración `0008_spanish_table_names` renombra las tablas propias de
+Agronom-IA a nombres en español y conserva los registros. Las tablas internas
+`auth_*` y `django_*` mantienen sus nombres de Django.
 
 > Para pruebas rápidas sin MySQL: `$env:USE_SQLITE="1"` antes de `migrate`
 > y `runserver`.
