@@ -13,9 +13,9 @@ import java.util.Set;
 /**
  * Consultas de solo lectura y gestión de usuarios para el panel.
  *
- * Lee las tablas que administra Django (`auth_user`, `core_profile`,
- * `core_plantidentification`, `core_chatmessage`) y la tabla legada
- * `plant_images`, todas en la misma base MySQL.
+ * Lee las tablas de Django (`auth_user`, `perfiles_usuario`,
+ * `identificaciones_planta`, `mensajes_chat`) y las imágenes de
+ * `imagenes_planta`, todas en la misma base MySQL.
  */
 @Service
 public class AdminDataService {
@@ -39,15 +39,15 @@ public class AdminDataService {
 
     public AdminDtos.StatsResponse stats() {
         long users = count("SELECT COUNT(*) FROM auth_user");
-        long plants = count("SELECT COUNT(*) FROM core_plantidentification");
-        long chats = count("SELECT COUNT(*) FROM core_chatmessage");
-        long images = count("SELECT COUNT(*) FROM plant_images");
+        long plants = count("SELECT COUNT(*) FROM identificaciones_planta");
+        long chats = count("SELECT COUNT(*) FROM mensajes_chat");
+        long images = count("SELECT COUNT(*) FROM imagenes_planta");
 
         List<AdminDtos.SpeciesCount> topSpecies = jdbcTemplate.query(
                 """
                 SELECT scientific_name, COALESCE(MAX(common_name), '') AS common_name,
                        COUNT(*) AS total
-                FROM core_plantidentification
+                FROM identificaciones_planta
                 GROUP BY scientific_name
                 ORDER BY total DESC, scientific_name
                 LIMIT 5
@@ -62,7 +62,7 @@ public class AdminDataService {
         List<AdminDtos.DayCount> daily = jdbcTemplate.query(
                 """
                 SELECT DATE(created_at) AS day, COUNT(*) AS total
-                FROM core_plantidentification
+                FROM identificaciones_planta
                 WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
                 GROUP BY DATE(created_at)
                 ORDER BY day
@@ -85,7 +85,7 @@ public class AdminDataService {
                     SELECT u.id, u.username, u.email, u.is_active, u.date_joined,
                            COALESCE(p.role, 'user') AS role
                     FROM auth_user u
-                    LEFT JOIN core_profile p ON p.user_id = u.id
+                    LEFT JOIN perfiles_usuario p ON p.user_id = u.id
                     ORDER BY u.id
                     LIMIT ?
                     """,
@@ -99,7 +99,7 @@ public class AdminDataService {
                 SELECT u.id, u.username, u.email, u.is_active, u.date_joined,
                        COALESCE(p.role, 'user') AS role
                 FROM auth_user u
-                LEFT JOIN core_profile p ON p.user_id = u.id
+                LEFT JOIN perfiles_usuario p ON p.user_id = u.id
                 WHERE u.username LIKE ? OR u.email LIKE ?
                 ORDER BY u.id
                 LIMIT ?
@@ -139,11 +139,11 @@ public class AdminDataService {
 
         jdbcTemplate.update("UPDATE auth_user SET is_active = ? WHERE id = ?", nextActive, userId);
         int updated = jdbcTemplate.update(
-                "UPDATE core_profile SET role = ? WHERE user_id = ?", nextRole, userId
+                "UPDATE perfiles_usuario SET role = ? WHERE user_id = ?", nextRole, userId
         );
         if (updated == 0) {
             jdbcTemplate.update(
-                    "INSERT INTO core_profile (user_id, role) VALUES (?, ?)", userId, nextRole
+                    "INSERT INTO perfiles_usuario (user_id, role) VALUES (?, ?)", userId, nextRole
             );
         }
         return findUser(userId);
@@ -155,7 +155,7 @@ public class AdminDataService {
                 """
                 SELECT p.id, p.user_id, COALESCE(u.username, 'Sin usuario') AS username,
                        p.scientific_name, p.common_name, p.family, p.confidence, p.created_at
-                FROM core_plantidentification p
+                FROM identificaciones_planta p
                 LEFT JOIN auth_user u ON u.id = p.user_id
                 ORDER BY p.created_at DESC
                 LIMIT ?
@@ -180,7 +180,7 @@ public class AdminDataService {
                 """
                 SELECT m.id, m.user_id, COALESCE(u.username, 'Sin usuario') AS username,
                        m.session_id, m.role, m.content, m.created_at
-                FROM core_chatmessage m
+                FROM mensajes_chat m
                 LEFT JOIN auth_user u ON u.id = m.user_id
                 ORDER BY m.created_at DESC
                 LIMIT ?
@@ -204,7 +204,7 @@ public class AdminDataService {
                 SELECT u.id, u.username, u.email, u.is_active, u.date_joined,
                        COALESCE(p.role, 'user') AS role
                 FROM auth_user u
-                LEFT JOIN core_profile p ON p.user_id = u.id
+                LEFT JOIN perfiles_usuario p ON p.user_id = u.id
                 WHERE u.id = ?
                 """,
                 this::mapUser,

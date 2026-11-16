@@ -26,8 +26,8 @@ No hace falta instalar Maven: el proyecto incluye el wrapper (`mvnw.cmd`).
 ## Cómo ejecutarlo
 
 1. Enciende MySQL desde el panel de XAMPP.
-2. Aplica las migraciones de Django una vez (crean `auth_user`, `core_profile`,
-   `core_plantidentification`, `core_chatmessage`, etc.):
+2. Aplica las migraciones de Django una vez (crean las tablas internas `auth_*`
+   y `django_*`, además de las tablas de Agronom-IA con nombres en español):
    ```powershell
    cd backend-django
    py manage.py migrate

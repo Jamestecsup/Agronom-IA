@@ -8,7 +8,7 @@ import java.util.List;
 @Repository
 public class PlantImageRepository {
     private static final String INSERT_SQL = """
-            INSERT INTO plant_images (id, batch_id, relative_path, mime_type, file_size, width, height)
+            INSERT INTO imagenes_planta (id, batch_id, relative_path, mime_type, file_size, width, height)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """;
 
