@@ -47,7 +47,7 @@ public class ImageFileStorage {
                     if (copiedBytes != image.size()) throw new IOException("El archivo recibido cambió durante la escritura.");
                 }
                 records.add(new PlantImageRecord(image.id(), batchId, batchId + "/" + filename,
-                        image.mimeType(), image.size(), image.width(), image.height()));
+                        image.mimeType(), image.size(), image.width(), image.height(), null));
             }
             return records;
         } catch (ApiException exception) {

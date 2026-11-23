@@ -1,8 +1,8 @@
 # Agronom-IA · Web de administración
 
-Panel web (React + Vite) para el servicio **Spring Boot**. Permite entrar con
+Panel web (React + Vite) para el servicio **Django**. Permite entrar con
 una cuenta de rol `admin`, ver el resumen de actividad, gestionar usuarios y
-revisar las identificaciones y el chat generados por el backend Django.
+revisar las identificaciones y el chat generados por el backend Spring Boot.
 
 ## Requisitos
 

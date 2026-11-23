@@ -1,12 +1,8 @@
-# Agronom-IA: servicio de administración (Spring Boot)
+# Agronom-IA: backend Spring Boot (usuario/web/m?vil)
 
-Servicio Java/Spring Boot del panel de administración. Comparte **una sola base
-MySQL (XAMPP)** con el backend Django: Django atiende al móvil y a la web de
-usuario (identificación con Pl@ntNet + Gemini), y este servicio atiende a la web
-de administración (login con roles, usuarios, identificaciones y estadísticas).
+Servicio Java/Spring Boot del **usuario, web y m?vil**. Atiende auth, im?genes, identificaci?n, chat e horario/plan de cuidados en `/agronomia-api/api/*`. Comparte la **misma base MySQL** con Django, que ahora atiende el panel admin (`/api/admin/*`).
 
-El módulo `images` proviene del trabajo de Fernando (rama `Fernando`) y se
-conserva como contrato heredado de subida de imágenes.
+El m?dulo `images` y partes admin heredadas se conservan en el c?digo base, pero la responsabilidad de admin web pas? a Django.
 
 ## Módulos
 
@@ -68,31 +64,28 @@ En un equipo compartido cambia `ADMIN_TOKEN_SECRET` y usa la cuenta
 Puedes cambiarlas con `DEMO_ADMIN_PASSWORD` / `DEMO_USER_PASSWORD` y
 `--reset-passwords`.
 
-## Endpoints del panel
+## Endpoints de usuario
 
-| Método y ruta | Descripción |
+| M?todo y ruta | Descripci?n |
 |---|---|
-| `POST /api/admin/auth/login` | Login; exige rol `admin` y devuelve token |
-| `GET /api/admin/auth/me` | Sesión actual (requiere token) |
-| `GET /api/admin/health` | Estado del servicio y de la base (público) |
-| `GET /api/admin/stats` | Totales, especies más identificadas y actividad de 14 días |
-| `GET /api/admin/users?q=&limit=` | Usuarios con su rol y estado |
-| `PATCH /api/admin/users/{id}` | Cambia `role` y/o `active` (no puedes quitarte tu propio rol) |
-| `GET /api/admin/plants?limit=` | Identificaciones recientes con usuario propietario |
-| `GET /api/admin/chats?limit=` | Mensajes recientes con usuario propietario |
-| `POST /agronomia-api/api/images.php` | Contrato heredado de Fernando para subir fotos (el flujo activo usa el de Django). |
-
-Las rutas protegidas esperan `Authorization: Bearer <token>`.
-
-Ejemplo:
-
-```powershell
-curl.exe -s http://127.0.0.1:8081/api/admin/health
-
-curl.exe -s -X POST http://127.0.0.1:8081/api/admin/auth/login `
-  -H "Content-Type: application/json" `
-  -d '{\"username\":\"admin\",\"password\":\"Admin12345\"}'
-```
+| `POST /agronomia-api/api/register` | Registro usuario. |
+| `POST /agronomia-api/api/login` | Login usuario. |
+| `GET /agronomia-api/api/health` | Estado del servicio/base. |
+| `POST /agronomia-api/api/images.php` | Sube fotos y devuelve batch. |
+| `POST /agronomia-api/api/identify` | Identifica especie con Pl@ntNet + IA. |
+| `POST /agronomia-api/api/confirm` | Confirma candidata y genera ficha. |
+| `GET /agronomia-api/api/plants` | Plantas del usuario. |
+| `GET /agronomia-api/api/plants/{id}/cover` | Portada de planta. |
+| `GET /agronomia-api/api/chat/history?plant_id=` | Historial de chat. |
+| `GET/POST /agronomia-api/api/chat` | Chat con imagen opcional. |
+| `GET /agronomia-api/api/chat/images?plant_id=` | Im?genes de progreso. |
+| `GET /agronomia-api/api/chat/images/{imageId}` | Descarga imagen progreso. |
+| `GET /agronomia-api/api/schedule` | Horario y cuidados. |
+| `POST /agronomia-api/api/schedule/import` | Importa PDF horario. |
+| `GET/POST/DELETE /agronomia-api/api/schedule/import/{id}` | Gesti?n importaci?n. |
+| `POST /agronomia-api/api/schedule/care-plan/draft` | Borrador plan cuidados. |
+| `POST /agronomia-api/api/schedule/care-plan/confirm` | Confirmar plan cuidados. |
+| `PATCH/DELETE /agronomia-api/api/schedule/care-plan/tasks/{id}` | Reprogramar/eliminar tarea. |
 
 ## Seguridad
 

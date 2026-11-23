@@ -7,6 +7,7 @@ CREATE TABLE imagenes_planta (
     width INT NOT NULL,
     height INT NOT NULL,
     processing_status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    user_id BIGINT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_imagenes_planta_lote (batch_id),
     INDEX idx_imagenes_planta_fecha (created_at)

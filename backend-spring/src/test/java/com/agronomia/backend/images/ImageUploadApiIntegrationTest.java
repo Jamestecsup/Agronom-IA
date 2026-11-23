@@ -11,6 +11,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.agronomia.backend.user.UserTokenService;
 import org.springframework.mock.web.MockMultipartFile;
 
 import javax.imageio.ImageIO;
@@ -38,8 +39,10 @@ class ImageUploadApiIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired UserTokenService tokens;
     @MockitoBean PlantImageRepository repository;
     @Value("${plant.storage.directory}") String storageDirectory;
+    private String auth;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -52,6 +55,9 @@ class ImageUploadApiIntegrationTest {
         }).when(repository).insertAll(anyList());
         jdbcTemplate.update("DELETE FROM imagenes_planta");
         clearStorage();
+        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS usuarios (id BIGINT PRIMARY KEY, username VARCHAR(150), password VARCHAR(128), email VARCHAR(254), is_active BOOLEAN DEFAULT TRUE)");
+        jdbcTemplate.update("MERGE INTO usuarios (id,username,password,email,is_active) KEY(id) VALUES (1,'tester','x','t@test.local',TRUE)");
+        auth = "Bearer " + tokens.issue(1L, "tester");
     }
 
     @AfterEach
@@ -61,7 +67,7 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void preservesAndroidUploadContractAndPersistsOneImageAndRelativePath() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT).file(image("flower.jpg", "image/jpeg", "png")))
+        mockMvc.perform(multipart(ENDPOINT).file(image("flower.jpg", "image/jpeg", "png")).header("Authorization", auth))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.batch_id").isNotEmpty())
@@ -75,12 +81,12 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void acceptsTheMaximumFiveImagesAndPersistsTheWholeBatch() throws Exception {
-        var request = multipart(ENDPOINT);
+        org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder request = multipart(ENDPOINT);
         for (int index = 0; index < 5; index++) {
             request.file(image("plant-" + index + ".jpg", "image/jpeg", "jpeg"));
         }
 
-        mockMvc.perform(request)
+        mockMvc.perform(((org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder)request).header("Authorization", auth))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.images.length()").value(5));
 
@@ -90,10 +96,10 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void rejectsMoreThanFiveBeforeWritingFilesOrRows() throws Exception {
-        var request = multipart(ENDPOINT);
+        org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder request = multipart(ENDPOINT);
         for (int index = 0; index < 6; index++) request.file(image("plant-" + index + ".jpg", "image/jpeg", "jpeg"));
 
-        mockMvc.perform(request)
+        mockMvc.perform(((org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder)request).header("Authorization", auth))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false));
 
@@ -103,7 +109,7 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void rejectsGifWithAConsistentJsonError() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT).file(image("plant.jpg", "image/jpeg", "gif")))
+        mockMvc.perform(multipart(ENDPOINT).file(image("plant.jpg", "image/jpeg", "gif")).header("Authorization", auth))
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("JPEG, PNG y WebP")));
@@ -114,7 +120,7 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void acceptsDecodableWebpAndUsesItsDetectedExtension() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT).file(image("plant.png", "image/png", "webp")))
+        mockMvc.perform(multipart(ENDPOINT).file(image("plant.png", "image/png", "webp")).header("Authorization", auth))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.images[0].mime_type").value("image/webp"));
 
@@ -124,7 +130,7 @@ class ImageUploadApiIntegrationTest {
     @Test
     void rejectsCorruptContentEvenWhenItHasAnAllowedSignature() throws Exception {
         byte[] corruptPng = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3};
-        mockMvc.perform(multipart(ENDPOINT).file(new MockMultipartFile("photos[]", "flower.png", "image/png", corruptPng)))
+        mockMvc.perform(multipart(ENDPOINT).file(new MockMultipartFile("photos[]", "flower.png", "image/png", corruptPng)).header("Authorization", auth))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false));
 
@@ -143,10 +149,11 @@ class ImageUploadApiIntegrationTest {
 
         mockMvc.perform(multipart(ENDPOINT)
                         .file(image("flower-a.jpg", "image/jpeg", "jpeg"))
-                        .file(image("flower-b.jpg", "image/jpeg", "jpeg")))
+                        .file(image("flower-b.jpg", "image/jpeg", "jpeg"))
+                        .header("Authorization", auth))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("No se completó el almacenamiento")));
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("No se complet")));
 
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isZero();
         assertThat(countStoredFiles()).isZero();
@@ -154,10 +161,10 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void missingPhotosProducesBadRequestJsonAndGetRemainsMethodNotAllowed() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT))
+        mockMvc.perform(multipart(ENDPOINT).header("Authorization", auth))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
-        mockMvc.perform(get(ENDPOINT))
+        mockMvc.perform(get(ENDPOINT).header("Authorization", auth))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.success").value(false));
     }

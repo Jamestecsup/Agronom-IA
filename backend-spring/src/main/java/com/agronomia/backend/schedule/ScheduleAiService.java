@@ -139,32 +139,39 @@ public class ScheduleAiService {
         if (apiKey == null || apiKey.isBlank()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Spring no tiene configurada AI_API_KEY.");
         }
-        try {
-            ObjectNode body = mapper.createObjectNode();
-            body.put("model", model);
-            body.put("temperature", 0.1);
-            body.putObject("response_format").put("type", "json_object");
-            ArrayNode messages = body.putArray("messages");
-            messages.addObject().put("role", "system").put("content", system);
-            messages.addObject().put("role", "user").set("content", userContent);
+        ObjectNode body = mapper.createObjectNode();
+        body.put("model", model);
+        body.put("temperature", 0.1);
+        body.putObject("response_format").put("type", "json_object");
+        ArrayNode messages = body.putArray("messages");
+        messages.addObject().put("role", "system").put("content", system);
+        messages.addObject().put("role", "user").set("content", userContent);
+        String url = baseUrl.replaceAll("/+$", "") + "/chat/completions";
 
-            String url = baseUrl.replaceAll("/+$", "") + "/chat/completions";
-            JsonNode response = http.post().uri(url)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-            String content = response == null ? "" : response.path("choices").path(0).path("message").path("content").asText("");
-            int start = content.indexOf('{');
-            int end = content.lastIndexOf('}');
-            if (start < 0 || end <= start) throw new IllegalArgumentException("La IA no devolvió un objeto JSON.");
-            return mapper.readTree(content.substring(start, end + 1));
-        } catch (ResponseStatusException error) {
-            throw error;
-        } catch (Exception error) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "La IA no pudo procesar el horario. Inténtalo de nuevo.", error);
+        Exception last = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                JsonNode response = http.post().uri(url)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(JsonNode.class);
+                String content = response == null ? "" : response.path("choices").path(0).path("message").path("content").asText("");
+                int start = content.indexOf('{');
+                int end = content.lastIndexOf('}');
+                if (start < 0 || end <= start) throw new IllegalArgumentException("La IA no devolvió un objeto JSON.");
+                return mapper.readTree(content.substring(start, end + 1));
+            } catch (ResponseStatusException error) {
+                throw error;
+            } catch (Exception error) {
+                last = error;
+                if (attempt < 2) {
+                    try { Thread.sleep(1500L * (attempt + 1)); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+                }
+            }
         }
+        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "La IA no pudo generar la respuesta. Inténtalo de nuevo.", last);
     }
 
     private ArrayNode normalizeClasses(JsonNode input) {

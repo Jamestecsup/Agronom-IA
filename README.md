@@ -6,41 +6,35 @@ suelo, clima, floración, usos y cuidados) con glosario y materiales. Después s
 puede **conversar** con un asistente que conoce la planta detectada.
 
 El trabajo pesado (Pl@ntNet + Gemini con *skills*) lo hace el **backend de
-usuario en Django**; la app móvil y la web de usuario solo envían fotos y
-mensajes. El panel de administración es un **servicio aparte en Spring Boot**
+usuario en Spring Boot**; la app m?vil y la web de usuario env?an fotos y
+mensajes a ese servicio. El **panel de administraci?n** lo atiende Django,
 que comparte la misma base de datos MySQL.
 
 ## Arquitectura
 
 ```
-                    ┌──────────────────────────┐
-   App Android ────►│                          │
-   (Kotlin/Compose) │  Django (servicio de      │
-                    │  usuario) :8000           │──► Pl@ntNet
-   Web de usuario ─►│  identifica, ficha, chat  │──► Gemini (skills)
-   (React) :5174    │  login + roles            │
-                    └────────────┬─────────────┘
-                                 │  MySQL (XAMPP) :3306
-                                 │  base `agronomia`
-                    ┌────────────┴─────────────┐
-                    │  Spring Boot (servicio    │
-   Panel admin ────►│  de administración) :8081 │
-   (React) :5173    │  usuarios, plantas, chat  │
-                    └──────────────────────────┘
+   App Android ----->                        \
+   (Kotlin/Compose)   Spring Boot (usuario)   +--> Pl@ntNet
+                     :8081 identifica, ficha,  +--> Gemini (skills)
+   Web de usuario --> chat, horario           /
+   (React) :5174    /
+                    \________________________ MySQL (XAMPP) :3306
+                                              base `agronomia`
+                    /------------------------
+   Panel admin ---->  Django (admin) :8000
+   (React) :5173      /api/admin/*, usuarios, plantas, chat
 ```
 
 - **App Android** (`App movil/app/`): Kotlin + Jetpack Compose, paquete
   `com.agronomia`. Inicio de sesión, escáner, ficha y chat; Mi Jardín y
   Calendario. El horario semanal se importa desde el PDF oficial, se revisa en
-  el móvil y se guarda por usuario en MySQL. Django autentica y delega la lectura
-  del PDF y la propuesta de cuidados a Spring. Las entregas de Canvas aparecen
-  en una pestaña aparte y no intervienen en el plan de cuidados.
-- **Backend Django** (`backend-django/`): API del usuario. Ejecuta el pipeline
-  de identificación y carga las *skills* en tiempo de ejecución desde
-  `backend-django/skills/`.
-- **Backend Spring Boot** (`backend-spring/`): API del administrador y servicio
-  interno protegido para analizar el PDF del horario y proponer cuidados con IA.
-  Django mantiene la autenticación del usuario móvil.
+  el móvil y se guarda por usuario en MySQL. Spring Boot atiende autenticaci?n, identificaci?n, chat y horario/plan de
+  cuidados para usuario/web/m?vil.
+- **Backend Spring Boot** (`backend-spring/`): API del usuario/web/m?vil.
+  Ejecuta identificaci?n, chat y horario/plan de cuidados, y carga las
+  *skills* desde `backend-django/skills/`.
+- **Backend Django** (`backend-django/`): API del panel de administraci?n
+  (`/api/admin/*`) y Django Admin. Comparte la misma base MySQL.
 - **Web de usuario** (`web-user/`): React. Escáner, ficha, glosario, jardín y
   conversaciones persistentes por planta.
 - **Panel de administración** (`web-admin/`): React. Resumen, usuarios, plantas
@@ -50,8 +44,8 @@ que comparte la misma base de datos MySQL.
 
 | Servicio | URL |
 |---|---|
-| Django (usuario) | http://127.0.0.1:8000 |
-| Spring Boot (admin) | http://127.0.0.1:8081 |
+| Spring Boot (usuario/app) | http://127.0.0.1:8081 |
+| Django (admin) | http://127.0.0.1:8000 |
 | Web de usuario | http://localhost:5174 |
 | Panel de administración | http://localhost:5173 |
 | MySQL (XAMPP) | 127.0.0.1:3306 |
@@ -72,7 +66,7 @@ Con MySQL, las dependencias de Python/Node y el jar de Spring ya instalados:
 powershell -ExecutionPolicy Bypass -File scripts\iniciar-demo.ps1 -ConEmulador
 ```
 
-Arranca en orden MySQL → Django → Spring → webs → emulador, respeta lo que ya
+Arranca en orden MySQL -> Spring -> Django -> webs -> emulador, respeta lo que ya
 esté corriendo y al final ejecuta `check-servicios.ps1`. Sin emulador, omite
 `-ConEmulador`. Cada servicio queda en su propia ventana: no las cierres
 durante la demo.
@@ -91,44 +85,34 @@ Los pasos detallados de instalación siguen a continuación.
 3. Las tablas las crea Django con `migrate`; `plant_images` ya existe en el
    esquema original y se mantiene.
 
-### 2. Backend Django (servicio de usuario)
-
-```powershell
-cd backend-django
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env    # completa tus claves
-py manage.py migrate
-py manage.py seed_demo         # usuarios de demo
-py manage.py runserver 0.0.0.0:8000
-```
-
-Las claves (`AI_API_KEY`, `PLANTNET_API_KEY`) van **solo** en `.env`, que
-está ignorado por Git. La app y las webs nunca reciben esas claves. El script
-de demo comparte con Spring la clave interna `SCHEDULE_INTERNAL_TOKEN` y la
-configuración de IA para el procesamiento de horarios. Tras agregar las tablas,
-ejecuta `py manage.py migrate`. Sin MySQL
-se puede trabajar con SQLite: `$env:USE_SQLITE=1`.
-
-Detalle: [`backend-django/README.md`](backend-django/README.md).
-
-### 3. Backend Spring Boot (administración y análisis del horario)
+### 2. Backend Spring Boot (servicio de usuario/web/m?vil)
 
 ```powershell
 cd backend-spring
+# configura .env/vars: DB_*, PLANTNET_API_KEY, AI_*, SCHEDULE_INTERNAL_TOKEN
 .\mvnw.cmd -q -DskipTests package
-$env:DB_USERNAME="agronomia_api"; $env:DB_PASSWORD="..."
-$env:ADMIN_TOKEN_SECRET="un-secreto-largo"
-$env:AI_API_KEY="..."; $env:SCHEDULE_INTERNAL_TOKEN="..."
 java -jar target/agronomia-backend-0.1.0-SNAPSHOT.jar
 ```
 
-El servicio interno de horarios se limita a `127.0.0.1` por defecto y acepta
-llamadas de Django con `X-Schedule-Service-Key`. La app móvil nunca llama a
-Spring directamente.
+Expone `/agronomia-api/api/*` en `http://127.0.0.1:8081`.
 
 Detalle: [`backend-spring/README.md`](backend-spring/README.md).
+
+### 3. Backend Django (panel admin)
+
+```powershell
+cd backend-django
+py -m pip install -r requirements.txt
+Copy-Item .env.example .env
+C:\xampp\mysql\bin\mysql.exe -u root < ..\docs\sql\agronomia.sql
+py manage.py migrate
+py manage.py seed_demo         # admin/Admin12345 y agricultor/Campo12345
+py manage.py runserver 127.0.0.1:8000
+```
+
+Expone `/api/admin/*` en `http://127.0.0.1:8000`.
+
+Detalle: [`backend-django/README.md`](backend-django/README.md).
 
 ### 4. Webs
 
@@ -147,7 +131,7 @@ con la ruta del SDK y la URL del backend:
 
 ```properties
 sdk.dir=C\:\\Android\\Sdk
-BACKEND_BASE_URL=http://10.0.2.2:8000/
+BACKEND_BASE_URL=http://10.0.2.2:8081/
 ```
 
 Luego ejecuta `App movil\gradlew.bat installDebug`. El emulador llega al PC

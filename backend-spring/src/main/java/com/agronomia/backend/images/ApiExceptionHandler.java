@@ -21,6 +21,11 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(exception.status()).body(new ImageDtos.ErrorResponse(false, exception.getMessage()));
     }
 
+    @ExceptionHandler(com.agronomia.backend.user.UserApiException.class)
+    ResponseEntity<ImageDtos.ErrorResponse> handleUserApi(com.agronomia.backend.user.UserApiException exception) {
+        return ResponseEntity.status(exception.status()).body(new ImageDtos.ErrorResponse(false, exception.getMessage()));
+    }
+
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     ResponseEntity<ImageDtos.ErrorResponse> handleMethod(HttpRequestMethodNotSupportedException exception) {
         HttpHeaders headers = new HttpHeaders();
@@ -39,6 +44,12 @@ public class ApiExceptionHandler {
     ResponseEntity<ImageDtos.ErrorResponse> handleMissing(MissingServletRequestParameterException exception) {
         return ResponseEntity.badRequest().body(new ImageDtos.ErrorResponse(false,
                 "Envía entre una y cinco imágenes en el campo photos[]."));
+    }
+
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    ResponseEntity<ImageDtos.ErrorResponse> handleStatus(org.springframework.web.server.ResponseStatusException exception) {
+        String msg = exception.getReason() == null ? "No se pudo completar la solicitud." : exception.getReason();
+        return ResponseEntity.status(exception.getStatusCode()).body(new ImageDtos.ErrorResponse(false, msg));
     }
 
     @ExceptionHandler(Exception.class)

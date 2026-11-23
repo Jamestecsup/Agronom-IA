@@ -1,4 +1,4 @@
-# Backend Django (servicio de usuario)
+# Backend Django (panel admin)
 
 Backend del **usuario** (móvil Kotlin + web React). Hace todo el análisis:
 
@@ -65,100 +65,17 @@ py manage.py runserver 0.0.0.0:8000
 
 El emulador Android llega al host con `http://10.0.2.2:8000`.
 
-## API
+## API admin
 
-| Método | Ruta | Descripción |
-| --- | --- | --- |
-| GET | `/agronomia-api/api/health` | Estado del servicio y de la base (público, sin IA). |
-| GET | `/agronomia-api/api/plants` | Plantas identificadas guardadas por la cuenta autenticada. |
-| GET | `/agronomia-api/api/plants/<uuid>/cover` | Foto de identificación para las tarjetas del chat. |
-| GET | `/agronomia-api/api/chat/history?plant_id=<uuid>` | Recupera el chat persistente de una identificación propia. |
-| GET | `/agronomia-api/api/chat/images?plant_id=<uuid>` | Galería de progreso del chat de una planta. |
-| POST | `/agronomia-api/api/images.php` | Sube 1–5 fotos (`photos[]`). Devuelve `batch_id` + imágenes. |
-| POST | `/agronomia-api/api/identify` | `batch_id`, `organ`. Ejecuta Pl@ntNet + Gemini. |
-| POST | `/agronomia-api/api/confirm` | `batch_id`, `scientific_name`. Ficha de la candidata elegida reutilizando la corrida de Pl@ntNet. |
-| POST | `/agronomia-api/api/chat` | `message`, `plant_id` y foto opcional `image`. Analiza y guarda el progreso dentro del chat de esa planta. |
-| POST | `/agronomia-api/api/register` | `username`, `password`, `email`. Siempre crea rol `user` (el admin se asigna en el servidor). |
-| POST | `/agronomia-api/api/login` | `username`, `password`. Devuelve rol y token firmado. |
+| M?todo | Ruta | Descripci?n |
+|---|---|---|
+| POST | `/api/admin/auth/login` | Login admin. |
+| GET | `/api/admin/auth/me` | Sesi?n actual. |
+| GET | `/api/admin/health` | Estado del servicio/base. |
+| GET | `/api/admin/stats` | Resumen del panel. |
+| GET | `/api/admin/users` | Listado de usuarios. |
+| PATCH | `/api/admin/users/<id>` | Actualiza rol/estado. |
+| GET | `/api/admin/plants` | Identificaciones recientes. |
+| GET | `/api/admin/chats` | Mensajes recientes. |
 
-Las rutas de fotos, identificación, confirmación, lista de plantas e historial/chat requieren el token
-devuelto por `/login` en `Authorization: Bearer <token>`.
-
-Las fotos enviadas desde el chat se guardan vinculadas a su mensaje, planta y
-cuenta. La galería de Mi Jardín solo lista esas fotos de progreso; las fotos de
-identificación se usan únicamente como portada de las tarjetas del chat.
-
-### Autenticación y propiedad de los datos
-
-`POST /login` devuelve un token firmado válido por 14 días. La web y la app
-móvil lo envían como `Authorization: Bearer <token>` al subir fotos, identificar,
-confirmar candidatas y conversar. Django usa el usuario del token para guardar
-`user_id` en las fotos, corridas, fichas y mensajes; nunca confía en un nombre
-de usuario enviado por el cliente.
-
-Las filas antiguas conservan `user_id = NULL` porque no existe una forma segura
-de atribuirlas retrospectivamente. La estructura está descrita en
-[`docs/BASE-DATOS.md`](../docs/BASE-DATOS.md).
-
-### Respuesta de `identify`
-
-```json
-{
-  "success": true,
-  "status": "identified | ambiguous | unidentified | insufficient",
-  "plant": {
-    "scientific_name": "Helianthus giganteus",
-    "common_name": "Girasol gigante",
-    "family": "Asteraceae",
-    "confidence": 0.57,
-    "sections": [
-      { "key": "description", "title": "Descripción", "body": "...", "terms": [], "materials": [] }
-    ]
-  }
-}
-```
-
-Cuando `status` es `ambiguous` llega `candidates` (20–49 % de confianza);
-cuando es `unidentified` llega `message` (menos de 20 %). Si la especie se
-identificó pero la IA no tiene datos de cuidado, el estado es `insufficient`
-y llega `message` + `plant_name`; las categorías sin datos muestran un texto
-de respaldo con pautas generales (nunca la palabra «unknown»).
-
-## Skills
-
-Cada proceso y cada categoría tiene su propia skill en `skills/`:
-
-- Procesos: `refine-prompt`, `glossary`, `materials`, `chat-assistant`.
-- Categorías (`skills/categories/`): `description`, `light`, `watering`,
-  `soil`, `climate`, `flowering`, `uses`, `care`.
-- La guía de «cómo tomar mejores fotos» es texto de interfaz y vive en la app
-  (constantes de Compose), no es una skill.
-
-Django las **carga en runtime** en cada petición (`core/skills.py`), así que
-se pueden editar sin recompilar (el proceso las relee en la siguiente petición).
-
-> Para no agotar la cuota gratuita de Gemini (429 por ráfagas), el pipeline
-> hace **4 llamadas**: refine, categorías, glosario y materiales. Las 8 skills
-> de categoría se envían juntas en la llamada de categorías.
-
-## Umbrales de confianza
-
-| Confianza Pl@ntNet | Resultado |
-| --- | --- |
-| ≥ 50 % | `identified` (ficha completa) |
-| 20–49 % | `ambiguous` (candidatas + guía) |
-| < 20 % | `unidentified` (guía) |
-
-Se ajustan en `core/services/pipeline.py` (`MIN_CONFIDENCE` y
-`CONFIDENT_CONFIDENCE`).
-
-## Pruebas
-
-```powershell
-py manage.py test core.tests
-```
-
-Son pruebas del pipeline con Pl@ntNet y Gemini simulados (`unittest.mock`):
-umbrales, categorías «unknown», texto de respaldo, estado `insufficient` y
-reintento del cliente de IA ante JSON inválido. No gastan cuota ni necesitan
-la base de datos.
+Los endpoints de usuario (`/agronomia-api/api/*`) ya no los sirve Django; los sirve Spring Boot en `:8081`.

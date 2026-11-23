@@ -1,13 +1,13 @@
 # Agronom-IA · Web de usuario
 
-Web (React + Vite) para el **servicio de usuario (Django)**. Hace lo mismo que
+Web (React + Vite) para el **servicio de usuario (Spring Boot)**. Hace lo mismo que
 la app móvil desde el navegador: subir fotos, identificarlas con Pl@ntNet +
 Gemini, leer la ficha de 8 categorías y conversar con el asistente botánico.
 
 ## Requisitos
 
 - Node 18+ (probado con Node 24).
-- Django en `http://127.0.0.1:8000` (ver `backend-django/README.md`).
+- Spring Boot en `http://127.0.0.1:8081` (ver `backend-django/README.md`).
 
 ## Cómo ejecutarlo
 
@@ -19,7 +19,7 @@ npm run dev
 
 Abre `http://localhost:5174`.
 
-Vite hace proxy de `/agronomia-api` hacia Django, así que no hace falta CORS en
+Vite hace proxy de `/agronomia-api` hacia Spring Boot, así que no hace falta CORS en
 desarrollo.
 
 ## Cuenta demo

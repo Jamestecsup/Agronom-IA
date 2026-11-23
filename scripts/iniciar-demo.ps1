@@ -1,8 +1,8 @@
-<#
+﻿<#
   Inicia todos los servicios de Agronom-IA para la demo.
 
-  Orden: MySQL (XAMPP) -> Django (usuario) -> Spring (admin) -> webs -> emulador.
-  Si un servicio ya está corriendo, lo respeta y no lo duplica.
+  Orden: MySQL (XAMPP) -> Spring (usuario) -> Django (admin) -> webs -> emulador.
+  Si un servicio ya estÃ¡ corriendo, lo respeta y no lo duplica.
 
   Uso:
       powershell -ExecutionPolicy Bypass -File scripts\iniciar-demo.ps1
@@ -24,7 +24,7 @@ $emuladorExe = Join-Path $env:LOCALAPPDATA "Android\Sdk\emulator\emulator.exe"
 $jarSpring = Join-Path $raiz "backend-spring\target\agronomia-backend-0.1.0-SNAPSHOT.jar"
 $archivoEnvDjango = Join-Path $raiz "backend-django\.env"
 
-# Spring procesa los horarios y necesita la misma configuración privada de IA
+# Spring procesa los horarios y necesita la misma configuraciÃ³n privada de IA
 # y la clave interna que Django usa para llamarlo. No se muestran en consola.
 if (Test-Path $archivoEnvDjango) {
     foreach ($line in Get-Content $archivoEnvDjango) {
@@ -103,24 +103,11 @@ if (Puerto-Abierto 3306) {
     Write-Host "      MySQL listo en el puerto 3306."
 }
 
-# 2. Django (servicio de usuario) ------------------------------------------
-if (Puerto-Abierto 8000) {
-    Write-Host "[2/5] Django ya esta corriendo."
-} else {
-    Write-Host "[2/5] Iniciando Django (servicio de usuario)..."
-    $comando = "Set-Location '$raiz\backend-django'; " +
-               "Write-Host 'Django | servicio de usuario' -ForegroundColor Cyan; " +
-               "py manage.py runserver 0.0.0.0:8000 --noreload"
-    Iniciar-Ventana $comando
-    Esperar-Puerto 8000 "Django" 90
-    Write-Host "      Django listo en http://127.0.0.1:8000"
-}
-
-# 3. Spring (administracion y procesamiento interno de horarios) ------------
+# 2. Spring Boot (servicio de usuario, web y movil) ------------------------
 if (Puerto-Abierto 8081) {
-    Write-Host "[3/5] Spring ya esta corriendo."
+    Write-Host "[2/5] Spring Boot ya esta corriendo."
 } else {
-    Write-Host "[3/5] Iniciando Spring Boot (administracion y horarios)..."
+    Write-Host "[2/5] Iniciando Spring Boot (usuario/web/movil)..."
     if (-not (Spring-BootJar-Valido $jarSpring)) {
         Write-Host "      Construyendo el jar de Spring Boot..."
         Push-Location (Join-Path $raiz "backend-spring")
@@ -139,11 +126,24 @@ if (Puerto-Abierto 8081) {
                "`$env:ADMIN_TOKEN_SECRET='$token'; " +
                "`$env:SERVER_PORT='8081'; " +
                "Set-Location '$raiz\backend-spring'; " +
-               "Write-Host 'Spring Boot | panel de administracion' -ForegroundColor Cyan; " +
+               "Write-Host 'Spring Boot | usuario/web/movil' -ForegroundColor Cyan; " +
                "java -jar 'target\agronomia-backend-0.1.0-SNAPSHOT.jar'"
     Iniciar-Ventana $comando
     Esperar-Puerto 8081 "Spring" 90
     Write-Host "      Spring listo en http://127.0.0.1:8081"
+}
+
+# 3. Django (panel admin) --------------------------------------------------
+if (Puerto-Abierto 8000) {
+    Write-Host "[3/5] Django ya esta corriendo."
+} else {
+    Write-Host "[3/5] Iniciando Django (panel admin)..."
+    $comando = "Set-Location '$raiz\backend-django'; " +
+               "Write-Host 'Django | panel admin' -ForegroundColor Cyan; " +
+               "py manage.py runserver 127.0.0.1:8000 --noreload"
+    Iniciar-Ventana $comando
+    Esperar-Puerto 8000 "Django" 90
+    Write-Host "      Django listo en http://127.0.0.1:8000"
 }
 
 # 4. Webs ------------------------------------------------------------------
@@ -196,8 +196,8 @@ Write-Host ""
 Write-Host "Cuentas de demo:" -ForegroundColor Yellow
 Write-Host "  Web usuario : http://localhost:5174   agricultor / Campo12345"
 Write-Host "  Panel admin : http://localhost:5173   admin / Admin12345"
-Write-Host "  Django API  : http://127.0.0.1:8000/agronomia-api/api/health"
-Write-Host "  Spring API  : http://127.0.0.1:8081/api/admin/health"
+Write-Host "  Spring API  : http://127.0.0.1:8081/agronomia-api/api/health"
+Write-Host "  Django admin: http://127.0.0.1:8000/api/admin/health"
 Write-Host ""
 Write-Host "Recorrido sugerido:" -ForegroundColor Yellow
 Write-Host "  1. Web usuario: identificar un girasol y leer la ficha (8 secciones,"
@@ -208,3 +208,4 @@ Write-Host "  4. Chat: preguntar por riego o plagas de la planta detectada."
 Write-Host "  5. Movil: mismo flujo desde la galeria del emulador."
 Write-Host "  6. Panel admin: resumen, usuarios, identificaciones y chat."
 Write-Host ""
+

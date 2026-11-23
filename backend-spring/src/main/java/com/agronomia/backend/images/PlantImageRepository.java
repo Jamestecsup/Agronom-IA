@@ -8,8 +8,8 @@ import java.util.List;
 @Repository
 public class PlantImageRepository {
     private static final String INSERT_SQL = """
-            INSERT INTO imagenes_planta (id, batch_id, relative_path, mime_type, file_size, width, height)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO imagenes_planta (id, batch_id, relative_path, mime_type, file_size, width, height, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -27,6 +27,8 @@ public class PlantImageRepository {
             statement.setLong(5, image.fileSize());
             statement.setInt(6, image.width());
             statement.setInt(7, image.height());
+            if (image.userId() == null) statement.setNull(8, java.sql.Types.BIGINT);
+            else statement.setLong(8, image.userId());
         });
     }
 }

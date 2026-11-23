@@ -7,5 +7,6 @@ public record PlantImageRecord(
         String mimeType,
         long fileSize,
         int width,
-        int height
+        int height,
+        Long userId
 ) { }
