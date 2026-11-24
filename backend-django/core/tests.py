@@ -3,9 +3,18 @@
 Se parchean los servicios externos: comprueban la lógica de umbrales, el
 manejo de "unknown" y el estado `insufficient` de la HU-7.
 """
+from io import BytesIO
+from pathlib import Path
+from secrets import token_urlsafe
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, SimpleTestCase, TestCase, override_settings
+from PIL import Image
+
+from core.models import Profile
 
 from core.services import pipeline
 
@@ -221,3 +230,36 @@ class PipelineTests(SimpleTestCase):
                 pipeline.gemini._json_call("s", "u", "m", "clave", "http://ia")
 
         self.assertEqual(post.call_count, 2)
+
+
+class ApiCsrfTests(TestCase):
+    def test_upload_with_bearer_and_without_csrf_cookie(self):
+        password = token_urlsafe(24)
+        user = get_user_model().objects.create_user("usuario_prueba", password=password)
+        Profile.objects.create(user=user)
+        client = Client(enforce_csrf_checks=True)
+
+        login = client.post(
+            "/agronomia-api/api/login",
+            {"username": user.username, "password": password},
+            content_type="application/json",
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertNotIn("csrftoken", client.cookies)
+
+        image = BytesIO()
+        Image.new("RGB", (32, 32)).save(image, format="PNG")
+        photo = SimpleUploadedFile("planta.png", image.getvalue(), content_type="image/png")
+        with TemporaryDirectory() as upload_dir, override_settings(PLANT_UPLOAD_DIR=upload_dir):
+            upload = client.post(
+                "/agronomia-api/api/images.php",
+                {"photos[]": [photo]},
+                HTTP_AUTHORIZATION=f"Bearer {login.json()['token']}",
+            )
+            self.assertEqual(upload.status_code, 201)
+            self.assertTrue((Path(upload_dir) / upload.json()["images"][0]["path"]).is_file())
+
+    def test_admin_login_requires_csrf_cookie(self):
+        client = Client(enforce_csrf_checks=True)
+        response = client.post("/admin/login/")
+        self.assertEqual(response.status_code, 403)
