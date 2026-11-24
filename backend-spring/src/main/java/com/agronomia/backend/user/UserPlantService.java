@@ -28,7 +28,7 @@ public class UserPlantService {
     }
 
     public List<Map<String, Object>> listPlants(long userId) {
-        return jdbc.query("SELECT id,batch_id,scientific_name,common_name,family,confidence,result_json,created_at FROM identificaciones_planta WHERE user_id=? ORDER BY created_at DESC",
+        return jdbc.query("SELECT id,batch_id,scientific_name,common_name,family,confidence,result_json,created_at FROM plant_identifications WHERE user_id=? ORDER BY created_at DESC",
                 (rs, i) -> {
                     Map<String, Object> plant = readJson(rs.getString("result_json"));
                     if (plant.isEmpty()) {
@@ -49,7 +49,7 @@ public class UserPlantService {
 
     public Map<String, Object> findOwnedPlant(long userId, String plantId) {
         try {
-            return jdbc.queryForObject("SELECT id,batch_id,scientific_name,common_name,result_json,created_at FROM identificaciones_planta WHERE id=? AND user_id=?",
+            return jdbc.queryForObject("SELECT id,batch_id,scientific_name,common_name,result_json,created_at FROM plant_identifications WHERE id=? AND user_id=?",
                     (rs, i) -> {
                         Map<String, Object> m = new LinkedHashMap<>();
                         m.put("id", rs.getString("id"));
@@ -68,14 +68,14 @@ public class UserPlantService {
     public Optional<String> findCoverPath(long userId, String plantId) {
         Map<String, Object> plant = findOwnedPlant(userId, plantId);
         String batchId = (String) plant.get("batch_id");
-        List<String> paths = jdbc.query("SELECT relative_path FROM imagenes_planta WHERE batch_id=? AND user_id=? ORDER BY created_at ASC LIMIT 1",
+        List<String> paths = jdbc.query("SELECT relative_path FROM plant_images WHERE batch_id=? AND user_id=? ORDER BY created_at ASC LIMIT 1",
                 (rs, i) -> rs.getString("relative_path"), batchId, userId);
         return paths.stream().findFirst();
     }
 
     public void saveIdentification(long userId, String batchId, Map<String, Object> plant) {
         String id = UUID.randomUUID().toString().replace("-","");
-        jdbc.update("INSERT INTO identificaciones_planta (id,user_id,batch_id,scientific_name,common_name,family,confidence,result_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        jdbc.update("INSERT INTO plant_identifications (id,user_id,batch_id,scientific_name,common_name,family,confidence,result_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                 id, userId, batchId,
                 str(plant.get("scientific_name")), str(plant.get("common_name")), str(plant.get("family")),
                 toDouble(plant.get("confidence")), writeJson(plant), Timestamp.valueOf(LocalDateTime.now()));
@@ -83,12 +83,12 @@ public class UserPlantService {
     }
 
     public void saveRun(long userId, String batchId, String organ, String status, Object raw) {
-        jdbc.update("INSERT INTO procesos_identificacion (id,user_id,batch_id,organ,status,raw_json,created_at) VALUES (?,?,?,?,?,?,?)",
+        jdbc.update("INSERT INTO identification_runs (id,user_id,batch_id,organ,status,raw_json,created_at) VALUES (?,?,?,?,?,?,?)",
                 UUID.randomUUID().toString().replace("-",""), userId, batchId, organ, status, writeJson(raw), Timestamp.valueOf(LocalDateTime.now()));
     }
 
     public Map<String, Object> loadLatestRunRaw(long userId, String batchId) {
-        List<String> raws = jdbc.query("SELECT raw_json FROM procesos_identificacion WHERE user_id=? AND batch_id=? ORDER BY created_at DESC LIMIT 1",
+        List<String> raws = jdbc.query("SELECT raw_json FROM identification_runs WHERE user_id=? AND batch_id=? ORDER BY created_at DESC LIMIT 1",
                 (rs, i) -> rs.getString("raw_json"), userId, batchId);
         if (raws.isEmpty()) return Map.of();
         return readJson(raws.get(0));

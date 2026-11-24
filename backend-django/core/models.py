@@ -1,6 +1,6 @@
 """Modelos del backend Django.
 
-- PlantImage: reutiliza la tabla `imagenes_planta` creada originalmente por el backend de
+- PlantImage: reutiliza la tabla `plant_images` creada originalmente por el backend de
   Fernando (no gestionada por Django para no alterar su DDL).
 - PlantIdentification: resultado del pipeline (Pl@ntNet + Gemini con skills).
 - ChatMessage: historial del chat con Gemini.
@@ -13,12 +13,12 @@ from django.db import models
 
 
 class PlantImage(models.Model):
-    """Imagen subida por el usuario (tabla heredada `imagenes_planta`)."""
+    """Imagen subida por el usuario (tabla heredada `plant_images`)."""
 
     id = models.CharField(max_length=36, primary_key=True)
     user = models.ForeignKey(
         User, null=True, blank=True, on_delete=models.SET_NULL,
-        db_column="user_id", related_name="imagenes_planta",
+        db_column="user_id", related_name="plant_images",
     )
     batch_id = models.CharField(max_length=36)
     relative_path = models.CharField(max_length=255, unique=True)
@@ -31,7 +31,7 @@ class PlantImage(models.Model):
 
     class Meta:
         managed = False
-        db_table = "imagenes_planta"
+        db_table = "plant_images"
         verbose_name = "imagen de planta"
         verbose_name_plural = "imágenes de plantas"
 
@@ -57,7 +57,7 @@ class PlantIdentification(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "identificaciones_planta"
+        db_table = "plant_identifications"
         verbose_name = "identificación de planta"
         verbose_name_plural = "identificaciones de plantas"
 
@@ -84,7 +84,7 @@ class IdentificationRun(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "procesos_identificacion"
+        db_table = "identification_runs"
         verbose_name = "proceso de identificación"
         verbose_name_plural = "procesos de identificación"
 
@@ -106,7 +106,7 @@ class ChatMessage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "mensajes_chat"
+        db_table = "chat_messages"
         verbose_name = "mensaje de chat"
         verbose_name_plural = "mensajes de chat"
 
@@ -128,7 +128,7 @@ class ChatProgressImage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "imagenes_progreso_chat"
+        db_table = "chat_progress_images"
         verbose_name = "imagen de progreso del chat"
         verbose_name_plural = "imágenes de progreso del chat"
         ordering = ("created_at",)
@@ -147,7 +147,7 @@ class PendingScheduleImport(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "importaciones_horario_pendientes"
+        db_table = "pending_schedule_imports"
         verbose_name = "importación pendiente de horario"
         verbose_name_plural = "importaciones pendientes de horario"
 
@@ -160,7 +160,7 @@ class WeeklySchedule(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = "horarios_semanales"
+        db_table = "weekly_schedules"
         verbose_name = "horario semanal"
         verbose_name_plural = "horarios semanales"
 
@@ -179,7 +179,7 @@ class CarePlanTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = "tareas_cuidado"
+        db_table = "care_plan_tasks"
         verbose_name = "tarea de cuidado"
         verbose_name_plural = "tareas de cuidado"
         ordering = ("day_of_week", "start_time")
@@ -197,7 +197,7 @@ class Profile(models.Model):
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.USER)
 
     class Meta:
-        db_table = "perfiles_usuario"
+        db_table = "user_profiles"
         verbose_name = "perfil de usuario"
         verbose_name_plural = "perfiles de usuario"
 

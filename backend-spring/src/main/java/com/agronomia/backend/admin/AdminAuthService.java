@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * Autenticación del panel contra las tablas que crea Django
- * (`auth_user` + `perfiles_usuario`), sin duplicar usuarios.
+ * (`auth_user` + `user_profiles`), sin duplicar usuarios.
  */
 @Service
 public class AdminAuthService {
@@ -17,7 +17,7 @@ public class AdminAuthService {
             SELECT u.id, u.username, u.password, u.is_active,
                    COALESCE(p.role, 'user') AS role
             FROM auth_user u
-            LEFT JOIN perfiles_usuario p ON p.user_id = u.id
+            LEFT JOIN user_profiles p ON p.user_id = u.id
             WHERE u.username = ?
             """;
 

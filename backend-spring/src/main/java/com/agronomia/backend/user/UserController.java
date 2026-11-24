@@ -68,7 +68,7 @@ public class UserController {
                                         @RequestParam(defaultValue = "auto") String organ,
                                         HttpServletRequest request) {
         var s = requireUser(request);
-        List<Map<String,Object>> rows = jdbc.query("SELECT relative_path FROM imagenes_planta WHERE batch_id=? AND user_id=? ORDER BY created_at ASC",
+        List<Map<String,Object>> rows = jdbc.query("SELECT relative_path FROM plant_images WHERE batch_id=? AND user_id=? ORDER BY created_at ASC",
                 (rs,i) -> Map.of("p", rs.getString("relative_path")), batch_id, s.userId());
         if (rows.isEmpty()) throw new UserApiException(HttpStatus.NOT_FOUND, "No se encontraron imágenes para ese batch_id.");
         List<byte[]> blobs = new ArrayList<>();

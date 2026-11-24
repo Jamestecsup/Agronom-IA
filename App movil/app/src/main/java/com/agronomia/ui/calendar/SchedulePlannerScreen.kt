@@ -94,6 +94,7 @@ private fun SchedulePlannerScreen(viewModel: WeeklyScheduleViewModel = viewModel
                 .onSuccess { viewModel.setMessage("Horario exportado como PDF.") }
         }
     }
+    var selectedSection by remember { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = { AgronomIaTopBar() },
@@ -163,20 +164,34 @@ private fun SchedulePlannerScreen(viewModel: WeeklyScheduleViewModel = viewModel
                             Text("Exportar PDF")
                         }
                     }
-                    WeeklyClassesSection(state.classes)
-                    CarePlanSection(
-                        savedTasks = state.careTasks,
-                        draftTasks = state.draftCareTasks,
-                        classes = state.classes,
-                        isGenerating = state.isGenerating,
-                        isSaving = state.isSaving,
-                        onGenerate = viewModel::generateCarePlan,
-                        onUpdateDraft = viewModel::updateDraftTask,
-                        onRemoveDraft = viewModel::removeDraftTask,
-                        onConfirm = viewModel::confirmCarePlan,
-                        onReschedule = viewModel::reschedule,
-                        onDelete = viewModel::deleteCareTask
-                    )
+                    TabRow(selectedTabIndex = selectedSection) {
+                        Tab(
+                            selected = selectedSection == 0,
+                            onClick = { selectedSection = 0 },
+                            text = { Text("Clases Oficiales") }
+                        )
+                        Tab(
+                            selected = selectedSection == 1,
+                            onClick = { selectedSection = 1 },
+                            text = { Text("Plan de Cuidados") }
+                        )
+                    }
+                    when (selectedSection) {
+                        0 -> WeeklyClassesSection(state.classes)
+                        1 -> CarePlanSection(
+                            savedTasks = state.careTasks,
+                            draftTasks = state.draftCareTasks,
+                            classes = state.classes,
+                            isGenerating = state.isGenerating,
+                            isSaving = state.isSaving,
+                            onGenerate = viewModel::generateCarePlan,
+                            onUpdateDraft = viewModel::updateDraftTask,
+                            onRemoveDraft = viewModel::removeDraftTask,
+                            onConfirm = viewModel::confirmCarePlan,
+                            onReschedule = viewModel::reschedule,
+                            onDelete = viewModel::deleteCareTask
+                        )
+                    }
                 }
             }
         }

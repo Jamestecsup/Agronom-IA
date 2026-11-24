@@ -26,7 +26,7 @@ public class UserAuthService {
         }
         List<Row> rows = jdbc.query(
                 "SELECT u.id, u.username, u.password, u.is_active, COALESCE(p.role,'user') AS role " +
-                        "FROM auth_user u LEFT JOIN perfiles_usuario p ON p.user_id=u.id WHERE u.username=?",
+                        "FROM auth_user u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.username=?",
                 (rs, i) -> new Row(rs.getLong("id"), rs.getString("username"), rs.getString("password"), rs.getBoolean("is_active"), rs.getString("role")),
                 username.trim());
         Row user = rows.stream().findFirst().orElse(null);
@@ -54,7 +54,7 @@ public class UserAuthService {
         jdbc.update("INSERT INTO auth_user (password,is_superuser,username,first_name,last_name,email,is_staff,is_active,date_joined) VALUES (?,?,?,?,?,?,?,?,NOW())",
                 hash, false, u, "", "", email == null ? "" : email.trim(), false, true);
         Long id = jdbc.queryForObject("SELECT id FROM auth_user WHERE username=?", Long.class, u);
-        jdbc.update("INSERT INTO perfiles_usuario (user_id, role) VALUES (?, 'user')", id);
+        jdbc.update("INSERT INTO user_profiles (user_id, role) VALUES (?, 'user')", id);
         return new UserDtos.AuthResponse(true, u, "user", null, null);
     }
 

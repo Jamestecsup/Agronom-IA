@@ -25,8 +25,8 @@ public class UserChatService {
         Map<String, Object> plant = plants.findOwnedPlant(userId, plantId);
         String sessionId = "plant-" + plantId;
         List<Map<String, Object>> msgs = jdbc.query(
-                "SELECT m.id,m.role,m.content,m.created_at,(SELECT pi.id FROM imagenes_progreso_chat pi WHERE pi.message_id=m.id LIMIT 1) AS progress_id " +
-                        "FROM mensajes_chat m WHERE m.user_id=? AND m.session_id=? ORDER BY m.created_at ASC",
+                "SELECT m.id,m.role,m.content,m.created_at,(SELECT pi.id FROM chat_progress_images pi WHERE pi.message_id=m.id LIMIT 1) AS progress_id " +
+                        "FROM chat_messages m WHERE m.user_id=? AND m.session_id=? ORDER BY m.created_at ASC",
                 (rs, i) -> {
                     Map<String, Object> msg = new LinkedHashMap<>();
                     msg.put("id", rs.getString("id"));
@@ -54,7 +54,7 @@ public class UserChatService {
         String context = buildContext(plant);
         String skill = ai.loadSkill("chat-assistant");
 
-        List<Map<String, Object>> history = jdbc.query("SELECT role,content FROM mensajes_chat WHERE user_id=? AND session_id=? ORDER BY created_at ASC",
+        List<Map<String, Object>> history = jdbc.query("SELECT role,content FROM chat_messages WHERE user_id=? AND session_id=? ORDER BY created_at ASC",
                 (rs,i) -> Map.of("role", rs.getString("role"), "content", rs.getString("content")), userId, sessionId);
 
         List<Map<String, Object>> messages = new ArrayList<>();
@@ -74,19 +74,19 @@ public class UserChatService {
 
         String reply = ai.chatReply(messages, 0.2);
         String userMsgId = UUID.randomUUID().toString().replace("-","");
-        jdbc.update("INSERT INTO mensajes_chat (id,user_id,session_id,role,content,created_at) VALUES (?,?,?,?,?,?)",
+        jdbc.update("INSERT INTO chat_messages (id,user_id,session_id,role,content,created_at) VALUES (?,?,?,?,?,?)",
                 userMsgId, userId, sessionId, "user", userMessage, Timestamp.valueOf(LocalDateTime.now()));
         if (imageData != null && imageData.length > 0) {
             saveProgressImage(userId, plantId, userMsgId, imageData, imageMime, imageCaption == null ? "" : imageCaption.trim());
         }
-        jdbc.update("INSERT INTO mensajes_chat (id,user_id,session_id,role,content,created_at) VALUES (?,?,?,?,?,?)",
+        jdbc.update("INSERT INTO chat_messages (id,user_id,session_id,role,content,created_at) VALUES (?,?,?,?,?,?)",
                 UUID.randomUUID().toString().replace("-",""), userId, sessionId, "assistant", reply, Timestamp.valueOf(LocalDateTime.now()));
         return Map.of("success", true, "reply", reply);
     }
 
     public List<Map<String, Object>> progressImages(long userId, String plantId) {
         plants.findOwnedPlant(userId, plantId);
-        return jdbc.query("SELECT id,caption,created_at FROM imagenes_progreso_chat WHERE user_id=? AND plant_id=? ORDER BY created_at ASC",
+        return jdbc.query("SELECT id,caption,created_at FROM chat_progress_images WHERE user_id=? AND plant_id=? ORDER BY created_at ASC",
                 (rs,i) -> {
                     Map<String,Object> m = new LinkedHashMap<>();
                     m.put("id", rs.getString("id"));
@@ -104,7 +104,7 @@ public class UserChatService {
     }
 
     public Map<String, Object> progressImage(long userId, String imageId) {
-        List<Map<String,Object>> rows = jdbc.query("SELECT relative_path,mime_type FROM imagenes_progreso_chat WHERE id=? AND user_id=?",
+        List<Map<String,Object>> rows = jdbc.query("SELECT relative_path,mime_type FROM chat_progress_images WHERE id=? AND user_id=?",
                 (rs,i) -> Map.of("relative_path", rs.getString("relative_path"), "mime_type", rs.getString("mime_type")),
                 toDbId(imageId), userId);
         if (rows.isEmpty()) throw new UserApiException(org.springframework.http.HttpStatus.NOT_FOUND, "No se encontro esa imagen en tu cuenta.");
@@ -122,7 +122,7 @@ public class UserChatService {
         } catch (Exception e) {
             throw new UserApiException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo guardar la imagen de progreso.");
         }
-        jdbc.update("INSERT INTO imagenes_progreso_chat (id,user_id,plant_id,message_id,relative_path,mime_type,file_size,caption,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        jdbc.update("INSERT INTO chat_progress_images (id,user_id,plant_id,message_id,relative_path,mime_type,file_size,caption,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                 UUID.randomUUID().toString().replace("-",""), userId, toDbId(plantId), toDbId(messageId), relative,
                 mime == null ? "image/jpeg" : mime, (long) data.length, caption == null ? "" : caption, Timestamp.valueOf(LocalDateTime.now()));
     }

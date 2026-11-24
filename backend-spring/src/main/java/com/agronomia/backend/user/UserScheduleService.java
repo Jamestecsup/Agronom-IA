@@ -31,10 +31,10 @@ public class UserScheduleService {
     }
 
     public Map<String, Object> weekly(long userId) {
-        List<Map<String, Object>> schedules = jdbc.query("SELECT classes FROM horarios_semanales WHERE user_id=?",
+        List<Map<String, Object>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
                 (rs, i) -> Map.of("classes", readList(rs.getString("classes"))), userId);
         List<Map<String, Object>> pending = jdbc.query(
-                "SELECT id,parsed_classes FROM importaciones_horario_pendientes WHERE user_id=? ORDER BY created_at DESC LIMIT 1",
+                "SELECT id,parsed_classes FROM pending_schedule_imports WHERE user_id=? ORDER BY created_at DESC LIMIT 1",
                 (rs, i) -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", rs.getString("id"));
@@ -43,7 +43,7 @@ public class UserScheduleService {
                 }, userId);
         List<Map<String, Object>> care = jdbc.query(
                 "SELECT t.id,t.plant_id,t.title,t.instructions,t.day_of_week,t.start_time,t.duration_minutes,COALESCE(p.common_name,p.scientific_name) plant_name " +
-                        "FROM tareas_cuidado t JOIN identificaciones_planta p ON p.id=t.plant_id WHERE t.user_id=? ORDER BY t.day_of_week,t.start_time",
+                        "FROM care_plan_tasks t JOIN plant_identifications p ON p.id=t.plant_id WHERE t.user_id=? ORDER BY t.day_of_week,t.start_time",
                 (rs, i) -> careTaskRow(rs), userId);
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("success", true);
@@ -58,9 +58,9 @@ public class UserScheduleService {
         if (pdf == null || pdf.isEmpty()) throw new UserApiException(HttpStatus.BAD_REQUEST, "Selecciona el PDF de tu horario.");
         JsonNode parsed = ai.parseWeeklySchedule(pdf);
         List<Map<String, Object>> classes = normalizeClasses(parsed.path("classes"));
-        jdbc.update("DELETE FROM importaciones_horario_pendientes WHERE user_id=?", userId);
+        jdbc.update("DELETE FROM pending_schedule_imports WHERE user_id=?", userId);
         String id = UUID.randomUUID().toString().replace("-","");
-        jdbc.update("INSERT INTO importaciones_horario_pendientes (id,user_id,source_pdf,parsed_classes,created_at) VALUES (?,?,?,?,?)",
+        jdbc.update("INSERT INTO pending_schedule_imports (id,user_id,source_pdf,parsed_classes,created_at) VALUES (?,?,?,?,?)",
                 id, userId, "pending/" + id + ".pdf", writeJson(classes), Timestamp.valueOf(LocalDateTime.now()));
         return Map.of("success", true, "import_id", id, "classes", classes);
     }
@@ -73,7 +73,7 @@ public class UserScheduleService {
 
     public Map<String, Object> pendingImport(long userId, String importId) {
         List<Map<String, Object>> rows = jdbc.query(
-                "SELECT id,parsed_classes FROM importaciones_horario_pendientes WHERE id=? AND user_id=?",
+                "SELECT id,parsed_classes FROM pending_schedule_imports WHERE id=? AND user_id=?",
                 (rs, i) -> Map.of("id", rs.getString("id"), "classes", readList(rs.getString("parsed_classes"))),
                 toDbId(importId), userId);
         if (rows.isEmpty()) throw new UserApiException(HttpStatus.NOT_FOUND, "La importacion ya no esta disponible.");
@@ -85,32 +85,32 @@ public class UserScheduleService {
     @Transactional
     public Map<String, Object> confirmImport(long userId, String importId, Object classesObj) {
         List<Map<String, Object>> classes = normalizeClasses(classesObj);
-        Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM importaciones_horario_pendientes WHERE id=? AND user_id=?",
+        Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM pending_schedule_imports WHERE id=? AND user_id=?",
                 Integer.class, toDbId(importId), userId);
         if (exists == null || exists == 0) throw new UserApiException(HttpStatus.NOT_FOUND, "La importacion ya no esta disponible.");
-        jdbc.update("INSERT INTO horarios_semanales (user_id,classes,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE classes=VALUES(classes), updated_at=VALUES(updated_at)",
+        jdbc.update("INSERT INTO weekly_schedules (user_id,classes,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE classes=VALUES(classes), updated_at=VALUES(updated_at)",
                 userId, writeJson(classes), Timestamp.valueOf(LocalDateTime.now()));
-        jdbc.update("DELETE FROM tareas_cuidado WHERE user_id=?", userId);
-        jdbc.update("DELETE FROM importaciones_horario_pendientes WHERE id=? AND user_id=?", toDbId(importId), userId);
+        jdbc.update("DELETE FROM care_plan_tasks WHERE user_id=?", userId);
+        jdbc.update("DELETE FROM pending_schedule_imports WHERE id=? AND user_id=?", toDbId(importId), userId);
         return Map.of("success", true, "classes", classes, "pdf_removed", true);
     }
 
     @Transactional
     public Map<String, Object> cancelImport(long userId, String importId) {
-        jdbc.update("DELETE FROM importaciones_horario_pendientes WHERE id=? AND user_id=?", toDbId(importId), userId);
+        jdbc.update("DELETE FROM pending_schedule_imports WHERE id=? AND user_id=?", toDbId(importId), userId);
         return Map.of("success", true);
     }
 
     @Transactional
     public Map<String, Object> draftCarePlan(long userId) {
-        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM horarios_semanales WHERE user_id=?",
+        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
                 (rs, i) -> readList(rs.getString("classes")), userId);
         if (schedules.isEmpty() || schedules.get(0).isEmpty()) {
             throw new UserApiException(HttpStatus.CONFLICT, "Primero importa y confirma tu horario semanal.");
         }
         List<Map<String, Object>> classes = schedules.get(0);
         List<Map<String, Object>> plants = jdbc.query(
-                "SELECT id,scientific_name,common_name,result_json FROM identificaciones_planta WHERE user_id=? ORDER BY created_at ASC LIMIT 20",
+                "SELECT id,scientific_name,common_name,result_json FROM plant_identifications WHERE user_id=? ORDER BY created_at ASC LIMIT 20",
                 (rs, i) -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", rs.getString("id"));
@@ -134,13 +134,13 @@ public class UserScheduleService {
 
     @Transactional
     public Map<String, Object> confirmCarePlan(long userId, Object tasksObj) {
-        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM horarios_semanales WHERE user_id=?",
+        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
                 (rs, i) -> readList(rs.getString("classes")), userId);
         if (schedules.isEmpty()) throw new UserApiException(HttpStatus.CONFLICT, "Primero confirma tu horario semanal.");
         List<Map<String, Object>> tasks = normalizeTasks(tasksObj, schedules.get(0), null);
-        jdbc.update("DELETE FROM tareas_cuidado WHERE user_id=?", userId);
+        jdbc.update("DELETE FROM care_plan_tasks WHERE user_id=?", userId);
         for (Map<String, Object> t : tasks) {
-            jdbc.update("INSERT INTO tareas_cuidado (id,user_id,plant_id,title,instructions,day_of_week,start_time,duration_minutes,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            jdbc.update("INSERT INTO care_plan_tasks (id,user_id,plant_id,title,instructions,day_of_week,start_time,duration_minutes,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                     UUID.randomUUID().toString().replace("-",""), userId, toDbId(String.valueOf(t.get("plant_id"))),
                     String.valueOf(t.get("title")), String.valueOf(t.getOrDefault("instructions", "")),
                     ((Number) t.get("day_of_week")).intValue(), LocalTime.parse(String.valueOf(t.get("start_time"))),
@@ -155,11 +155,11 @@ public class UserScheduleService {
 
     @Transactional
     public Map<String, Object> rescheduleTask(long userId, String taskId, int day, String startTime) {
-        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM horarios_semanales WHERE user_id=?",
+        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
                 (rs, i) -> readList(rs.getString("classes")), userId);
         if (schedules.isEmpty()) throw new UserApiException(HttpStatus.CONFLICT, "Primero confirma tu horario semanal.");
         Object taskDbId = toDbId(taskId);
-        List<Map<String, Object>> rows = jdbc.query("SELECT duration_minutes FROM tareas_cuidado WHERE id=? AND user_id=?",
+        List<Map<String, Object>> rows = jdbc.query("SELECT duration_minutes FROM care_plan_tasks WHERE id=? AND user_id=?",
                 (rs, i) -> Map.of("duration_minutes", rs.getInt("duration_minutes")), taskDbId, userId);
         if (rows.isEmpty()) throw new UserApiException(HttpStatus.NOT_FOUND, "No se encontro ese cuidado.");
         int duration = ((Number) rows.get(0).get("duration_minutes")).intValue();
@@ -167,17 +167,17 @@ public class UserScheduleService {
         if (hasClassConflict(schedules.get(0), day, start, duration) || hasTaskConflict(userId, taskId, day, start, duration)) {
             throw new UserApiException(HttpStatus.CONFLICT, "El nuevo horario se cruza con una clase u otro cuidado.");
         }
-        jdbc.update("UPDATE tareas_cuidado SET day_of_week=?, start_time=? WHERE id=? AND user_id=?", day, start, taskDbId, userId);
+        jdbc.update("UPDATE care_plan_tasks SET day_of_week=?, start_time=? WHERE id=? AND user_id=?", day, start, taskDbId, userId);
         List<Map<String, Object>> task = jdbc.query(
                 "SELECT t.id,t.plant_id,t.title,t.instructions,t.day_of_week,t.start_time,t.duration_minutes,COALESCE(p.common_name,p.scientific_name) plant_name " +
-                        "FROM tareas_cuidado t JOIN identificaciones_planta p ON p.id=t.plant_id WHERE t.id=? AND t.user_id=?",
+                        "FROM care_plan_tasks t JOIN plant_identifications p ON p.id=t.plant_id WHERE t.id=? AND t.user_id=?",
                 (rs, i) -> careTaskRow(rs), taskDbId, userId);
         return Map.of("success", true, "care_task", task.get(0));
     }
 
     @Transactional
     public Map<String, Object> deleteTask(long userId, String taskId) {
-        jdbc.update("DELETE FROM tareas_cuidado WHERE id=? AND user_id=?", toDbId(taskId), userId);
+        jdbc.update("DELETE FROM care_plan_tasks WHERE id=? AND user_id=?", toDbId(taskId), userId);
         return Map.of("success", true);
     }
 
@@ -196,7 +196,7 @@ public class UserScheduleService {
     private boolean hasTaskConflict(long userId, String taskId, int day, LocalTime start, int duration) {
         int s = start.toSecondOfDay() / 60, e = s + duration;
         List<Map<String, Object>> rows = jdbc.query(
-                "SELECT start_time,duration_minutes FROM tareas_cuidado WHERE user_id=? AND day_of_week=? AND id<>?",
+                "SELECT start_time,duration_minutes FROM care_plan_tasks WHERE user_id=? AND day_of_week=? AND id<>?",
                 (rs, i) -> Map.of("start_time", rs.getString("start_time"), "duration_minutes", rs.getInt("duration_minutes")),
                 userId, day, toDbId(taskId));
         for (Map<String, Object> r : rows) {

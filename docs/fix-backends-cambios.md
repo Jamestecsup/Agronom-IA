@@ -48,7 +48,7 @@
   - `ApiExceptionHandler` mapea `UserApiException`.
 - Tests/Schema:
   - `ImageUploadApiIntegrationTest`: actualizado a auth Bearer y nuevo contrato.
-  - `src/test/resources/schema.sql`: incluye `user_id` en `imagenes_planta`.
+  - `src/test/resources/schema.sql`: incluye `user_id` en `plant_images`.
 - `README.md`: actualizado a rol usuario.
 
 ### Clientes / scripts / docs

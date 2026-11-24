@@ -53,7 +53,7 @@ class ImageUploadApiIntegrationTest {
             jdbcRepository.insertAll(rows);
             return null;
         }).when(repository).insertAll(anyList());
-        jdbcTemplate.update("DELETE FROM imagenes_planta");
+        jdbcTemplate.update("DELETE FROM plant_images");
         clearStorage();
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS usuarios (id BIGINT PRIMARY KEY, username VARCHAR(150), password VARCHAR(128), email VARCHAR(254), is_active BOOLEAN DEFAULT TRUE)");
         jdbcTemplate.update("MERGE INTO usuarios (id,username,password,email,is_active) KEY(id) VALUES (1,'tester','x','t@test.local',TRUE)");
@@ -74,8 +74,8 @@ class ImageUploadApiIntegrationTest {
                 .andExpect(jsonPath("$.images.length()").value(1))
                 .andExpect(jsonPath("$.images[0].mime_type").value("image/png"));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT relative_path FROM imagenes_planta", String.class)).endsWith(".png");
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT relative_path FROM plant_images", String.class)).endsWith(".png");
         assertThat(countStoredFiles()).isEqualTo(1);
     }
 
@@ -90,7 +90,7 @@ class ImageUploadApiIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.images.length()").value(5));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isEqualTo(5);
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isEqualTo(5);
         assertThat(countStoredFiles()).isEqualTo(5);
     }
 
@@ -103,7 +103,7 @@ class ImageUploadApiIntegrationTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
         assertThat(countStoredFiles()).isZero();
     }
 
@@ -114,7 +114,7 @@ class ImageUploadApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("JPEG, PNG y WebP")));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
         assertThat(countStoredFiles()).isZero();
     }
 
@@ -124,7 +124,7 @@ class ImageUploadApiIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.images[0].mime_type").value("image/webp"));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT relative_path FROM imagenes_planta", String.class)).endsWith(".webp");
+        assertThat(jdbcTemplate.queryForObject("SELECT relative_path FROM plant_images", String.class)).endsWith(".webp");
     }
 
     @Test
@@ -134,7 +134,7 @@ class ImageUploadApiIntegrationTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
         assertThat(countStoredFiles()).isZero();
     }
 
@@ -155,7 +155,7 @@ class ImageUploadApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("No se complet")));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
         assertThat(countStoredFiles()).isZero();
     }
 
