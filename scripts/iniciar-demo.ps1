@@ -3,6 +3,7 @@
 
   Requiere MySQL Server activo. Orden: Django (usuario) -> Spring (admin) -> webs -> emulador.
   Si un servicio ya está corriendo, lo respeta y no lo duplica.
+  Django escucha en 127.0.0.1 por defecto; usa -ExponerRed para escuchar en la red.
 
   Uso:
       powershell -ExecutionPolicy Bypass -File scripts\iniciar-demo.ps1
@@ -11,7 +12,8 @@
   No llama a Pl@ntNet ni a la IA: solo levanta los servicios.
 #>
 param(
-    [switch]$ConEmulador
+    [switch]$ConEmulador,
+    [switch]$ExponerRed
 )
 
 $ErrorActionPreference = "Stop"
@@ -105,9 +107,10 @@ if (Puerto-Abierto 8000) {
     Write-Host "[2/5] Django ya esta corriendo."
 } else {
     Write-Host "[2/5] Iniciando Django (servicio de usuario)..."
+    $direccionDjango = if ($ExponerRed) { "0.0.0.0" } else { "127.0.0.1" }
     $comando = "Set-Location '$raiz\backend-django'; " +
                "Write-Host 'Django | servicio de usuario' -ForegroundColor Cyan; " +
-               "& '.\.venv\Scripts\python.exe' manage.py runserver 0.0.0.0:8000 --noreload"
+               "& '.\.venv\Scripts\python.exe' manage.py runserver ${direccionDjango}:8000 --noreload"
     Iniciar-Ventana $comando
     Esperar-Puerto 8000 "Django" 90
     Write-Host "      Django listo en http://127.0.0.1:8000"
