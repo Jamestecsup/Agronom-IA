@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -184,6 +186,45 @@ class PlantCardsTest {
         }
     }
 
+    @Test
+    void enrichmentsUseAuxiliaryRouteInParallelWithSeventyFiveSecondCap() {
+        ai.parallel = new CountDownLatch(2);
+        cards.enrichments("Helianthus annuus", full(), AiClient.Deadline.after(Duration.ofSeconds(150)), false);
+        assertThat(ai.auxiliaryDeadlines).containsOnlyKeys("glossary", "materials");
+        assertThat(ai.auxiliaryDeadlines.values()).allSatisfy(nanos ->
+                assertThat(nanos).isBetween(Duration.ofSeconds(70).toNanos(), Duration.ofSeconds(75).toNanos()));
+        assertThat(ai.auxiliaryRetries.values()).containsExactlyInAnyOrder(false, false);
+    }
+
+    @Test
+    void capsToRemainingGlobalTimeAndSkipsBelowFiveSeconds() {
+        cards.enrichments("Helianthus annuus", full(), AiClient.Deadline.after(Duration.ofSeconds(12)), true);
+        assertThat(ai.auxiliaryDeadlines).containsOnlyKeys("glossary", "materials");
+        assertThat(ai.auxiliaryDeadlines.values()).allSatisfy(nanos ->
+                assertThat(nanos).isBetween(Duration.ofSeconds(5).toNanos(), Duration.ofSeconds(12).toNanos()));
+        assertThat(ai.auxiliaryRetries.values()).containsExactlyInAnyOrder(true, true);
+        ai.auxiliaryDeadlines.clear();
+        cards.enrichments("Helianthus annuus", full(), AiClient.Deadline.after(Duration.ofSeconds(4)), true);
+        assertThat(ai.auxiliaryDeadlines).isEmpty();
+    }
+
+    @Test
+    void capsValidItemsPerCategory() {
+        var glossary = json.createObjectNode();
+        var materials = json.createObjectNode();
+        var terms = glossary.putArray("light");
+        var items = materials.putArray("light");
+        for (int i = 0; i < 7; i++) {
+            terms.addObject().put("word", "Término " + i).put("meaning", "Explicación.");
+            items.addObject().put("name", "Material " + i).put("detail", "Instrucción.");
+        }
+        ai.enrichments.put("glossary", glossary);
+        ai.enrichments.put("materials", materials);
+        var result = cards.enrichments("Helianthus annuus", full(), AiClient.Deadline.after(Duration.ofSeconds(150)), true);
+        assertThat(result.glossary().path("light")).hasSize(5);
+        assertThat(result.materials().path("light")).hasSize(4);
+    }
+
     private ObjectNode full() {
         var result = json.createObjectNode();
         KEYS.forEach(key -> result.put(key, "Guía concreta para " + key + "."));
@@ -199,6 +240,26 @@ class PlantCardsTest {
         final List<String> categories = new ArrayList<>();
         final Map<String, JsonNode> enrichments = new ConcurrentHashMap<>();
         final Map<String, String> prompts = new ConcurrentHashMap<>();
+        final Map<String, Long> auxiliaryDeadlines = new ConcurrentHashMap<>();
+        final Map<String, Boolean> auxiliaryRetries = new ConcurrentHashMap<>();
+        CountDownLatch parallel;
+
+        @Override
+        public JsonResponse auxiliaryJsonWithin(String step, List<Map<String, Object>> messages,
+                                                Deadline deadline, boolean retry) {
+            auxiliaryDeadlines.put(step, deadline.remainingNanos());
+            auxiliaryRetries.put(step, retry);
+            if (parallel != null) {
+                parallel.countDown();
+                try {
+                    assertThat(parallel.await(3, TimeUnit.SECONDS)).isTrue();
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(error);
+                }
+            }
+            return AiClient.super.auxiliaryJsonWithin(step, messages, deadline, retry);
+        }
 
         @Override
         public String reply(String step, List<Map<String, Object>> messages, boolean vision) {

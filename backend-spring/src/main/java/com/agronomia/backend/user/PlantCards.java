@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 public class PlantCards {
     private static final Logger LOG = LoggerFactory.getLogger(PlantCards.class);
     private static final Duration MIN_OPTIONAL = Duration.ofSeconds(5);
+    private static final int ENRICHMENT_SECONDS = 75;
     private static final Map<String, String> ALIASES = Map.of(
             "descripcion", "description", "luz", "light", "riego", "watering", "suelo", "soil",
             "clima", "climate", "floracion", "flowering", "usos", "uses", "cuidados", "care");
@@ -157,17 +158,9 @@ public class PlantCards {
             removed += filtered.removed();
         }
         LOG.info("Ficha IA oraciones_filtradas={}", removed);
-        ObjectNode materialTexts = mapper.createObjectNode();
-        for (String key : MATERIAL_KEYS) {
-            if (texts.has(key)) materialTexts.set(key, texts.get(key));
-        }
-        String scientificName = plant.path("scientific_name").asText();
-        CompletableFuture<JsonNode> glossary = enrich("glossary", "terms", "word", "meaning",
-                80, 300, 12, scientificName, texts, deadline);
-        CompletableFuture<JsonNode> materials = enrich("materials", "items", "name", "detail",
-                120, 400, 10, scientificName, materialTexts, deadline);
-        JsonNode g = glossary.join();
-        JsonNode m = materials.join();
+        Enrichment enrichment = enrichments(plant.path("scientific_name").asText(), texts, deadline, true);
+        JsonNode g = enrichment.glossary();
+        JsonNode m = enrichment.materials();
         ArrayNode sections = plant.putArray("sections");
         for (int i = 0; i < KEYS.size(); i++) {
             String key = KEYS.get(i);
@@ -223,26 +216,44 @@ public class PlantCards {
 
     private JsonNode optional(String step, String system, String user, AiClient.Deadline deadline,
                               int seconds, boolean retry) {
-        if (deadline.remainingNanos() < MIN_OPTIONAL.toNanos()) {
-            LOG.info("IA paso={} omitido por plazo restante", step);
-            return mapper.createObjectNode();
-        }
+        AiClient.Deadline allowance = optionalDeadline(step, deadline, seconds);
+        if (allowance == null) return mapper.missingNode();
         try {
-            return ask(step, system, user, deadline.cap(Duration.ofSeconds(seconds)), retry).value();
+            return ask(step, system, user, allowance, retry).value();
         } catch (AiClient.Failure error) {
-            return mapper.createObjectNode();
+            return mapper.missingNode();
         }
     }
 
-    private CompletableFuture<JsonNode> optionalAsync(String step, String system, String user,
-                                                      AiClient.Deadline deadline) {
-        return CompletableFuture.supplyAsync(() -> optional(step, system, user, deadline, 30, true), enrichment)
-                .completeOnTimeout(mapper.createObjectNode(), deadline.remainingNanos(), TimeUnit.NANOSECONDS);
+    private AiClient.Deadline optionalDeadline(String step, AiClient.Deadline deadline, int seconds) {
+        long remaining = deadline.remainingNanos();
+        if (remaining < MIN_OPTIONAL.toNanos()) {
+            LOG.info("IA paso={} opcional_omitido restante_ms={}", step, TimeUnit.NANOSECONDS.toMillis(remaining));
+            return null;
+        }
+        AiClient.Deadline allowance = deadline.cap(Duration.ofSeconds(seconds));
+        LOG.info("IA paso={} opcional_inicio restante_ms={} plazo_ms={}", step,
+                TimeUnit.NANOSECONDS.toMillis(remaining), TimeUnit.NANOSECONDS.toMillis(allowance.remainingNanos()));
+        return allowance;
     }
+
+    Enrichment enrichments(String species, ObjectNode texts, AiClient.Deadline deadline, boolean retry) {
+        ObjectNode materialTexts = mapper.createObjectNode();
+        for (String key : KEYS) {
+            if (MATERIAL_KEYS.contains(key) && texts.has(key)) materialTexts.set(key, texts.get(key));
+        }
+        var glossary = enrich("glossary", "terms", "word", "meaning",
+                80, 160, 5, species, texts, deadline, retry);
+        var materials = enrich("materials", "items", "name", "detail",
+                100, 180, 4, species, materialTexts, deadline, retry);
+        return new Enrichment(glossary.join(), materials.join());
+    }
+
+    record Enrichment(JsonNode glossary, JsonNode materials) {}
 
     private CompletableFuture<JsonNode> enrich(String step, String flatKey, String label, String detail,
                                                int maxLabel, int maxDetail, int maxItems, String species,
-                                               ObjectNode texts, AiClient.Deadline deadline) {
+                                               ObjectNode texts, AiClient.Deadline deadline, boolean retry) {
         if (texts.isEmpty()) {
             LOG.info("IA paso={} elementos_aceptados=0 elementos_descartados=0", step);
             return CompletableFuture.completedFuture(mapper.createObjectNode());
@@ -257,7 +268,17 @@ public class PlantCards {
                 Usa las claves exactas de la entrada. Si una categoría no tiene elementos válidos, usa [].
                 Este es el formato exacto con las claves reales para esta solicitud:
                 """ + example;
-        return optionalAsync(step, prompt, species + "\n" + texts, deadline)
+        var messages = List.of(AiClient.message("system", prompt), AiClient.message("user", species + "\n" + texts));
+        return CompletableFuture.supplyAsync(() -> {
+                    AiClient.Deadline allowance = optionalDeadline(step, deadline, ENRICHMENT_SECONDS);
+                    if (allowance == null) return mapper.missingNode();
+                    try {
+                        return ai.auxiliaryJsonWithin(step, messages, allowance, retry).value();
+                    } catch (AiClient.Failure error) {
+                        return mapper.missingNode();
+                    }
+                }, enrichment)
+                .completeOnTimeout(mapper.missingNode(), deadline.remainingNanos(), TimeUnit.NANOSECONDS)
                 .thenApply(response -> parseEnrichment(step, flatKey, label, detail, maxLabel, maxDetail,
                         maxItems, texts, response));
     }
@@ -266,6 +287,10 @@ public class PlantCards {
                                      int maxLabel, int maxDetail, int maxItems,
                                      ObjectNode texts, JsonNode response) {
         ObjectNode result = mapper.createObjectNode();
+        if (response.isMissingNode()) {
+            LOG.info("IA paso={} formato=sin_respuesta elementos_aceptados=0 elementos_descartados=0", step);
+            return result;
+        }
         boolean flat = response.size() == 1 && response.path(flatKey).isArray() && texts.size() == 1;
         if (flat) {
             LOG.info("IA paso={} formato_plano_recuperado", step);
@@ -300,7 +325,8 @@ public class PlantCards {
         if (missing > 0 || invalidGroups > 0) {
             LOG.info("IA paso={} formato_inesperado grupos_ausentes={} grupos_invalidos={}", step, missing, invalidGroups);
         }
-        LOG.info("IA paso={} elementos_aceptados={} elementos_descartados={}", step, accepted, discarded);
+        String format = flat ? "plano" : (missing == 0 && invalidGroups == 0 ? "lotes" : "inesperado");
+        LOG.info("IA paso={} formato={} elementos_aceptados={} elementos_descartados={}", step, format, accepted, discarded);
         return result;
     }
 

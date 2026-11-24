@@ -33,6 +33,7 @@ public class OpenAiClient implements AiClient {
     private final String key;
     private final String model;
     private final String visionModel;
+    private final String auxiliaryModel;
     private final int maxRequests;
     private final boolean debugResponses;
     private final AtomicInteger requests = new AtomicInteger();
@@ -41,28 +42,31 @@ public class OpenAiClient implements AiClient {
     public OpenAiClient(ObjectMapper mapper, @Value("${ai.base-url}") String baseUrl,
                         @Value("${ai.api-key:}") String key, @Value("${ai.model}") String model,
                         @Value("${AI_VISION_MODEL:}") String visionModel,
+                        @Value("${AI_AUX_MODEL:}") String auxiliaryModel,
                         @Value("${AI_MAX_REQUESTS:0}") int maxRequests,
                         @Value("${AI_DEBUG_RESPONSES:false}") boolean debugResponses) {
-        this(mapper, baseUrl, key, model, visionModel, maxRequests, TIMEOUT, debugResponses);
+        this(mapper, baseUrl, key, model, visionModel, auxiliaryModel, maxRequests, TIMEOUT, debugResponses);
     }
 
     public OpenAiClient(ObjectMapper mapper, String baseUrl, String key, String model,
                         String visionModel, int maxRequests) {
-        this(mapper, baseUrl, key, model, visionModel, maxRequests, TIMEOUT, false);
+        this(mapper, baseUrl, key, model, visionModel, "", maxRequests, TIMEOUT, false);
     }
 
     OpenAiClient(ObjectMapper mapper, String baseUrl, String key, String model,
                  String visionModel, int maxRequests, Duration timeout) {
-        this(mapper, baseUrl, key, model, visionModel, maxRequests, timeout, false);
+        this(mapper, baseUrl, key, model, visionModel, "", maxRequests, timeout, false);
     }
 
     private OpenAiClient(ObjectMapper mapper, String baseUrl, String key, String model,
-                         String visionModel, int maxRequests, Duration timeout, boolean debugResponses) {
+                         String visionModel, String auxiliaryModel, int maxRequests, Duration timeout,
+                         boolean debugResponses) {
         this.mapper = mapper;
         this.endpoint = URI.create(baseUrl.replaceFirst("/+$", "") + "/chat/completions");
         this.key = key;
         this.model = model;
         this.visionModel = visionModel.isBlank() ? model : visionModel;
+        this.auxiliaryModel = auxiliaryModel.isBlank() ? model : auxiliaryModel;
         this.maxRequests = maxRequests;
         this.debugResponses = debugResponses;
         this.timeout = timeout;
@@ -71,7 +75,7 @@ public class OpenAiClient implements AiClient {
 
     @Override
     public String reply(String step, List<Map<String, Object>> messages, boolean vision) {
-        String result = call(step, messages, vision, false, Deadline.after(timeout), true);
+        String result = call(step, messages, vision, vision ? visionModel : model, false, Deadline.after(timeout), true);
         if (result.isBlank()) throw new Failure("La IA devolvió una respuesta vacía.", false);
         return result.strip();
     }
@@ -84,8 +88,19 @@ public class OpenAiClient implements AiClient {
     @Override
     public JsonResponse jsonWithin(String step, List<Map<String, Object>> messages, boolean vision,
                                    Deadline deadline, boolean retryAllowed) {
+        return jsonWithin(step, messages, vision, vision ? visionModel : model, deadline, retryAllowed);
+    }
+
+    @Override
+    public JsonResponse auxiliaryJsonWithin(String step, List<Map<String, Object>> messages,
+                                            Deadline deadline, boolean retryAllowed) {
+        return jsonWithin(step, messages, false, auxiliaryModel, deadline, retryAllowed);
+    }
+
+    private JsonResponse jsonWithin(String step, List<Map<String, Object>> messages, boolean vision,
+                                    String selectedModel, Deadline deadline, boolean retryAllowed) {
         for (int retry = 0; retry < (retryAllowed ? 2 : 1); retry++) {
-            String content = call(step, messages, vision, true, deadline, retryAllowed);
+            String content = call(step, messages, vision, selectedModel, true, deadline, retryAllowed);
             int start = content.indexOf('{');
             int end = content.lastIndexOf('}');
             if (start >= 0 && end >= start) {
@@ -101,11 +116,11 @@ public class OpenAiClient implements AiClient {
         throw new Failure("La IA devolvió una respuesta JSON inválida o vacía.", false);
     }
 
-    private String call(String step, List<Map<String, Object>> messages, boolean vision, boolean asJson,
+    private String call(String step, List<Map<String, Object>> messages, boolean vision, String selectedModel, boolean asJson,
                         Deadline deadline, boolean retryAllowed) {
         if (key.isBlank()) throw new Failure("La IA no está configurada.", false);
         var payload = mapper.createObjectNode()
-                .put("model", vision ? visionModel : model)
+                .put("model", selectedModel)
                 .put("temperature", asJson ? 0.1 : 0.2);
         payload.set("messages", mapper.valueToTree(messages));
         if (asJson) payload.putObject("response_format").put("type", "json_object");

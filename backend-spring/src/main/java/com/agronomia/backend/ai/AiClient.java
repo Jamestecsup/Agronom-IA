@@ -17,6 +17,11 @@ public interface AiClient {
         return new JsonResponse(value, value.toString().length());
     }
 
+    default JsonResponse auxiliaryJsonWithin(String step, List<Map<String, Object>> messages,
+                                             Deadline deadline, boolean retry) {
+        return jsonWithin(step, messages, false, deadline, retry);
+    }
+
     record JsonResponse(JsonNode value, int characters) {}
 
     /** Plazo monotónico que puede compartirse entre llamadas en paralelo. */

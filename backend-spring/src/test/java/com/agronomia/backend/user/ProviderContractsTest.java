@@ -16,8 +16,10 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,6 +40,23 @@ class ProviderContractsTest {
 
     @AfterEach
     void stop() { server.stop(0); }
+
+    @Test
+    void auxiliaryModelUsesItsOwnNameAndFallsBackToTheTextModel() {
+        var models = new ConcurrentLinkedQueue<String>();
+        server.createContext("/chat/completions", exchange -> {
+            models.add(json.readTree(exchange.getRequestBody().readAllBytes()).path("model").asText());
+            completion(exchange, "{}");
+        });
+        var configured = new OpenAiClient(json, base, "fixture", "texto", "vision", "auxiliar", 0, false);
+        var defaults = new OpenAiClient(json, base, "fixture", "texto", "vision", 0);
+        var deadline = AiClient.Deadline.after(Duration.ofSeconds(15));
+        configured.auxiliaryJsonWithin("glossary", List.of(), deadline, false);
+        configured.json("refine", List.of(), false);
+        configured.reply("chat", List.of(), true);
+        defaults.auxiliaryJsonWithin("materials", List.of(), deadline, false);
+        assertThat(models).containsExactly("auxiliar", "texto", "vision", "texto");
+    }
 
     @Test
     void usesProviderDelayAndRetriesInvalidJsonOnce() {
