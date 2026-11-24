@@ -71,6 +71,7 @@ export default function Result({ entry, onBack }) {
         </div>
       </div>
 
+      <p>Información orientativa generada por IA.</p>
       <div className="sections">
         {(plant.sections || []).map((section) => (
           <article

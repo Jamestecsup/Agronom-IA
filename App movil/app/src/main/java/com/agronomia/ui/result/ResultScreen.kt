@@ -230,6 +230,12 @@ private fun SuccessContent(
     // Palabra seleccionada del glosario: se muestra su significado en contexto.
     var selectedTerm by remember { mutableStateOf<WordMeaning?>(null) }
 
+    Text(
+        text = "Información orientativa generada por IA.",
+        style = MaterialTheme.typography.bodySmall,
+        textAlign = TextAlign.Center
+    )
+
     plant.sections.forEach { section ->
         SectionCard(
             section = section,
