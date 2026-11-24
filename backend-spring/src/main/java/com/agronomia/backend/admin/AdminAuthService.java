@@ -2,6 +2,7 @@ package com.agronomia.backend.admin;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -23,10 +24,12 @@ public class AdminAuthService {
 
     private final JdbcTemplate jdbcTemplate;
     private final AdminTokenService tokens;
+    private final PasswordEncoder passwords;
 
-    public AdminAuthService(JdbcTemplate jdbcTemplate, AdminTokenService tokens) {
+    public AdminAuthService(JdbcTemplate jdbcTemplate, AdminTokenService tokens, PasswordEncoder passwords) {
         this.jdbcTemplate = jdbcTemplate;
         this.tokens = tokens;
+        this.passwords = passwords;
     }
 
     /** Datos mínimos de la fila de autenticación. */
@@ -62,7 +65,7 @@ public class AdminAuthService {
                 username.trim()
         );
         AuthRow user = rows.stream().findFirst().orElse(null);
-        if (user == null || !DjangoPasswordEncoder.matches(password, user.passwordHash())) {
+        if (user == null || !passwords.matches(password, user.passwordHash())) {
             throw new AdminException(HttpStatus.UNAUTHORIZED, "Usuario o contraseña incorrectos.");
         }
         if (!user.active()) {

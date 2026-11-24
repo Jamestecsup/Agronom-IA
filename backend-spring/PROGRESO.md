@@ -7,7 +7,7 @@ Destino acordado: Spring Boot sirve Android y la web de usuario. Django sirve la
 | Fase | Estado | Evidencia o siguiente hito |
 |---|---|---|
 | 0. Preparación | Completa | La rama parte de `config/mysql-server` (`1619e9b)) e integra `fix/api-csrf` (`8208c7c)) en `da16adf`. La matriz de rutas está en la nota de Obsidian «Migración de backends (Opción A)». Pasaron las dos pruebas de regresión CSRF con SQLite en memoria. |
-| 1. Propiedad de datos | En pausa por decisión de arranque | Se verificó el esquema actual con consultas de metadatos. Pendientes V1, configuración de Flyway, migraciones de estado de Django, codificador PBKDF2 y comprobación en ambas bases. |
+| 1. Propiedad de datos | Completa | Django inicializa con 0001–0009 y 0010 modifica solo el estado. Spring valida el esquema y registra línea base 1. Verificado en MySQL 8.4.13 nuevo y existente. |
 | 2. API de usuario en Spring | Pendiente | Portar y comprobar paridad con dobles Pl@ntNet/IA. |
 | 3. API de administración en Django | Pendiente | Portar el contrato `/api/admin/`, conservar CSRF en `/admin/` y retirar rutas y secretos del puente. |
 | 4. Clientes y configuración | Pendiente | Cambiar los destinos, preparar el arranque y trasladar las variables privadas a su archivo ignorado. |
@@ -15,12 +15,10 @@ Destino acordado: Spring Boot sirve Android y la web de usuario. Django sirve la
 | 6. Identificación asíncrona | Opcional, pendiente | Considerarla después de verificar las fases 0 a 5. |
 | Verificación final | Pendiente | Pruebas automáticas, humo con dobles, compilación Android si hay SDK y un único escaneo real con máximo seis llamadas a IA. |
 
-## Decisión de Fase 1
+## Fase 1 · Propiedad del esquema
 
-La base local usa MySQL Server 8.4.13. Contiene las diez tablas de framework y las nueve de dominio, sin `flyway_schema_history`. Las nueve tablas de dominio referencian `auth_user`. Las migraciones Django anteriores a este cambio crean y renombran las tablas de dominio. Una migración final que solo cambie `managed` dejaría ese DDL activo en una instalación nueva.
+La instalación tiene un único orden. Primero se aprovisiona MySQL con el SQL del proyecto y se ejecuta `scripts/migrar-db.ps1`. Django aplica las migraciones históricas 0001–0009 y registra 0010 de solo estado. Spring comprueba que existan `auth_user` y las nueve tablas de dominio y registra la línea base Flyway 1. JPA valida las columnas mediante `ddl-auto=validate`. La línea base se documenta en Obsidian. Los cambios futuros del dominio van en Flyway desde V2 y se reflejan manualmente en el ORM de Django. El framework `auth_*` y `django_*` sigue bajo Django.
 
-Con `baseline-on-migrate` y `baseline-version=1`, Flyway registra la versión 1 al encontrar un esquema ocupado y omite `V1`. Esto sirve para adoptar el esquema existente, pero omitiría la creación del dominio en una base nueva tras el primer `migrate` de Django. [Comportamiento de Flyway](https://documentation.red-gate.com/flyway/reference/configuration/flyway-namespace/flyway-baseline-on-migrate-setting)
+Flyway usa `agronomia_admin` y Spring usa `agronomia_api`. Las cuentas operativas comparten `auth_user` y `perfiles_usuario`. El codificador de Spring valida y genera el formato `pbkdf2_sha256` que Django usa para esas contraseñas.
 
-**Propuesta pendiente de confirmación:** usar `baseline-version=0` en la instalación nueva para ejecutar V1 después de que Django cree `auth_user`. Adoptar la base existente con `baseline-version=1` solo después de verificar el esquema contra V1. Reemplazar la cadena de dominio de Django por una migración que reconstruya el estado del ORM sin DDL y preserve el historial de bases completamente migradas. Comprobar que un esquema parcial falle con diagnóstico antes de registrar la línea base.
-
-Durante esta preparación se revisó el código y se consultó solo metadata de MySQL. El esquema, el tráfico de servicio y la configuración privada conservan el estado de la rama de origen.
+Se comprobó que Spring rechaza una base sin migrar antes de registrar Flyway, y que inicia con validación JPA después de Django tanto en una instancia MySQL 8.4.13 aislada como en la base actual. Las dos bases registraron 0010 y línea base 1. Las migraciones 0001–0009 se conservaron. La preparación y estas verificaciones no consumieron cuota externa.
