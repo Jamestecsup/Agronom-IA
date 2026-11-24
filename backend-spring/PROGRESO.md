@@ -8,12 +8,12 @@ Destino acordado: Spring Boot sirve Android y la web de usuario. Django sirve la
 |---|---|---|
 | 0. Preparación | Completa | La rama parte de `config/mysql-server` (`1619e9b)) e integra `fix/api-csrf` (`8208c7c)) en `da16adf`. La matriz de rutas está en la nota de Obsidian «Migración de backends (Opción A)». Pasaron las dos pruebas de regresión CSRF con SQLite en memoria. |
 | 1. Propiedad de datos | Completa | Django inicializa con 0001–0009 y 0010 modifica solo el estado. Spring valida el esquema y registra línea base 1. Verificado en MySQL 8.4.13 nuevo y existente. |
-| 2. API de usuario en Spring | En pausa por paridad de carga | Spring tiene una ruta heredada y pruebas que aceptan WebP sin autenticación. Queda por confirmar el retiro de ese contrato. |
-| 3. API de administración en Django | Pendiente | Portar el contrato `/api/admin/`, conservar CSRF en `/admin/` y retirar rutas y secretos del puente. |
-| 4. Clientes y configuración | Pendiente | Cambiar los destinos, preparar el arranque y trasladar las variables privadas a su archivo ignorado. |
-| 5. Calidad de las fichas | Pendiente | Actualizar las skills y evaluar los textos con datos simulados. |
-| 6. Identificación asíncrona | Opcional, pendiente | Considerarla después de verificar las fases 0 a 5. |
-| Verificación final | Pendiente | Pruebas automáticas, humo con dobles, compilación Android si hay SDK y un único escaneo real con máximo seis llamadas a IA. |
+| 2. API de usuario en Spring | Implementada y verificada con dobles | Registro, Bearer, fotos, plantas, identificación, chat y PDF/cuidados. Los dobles HTTP verificaron confirmación sin volver a identificar y fotografías en su turno. |
+| 3. API de administración en Django | Implementada y verificada | Ocho rutas del panel con Bearer firmado por Django. Se mantienen CSRF en el sitio nativo y los campos camelCase del panel React. |
+| 4. Clientes y configuración | Implementada | Proxies web, URL base Android, variables y arranque local apuntan a los servicios correspondientes. |
+| 5. Calidad de las fichas | Implementada y verificada con dobles | Instrucciones revisadas, ocho secciones con condicionante y aviso orientativo en web y Android. |
+| 6. Identificación asíncrona | Diseño, implementación diferida | Mantener las rutas síncronas. Crear un trabajo autenticado que registre el dueño, el lote, el estado y el paso actual en MySQL, con idempotencia por solicitud y un ejecutor acotado. La web consultaría solo trabajos propios. Android seguiría con la ruta síncrona hasta probar una transición. |
+| Verificación final | Ejecutada, con límite en la calidad observada | Pruebas Spring/Django, las dos webs y Android. Humo integral con dobles. Un escaneo real exitoso, cuatro de seis llamadas a IA, una sección propia y siete de respaldo. |
 
 ## Fase 1 · Propiedad del esquema
 
@@ -25,4 +25,25 @@ Se comprobó que Spring rechaza una base sin migrar antes de registrar Flyway, y
 
 ## Fase 2 · Colisión en la ruta de carga
 
-Django y Spring publican la misma ruta `POST /agronomia-api/api/images.php`. Django exige Bearer y acepta JPEG/PNG (`backend-django/core/views.py:32,441–468`). La versión heredada de Spring recibe la petición sin Bearer y una prueba exige WebP con HTTP 201 (`ImageUploadController.java:22–25` y `ImageUploadApiIntegrationTest.java:116–121`). La web de usuario filtra JPEG/PNG y Android convierte sus selecciones a JPEG antes de transmitirlas. Queda por confirmar si hay otros consumidores del contrato heredado. La recomendación es mantener la ruta y el JSON de Django, exigir Bearer y actualizar las pruebas para cubrir la paridad y rechazar WebP en esta ruta.
+Django y Spring publican la misma ruta `POST /agronomia-api/api/images.php`. Django exige Bearer y acepta JPEG/PNG (`backend-django/core/views.py:32,441–468`). La versión heredada de Spring recibe la petición sin Bearer y una prueba exige WebP con HTTP 201 (`ImageUploadController.java:22–25` y `ImageUploadApiIntegrationTest.java:116–121`). La web de usuario filtra JPEG/PNG y Android convierte sus selecciones a JPEG antes de transmitirlas. El equipo aprobó retirar el contrato heredado. Se mantiene la ruta y el JSON de Django. Se exige Bearer a una cuenta activa y se guardan las fotos con su usuario. JPEG/PNG devuelven 201, WebP devuelve 422 y sin Bearer se devuelve 401. Las pruebas de integración heredadas se conservaron y adaptaron.
+
+## Decisiones de paridad
+
+- Reutilizados `ImageBatchService`, el guardado transaccional de metadatos y la validación por firma y decodificación. El contrato Django gana sobre el WebP público anterior.
+- Se reutiliza PDFBox para extraer el horario. El cliente IA central devuelve 502 con mensaje explícito cuando el proveedor rechaza imágenes. El puente antiguo se retiró.
+- El panel vuelve a validar rol y cuenta activa en cada petición. Un cambio de estado invalida el acceso aunque el token siga dentro de sus ocho horas. Los clientes deben iniciar sesión otra vez al cambiar de backend.
+- El ciclo de registro usa el mismo PBKDF2 en ambos backends. Django aplica CSRF al sitio nativo y exime solo la API del panel. Spring usa Bearer explícito sin sesiones ni autenticación de cookie.
+- Web de usuario y Android muestran el aviso de contenido orientativo. Las fichas usan condiciones por categoría y un texto prudente de respaldo. Se mantuvieron todos los campos de la ficha.
+- Limitación operacional: los contadores de login son locales por proceso. Para varias réplicas, configurar un límite compartido y un almacenamiento compartido privado para las imágenes; Django solo necesita lectura del volumen.
+
+
+## Evidencia de verificación 2026-11-24
+
+- Pasaron 19 pruebas de Spring y cuatro de Django. Las dos webs compilaron con Vite y Android compiló con `assembleDebug`.
+- El humo en una instancia descartable de MySQL, sin proveedores externos, cubrió registro, login, carga, identificación ambigua, confirmación, portada, chat con foto, historial, PDF, alta y reprogramación de cuidados, panel y revocación de sesión. Confirmar no volvió a llamar a Pl@ntNet. Una prueba local reproduce una respuesta con cabeceras prontas y cuerpo lento para verificar el plazo de IA.
+- El único escaneo real, desde Spring, identificó `Helianthus annuus` con 44,031 % como candidata. La confirmación HTTP 200 produjo ocho secciones, una con texto propio y siete de respaldo. Usó cuatro de seis llamadas de IA, sin 429. El recorrido duró 169,50 s.
+- El humo detectó que el cuerpo de una respuesta de OpenRouter tardó 122,193 s. Se aplicó un tope de 90 s a la recepción completa y se explicitó la forma de ocho claves obligatorias en el prompt de categorías. Se volvió a ejecutar el humo con dobles sobre la versión final. No se repitió el escaneo real. Queda por validar con otra prueba autorizada si el modelo configurado devuelve las ocho categorías con contenido propio.
+
+## Diseño diferido de la Fase 6
+
+Propuesta: añadir `POST /agronomia-api/api/identification-jobs` y `GET /agronomia-api/api/identification-jobs/{id}`, manteniendo los síncronos. Una migración Flyway V2 o posterior guardaría usuario, lote, estado y paso, tiempos, resultado y una clave de idempotencia por usuario. Un ejecutor acotado reclama trabajos pendientes, limita concurrencia y marca fallos recuperables. La web consultaría el estado con espera creciente y mostraría candidatas o ficha. Android conservaría el flujo síncrono hasta probar la transición.
