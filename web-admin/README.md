@@ -8,7 +8,7 @@ revisar las identificaciones y el chat generados por el backend Django.
 
 - Node 18+ (probado con Node 24).
 - Spring Boot en `http://127.0.0.1:8081`.
-- MySQL de XAMPP encendido con las tablas migradas por Django.
+- MySQL Server en el puerto 3306, con las tablas aplicadas mediante `scripts/migrar-db.ps1`.
 
 ## Cómo ejecutarlo
 

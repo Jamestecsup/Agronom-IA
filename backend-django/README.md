@@ -13,54 +13,50 @@ comparte la **misma base de datos MySQL**.
 ## Requisitos
 
 - Python 3.11+ (probado con 3.14).
-- MySQL/MariaDB de XAMPP en `127.0.0.1:3306` (o SQLite para pruebas).
+- MySQL Server en `127.0.0.1:3306` (o SQLite para pruebas).
 
 ## Instalación
 
 ```powershell
 cd backend-django
-py -m pip install -r requirements.txt
-Copy-Item .env.example .env    # rellena las claves
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env    # solo si no existe
+.\.venv\Scripts\Activate.ps1
 ```
 
 ### Base de datos
 
-1. Arranca MySQL desde el panel de XAMPP.
-2. Crea la base y la tabla inicial de imágenes `plant_images`:
+1. Inicia MySQL Server en `127.0.0.1:3306` y prepara la base siguiendo el [README raíz](../README.md#1-base-de-datos).
+2. Configura `DB_USER=agronomia_api` para la ejecución y `DB_MIGRATE_USER=agronomia_admin` para mantenimiento en `.env`, con sus contraseñas respectivas.
+3. Desde `backend-django/` aplica las migraciones:
 
 ```powershell
-C:\xampp\mysql\bin\mysql.exe -u root < ..\docs\sql\agronomia.sql
-```
-
-3. Aplica las tablas nuevas de Django:
-
-```powershell
-py manage.py migrate
+..\scripts\migrar-db.ps1
 ```
 
 La migración `0008_spanish_table_names` renombra las tablas propias de
 Agronom-IA a nombres en español y conserva los registros. Las tablas internas
 `auth_*` y `django_*` mantienen sus nombres de Django.
 
-> Para pruebas rápidas sin MySQL: `$env:USE_SQLITE="1"` antes de `migrate`
+> Para pruebas rápidas sin MySQL: `$env:USE_SQLITE="1"` antes de `python manage.py migrate`
 > y `runserver`.
 
 ### Usuarios demo y versión de Django
 
 ```powershell
-py manage.py seed_demo
+python manage.py seed_demo
 ```
 
 Crea `admin` / `Admin12345` (rol admin) y `agricultor` / `Campo12345` (rol user).
 Solo para desarrollo local.
 
-La MariaDB de XAMPP es 10.4, por eso el proyecto fija **Django 4.2**: las
-versiones 5.x exigen MariaDB 10.5 o superior.
+El proyecto usa Django 4.2 con PyMySQL y `cryptography` para autenticar con MySQL Server.
 
 ## Ejecutar
 
 ```powershell
-py manage.py runserver 0.0.0.0:8000
+python manage.py runserver 0.0.0.0:8000
 ```
 
 El emulador Android llega al host con `http://10.0.2.2:8000`.
@@ -155,7 +151,7 @@ Se ajustan en `core/services/pipeline.py` (`MIN_CONFIDENCE` y
 ## Pruebas
 
 ```powershell
-py manage.py test core.tests
+python manage.py test core.tests
 ```
 
 Son pruebas del pipeline con Pl@ntNet y Gemini simulados (`unittest.mock`):

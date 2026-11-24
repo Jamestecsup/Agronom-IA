@@ -1,7 +1,7 @@
 # Agronom-IA: servicio de administración (Spring Boot)
 
 Servicio Java/Spring Boot del panel de administración. Comparte **una sola base
-MySQL (XAMPP)** con el backend Django: Django atiende al móvil y a la web de
+MySQL Server** con el backend Django: Django atiende al móvil y a la web de
 usuario (identificación con Pl@ntNet + Gemini), y este servicio atiende a la web
 de administración (login con roles, usuarios, identificaciones y estadísticas).
 
@@ -18,20 +18,19 @@ conserva como contrato heredado de subida de imágenes.
 ## Requisitos
 
 - JDK 17 (el proyecto usa Java 17).
-- MySQL/MariaDB de XAMPP encendido (puerto 3306).
+- MySQL Server encendido (puerto 3306).
 - Base `agronomia` con las tablas de Django ya migradas (ver `backend-django/README.md`).
 
 No hace falta instalar Maven: el proyecto incluye el wrapper (`mvnw.cmd`).
 
 ## Cómo ejecutarlo
 
-1. Enciende MySQL desde el panel de XAMPP.
+1. Inicia el servicio de Windows de MySQL Server.
 2. Aplica las migraciones de Django una vez (crean las tablas internas `auth_*`
    y `django_*`, además de las tablas de Agronom-IA con nombres en español):
    ```powershell
    cd backend-django
-   py manage.py migrate
-   py manage.py seed_demo
+   ..\scripts\migrar-db.ps1
    ```
 3. Arranca Spring:
    ```powershell
@@ -45,16 +44,15 @@ El servicio queda en `http://127.0.0.1:8081`.
 
 | Variable | Por defecto | Uso |
 |---|---|---|
-| `DB_URL` | `jdbc:mariadb://127.0.0.1:3306/agronomia` | Conexión MySQL |
-| `DB_USERNAME` | `root` | Usuario (XAMPP) |
-| `DB_PASSWORD` | vacío | Contraseña |
+| `DB_URL` | `jdbc:mysql://127.0.0.1:3306/agronomia` | Conexión MySQL |
+| `DB_USERNAME` | requerido | Usuario de ejecución `agronomia_api` |
+| `DB_PASSWORD` | requerida | Contraseña de la cuenta de ejecución |
 | `SERVER_PORT` | `8081` | Puerto HTTP |
 | `ADMIN_TOKEN_SECRET` | `dev-only-change-me` | Firma de los tokens del panel |
 | `ADMIN_TOKEN_TTL_HOURS` | `8` | Duración de la sesión |
 | `ADMIN_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Orígenes permitidos del frontend |
 
-En un equipo compartido cambia `ADMIN_TOKEN_SECRET` y usa la cuenta
-`agronomia_api` creada por `docs/sql/agronomia.sql` en lugar de `root`.
+Define estas variables en el proceso antes de arrancar Spring. Usar `agronomia_api` con los permisos de ejecución descritos en el [README raíz](../README.md#1-base-de-datos). Reserva `agronomia_admin` para las migraciones de Django. Consulta `application-example.env` para el entorno de Spring.
 
 ## Usuarios demo
 

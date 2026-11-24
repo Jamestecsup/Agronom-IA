@@ -20,7 +20,7 @@ que comparte la misma base de datos MySQL.
    Web de usuario ─►│  identifica, ficha, chat  │──► Gemini (skills)
    (React) :5174    │  login + roles            │
                     └────────────┬─────────────┘
-                                 │  MySQL (XAMPP) :3306
+                                 │  MySQL Server :3306
                                  │  base `agronomia`
                     ┌────────────┴─────────────┐
                     │  Spring Boot (servicio    │
@@ -54,7 +54,7 @@ que comparte la misma base de datos MySQL.
 | Spring Boot (admin) | http://127.0.0.1:8081 |
 | Web de usuario | http://localhost:5174 |
 | Panel de administración | http://localhost:5173 |
-| MySQL (XAMPP) | 127.0.0.1:3306 |
+| MySQL Server | 127.0.0.1:3306 |
 
 ### Capturas de la app móvil
 
@@ -72,7 +72,7 @@ Con MySQL, las dependencias de Python/Node y el jar de Spring ya instalados:
 powershell -ExecutionPolicy Bypass -File scripts\iniciar-demo.ps1 -ConEmulador
 ```
 
-Arranca en orden MySQL → Django → Spring → webs → emulador, respeta lo que ya
+Comprueba que MySQL Server responde en el puerto 3306. Luego arranca Django → Spring → webs → emulador y respeta lo que ya
 esté corriendo y al final ejecuta `check-servicios.ps1`. Sin emulador, omite
 `-ConEmulador`. Cada servicio queda en su propia ventana: no las cierres
 durante la demo.
@@ -86,10 +86,9 @@ Los pasos detallados de instalación siguen a continuación.
 
 ### 1. Base de datos
 
-1. Abre XAMPP y arranca **MySQL**.
-2. Crea la base y el usuario con `docs/sql/agronomia.sql` (o phpMyAdmin).
-3. Las tablas las crea Django con `migrate`; `plant_images` ya existe en el
-   esquema original y se mantiene.
+1. Inicia el servicio de Windows de MySQL Server y confirma que escucha en `127.0.0.1:3306`.
+2. Usa una copia temporal privada de `docs/sql/agronomia.sql`. Sustituye los marcadores con las contraseñas de `DB_PASSWORD` y `DB_MIGRATE_PASSWORD` de tu entorno local. En el cliente `mysql -u root -p`, verifica `SELECT VERSION();` y ejecuta la copia con `SOURCE`. Elimina la copia al terminar.
+3. Usa `agronomia_api` en ambos backends. Reserva `agronomia_admin` para `scripts/migrar-db.ps1`, que aplica las migraciones de Django.
 
 ### 2. Backend Django (servicio de usuario)
 
@@ -97,19 +96,19 @@ Los pasos detallados de instalación siguen a continuación.
 cd backend-django
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 Copy-Item .env.example .env    # completa tus claves
-py manage.py migrate
-py manage.py seed_demo         # usuarios de demo
-py manage.py runserver 0.0.0.0:8000
+..\scripts\migrar-db.ps1
+python manage.py seed_demo         # usuarios de demo
+python manage.py runserver 0.0.0.0:8000
 ```
 
 Las claves (`AI_API_KEY`, `PLANTNET_API_KEY`) van **solo** en `.env`, que
 está ignorado por Git. La app y las webs nunca reciben esas claves. El script
 de demo comparte con Spring la clave interna `SCHEDULE_INTERNAL_TOKEN` y la
-configuración de IA para el procesamiento de horarios. Tras agregar las tablas,
-ejecuta `py manage.py migrate`. Sin MySQL
-se puede trabajar con SQLite: `$env:USE_SQLITE=1`.
+configuración de IA para el procesamiento de horarios. El arranque de la demo también requiere que `AI_API_KEY` esté configurada. Tras agregar las tablas,
+ejecuta `..\scripts\migrar-db.ps1`. Sin MySQL
+se puede trabajar con SQLite y ejecutar directamente `python manage.py migrate`: `$env:USE_SQLITE=1`.
 
 Detalle: [`backend-django/README.md`](backend-django/README.md).
 
@@ -118,9 +117,7 @@ Detalle: [`backend-django/README.md`](backend-django/README.md).
 ```powershell
 cd backend-spring
 .\mvnw.cmd -q -DskipTests package
-$env:DB_USERNAME="agronomia_api"; $env:DB_PASSWORD="..."
-$env:ADMIN_TOKEN_SECRET="un-secreto-largo"
-$env:AI_API_KEY="..."; $env:SCHEDULE_INTERNAL_TOKEN="..."
+# Configura las variables del proceso según backend-spring/application-example.env.
 java -jar target/agronomia-backend-0.1.0-SNAPSHOT.jar
 ```
 
@@ -156,7 +153,7 @@ los detalles.
 
 ## Cuentas de demo
 
-Se crean con `py manage.py seed_demo` (solo desarrollo):
+Se crean con `python manage.py seed_demo` (solo desarrollo):
 
 | Usuario | Contraseña | Rol | Entra en |
 |---|---|---|---|
@@ -212,7 +209,7 @@ deja que un usuario se asigne el rol `admin` al registrarse.
 
 ## Estado
 
-Funcionando de punta a punta sobre MySQL/XAMPP: app móvil, web de usuario,
+Funcionando de punta a punta sobre MySQL Server: app móvil, web de usuario,
 backend Django, backend Spring y panel de administración. Las pruebas se
 hicieron con fotos de girasol (identificada), una foto recortada (ambigua con
 candidatas) y una imagen gris (no identificada).

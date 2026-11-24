@@ -38,7 +38,7 @@ function Test-Salud {
     }
 }
 
-Test-Puerto  -Nombre "MySQL (XAMPP)"         -Host_ "127.0.0.1" -Puerto 3306 -Detalle "base agronomia"
+Test-Puerto  -Nombre "MySQL Server"         -Host_ "127.0.0.1" -Puerto 3306 -Detalle "base agronomia"
 Test-Salud   -Nombre "Django (usuario)"      -Url "http://127.0.0.1:8000/agronomia-api/api/health" -Puerto 8000
 Test-Salud   -Nombre "Spring (admin)"        -Url "http://127.0.0.1:8081/api/admin/health" -Puerto 8081
 Test-Salud   -Nombre "Web de usuario"        -Url "http://localhost:5174/" -Puerto 5174

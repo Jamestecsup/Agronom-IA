@@ -1,7 +1,7 @@
 <#
   Inicia todos los servicios de Agronom-IA para la demo.
 
-  Orden: MySQL (XAMPP) -> Django (usuario) -> Spring (admin) -> webs -> emulador.
+  Requiere MySQL Server activo. Orden: Django (usuario) -> Spring (admin) -> webs -> emulador.
   Si un servicio ya está corriendo, lo respeta y no lo duplica.
 
   Uso:
@@ -17,34 +17,38 @@ param(
 $ErrorActionPreference = "Stop"
 $raiz = Split-Path -Parent $PSScriptRoot
 
-$mysqlExe = "C:\xampp\mysql\bin\mysqld.exe"
-$mysqlIni = "C:\xampp\mysql\bin\my.ini"
 $adb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
 $emuladorExe = Join-Path $env:LOCALAPPDATA "Android\Sdk\emulator\emulator.exe"
 $jarSpring = Join-Path $raiz "backend-spring\target\agronomia-backend-0.1.0-SNAPSHOT.jar"
 $archivoEnvDjango = Join-Path $raiz "backend-django\.env"
 
-# Spring procesa los horarios y necesita la misma configuración privada de IA
-# y la clave interna que Django usa para llamarlo. No se muestran en consola.
-if (Test-Path $archivoEnvDjango) {
-    foreach ($line in Get-Content $archivoEnvDjango) {
-        if ($line -match '^\s*(AI_API_KEY|AI_BASE_URL|AI_MODEL|SCHEDULE_INTERNAL_TOKEN)\s*=\s*(.*)\s*$') {
-            $nombreVariable = $Matches[1]
-            $valorVariable = $Matches[2].Trim()
-            if ($valorVariable.Length -ge 2 -and
-                (($valorVariable.StartsWith('"') -and $valorVariable.EndsWith('"')) -or
-                 ($valorVariable.StartsWith("'") -and $valorVariable.EndsWith("'")))) {
-                $valorVariable = $valorVariable.Substring(1, $valorVariable.Length - 2)
-            }
-            if (-not [Environment]::GetEnvironmentVariable($nombreVariable)) {
-                [Environment]::SetEnvironmentVariable($nombreVariable, $valorVariable, "Process")
-            }
-        }
-    }
-}
-if (-not $env:SCHEDULE_INTERNAL_TOKEN) {
-    $env:SCHEDULE_INTERNAL_TOKEN = "dev-only-agronomia-schedule"
-}
+$pythonDjango = Join-Path $raiz "backend-django\.venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $pythonDjango)) { throw "Falta el entorno virtual de Django. Consulta backend-django/README.md." }
+if (-not (Test-Path -LiteralPath $archivoEnvDjango)) { throw "Falta backend-django/.env." }
+
+# Usa el lector de .env de Django y captura la salida sin mostrarla.
+$leerConfiguracion = @'
+import json, sys
+from dotenv import dotenv_values
+config = dotenv_values(sys.argv[1], interpolate=False)
+names = ("DB_NAME", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD",
+         "ADMIN_TOKEN_SECRET", "AI_API_KEY", "AI_BASE_URL", "AI_MODEL",
+         "SCHEDULE_INTERNAL_TOKEN")
+missing = [name for name in names if not (config.get(name) or "").strip()]
+if missing:
+    sys.exit("Faltan variables en backend-django/.env: " + ", ".join(missing))
+if (config["DB_HOST"], config["DB_PORT"], config["DB_NAME"]) != ("127.0.0.1", "3306", "agronomia"):
+    sys.exit("La demo requiere MySQL Server en 127.0.0.1:3306 y la base agronomia.")
+spring = {name: config[name] for name in names[4:]}
+spring["DB_USERNAME"] = config["DB_USER"]
+spring["DB_URL"] = "jdbc:mysql://" + config["DB_HOST"] + ":" + config["DB_PORT"] + "/" + config["DB_NAME"]
+if config.get("PLANT_UPLOAD_DIR"):
+    spring["PLANT_UPLOAD_DIR"] = config["PLANT_UPLOAD_DIR"]
+print(json.dumps(spring))
+'@
+$configPartes = $leerConfiguracion | & $pythonDjango - $archivoEnvDjango
+if ($LASTEXITCODE -ne 0) { throw "No se pudo cargar la configuración de Spring. Revisa backend-django/.env." }
+$configSpring = ($configPartes -join "") | ConvertFrom-Json
 
 function Puerto-Abierto {
     param([int]$Puerto, [string]$Equipo = "127.0.0.1")
@@ -90,18 +94,11 @@ Write-Host ""
 Write-Host "=== Agronom-IA | inicio de la demo ===" -ForegroundColor Green
 Write-Host ""
 
-# 1. MySQL -----------------------------------------------------------------
-if (Puerto-Abierto 3306) {
-    Write-Host "[1/5] MySQL ya esta encendido."
-} else {
-    Write-Host "[1/5] Encendiendo MySQL (XAMPP)..."
-    if (-not (Test-Path $mysqlExe)) { throw "No se encontro $mysqlExe" }
-    Start-Process -FilePath $mysqlExe `
-        -ArgumentList @("--defaults-file=$mysqlIni", "--standalone") `
-        -WindowStyle Minimized | Out-Null
-    Esperar-Puerto 3306 "MySQL" 60
-    Write-Host "      MySQL listo en el puerto 3306."
+# 1. MySQL Server ----------------------------------------------------------
+if (-not (Puerto-Abierto 3306)) {
+    throw "MySQL Server no responde en 127.0.0.1:3306. Inicia el servicio de Windows e inténtalo de nuevo."
 }
+Write-Host "[1/5] MySQL Server responde en el puerto 3306."
 
 # 2. Django (servicio de usuario) ------------------------------------------
 if (Puerto-Abierto 8000) {
@@ -110,7 +107,7 @@ if (Puerto-Abierto 8000) {
     Write-Host "[2/5] Iniciando Django (servicio de usuario)..."
     $comando = "Set-Location '$raiz\backend-django'; " +
                "Write-Host 'Django | servicio de usuario' -ForegroundColor Cyan; " +
-               "py manage.py runserver 0.0.0.0:8000 --noreload"
+               "& '.\.venv\Scripts\python.exe' manage.py runserver 0.0.0.0:8000 --noreload"
     Iniciar-Ventana $comando
     Esperar-Puerto 8000 "Django" 90
     Write-Host "      Django listo en http://127.0.0.1:8000"
@@ -131,17 +128,23 @@ if (Puerto-Abierto 8081) {
             }
         } finally { Pop-Location }
     }
-    $dbUsuario = if ($env:DB_USERNAME) { $env:DB_USERNAME } else { "agronomia_api" }
-    $dbClave = if ($env:DB_PASSWORD) { $env:DB_PASSWORD } else { "agronomia_local_2026" }
-    $token = if ($env:ADMIN_TOKEN_SECRET) { $env:ADMIN_TOKEN_SECRET } else { "dev-only-change-me" }
-    $comando = "`$env:DB_USERNAME='$dbUsuario'; " +
-               "`$env:DB_PASSWORD='$dbClave'; " +
-               "`$env:ADMIN_TOKEN_SECRET='$token'; " +
-               "`$env:SERVER_PORT='8081'; " +
-               "Set-Location '$raiz\backend-spring'; " +
+    $comando = "Set-Location '$raiz\backend-spring'; " +
                "Write-Host 'Spring Boot | panel de administracion' -ForegroundColor Cyan; " +
                "java -jar 'target\agronomia-backend-0.1.0-SNAPSHOT.jar'"
-    Iniciar-Ventana $comando
+    # El proceso hijo hereda la configuración sin secretos en sus argumentos.
+    $entornoAnterior = @{}
+    try {
+        foreach ($propiedad in $configSpring.PSObject.Properties) {
+            $nombre = $propiedad.Name
+            $entornoAnterior[$nombre] = [Environment]::GetEnvironmentVariable($nombre, "Process")
+            [Environment]::SetEnvironmentVariable($nombre, [string]$propiedad.Value, "Process")
+        }
+        Iniciar-Ventana $comando
+    } finally {
+        foreach ($nombre in $entornoAnterior.Keys) {
+            [Environment]::SetEnvironmentVariable($nombre, $entornoAnterior[$nombre], "Process")
+        }
+    }
     Esperar-Puerto 8081 "Spring" 90
     Write-Host "      Spring listo en http://127.0.0.1:8081"
 }
@@ -194,8 +197,8 @@ Write-Host ""
 powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "check-servicios.ps1")
 Write-Host ""
 Write-Host "Cuentas de demo:" -ForegroundColor Yellow
-Write-Host "  Web usuario : http://localhost:5174   agricultor / Campo12345"
-Write-Host "  Panel admin : http://localhost:5173   admin / Admin12345"
+Write-Host "  Web usuario : http://localhost:5174"
+Write-Host "  Panel admin : http://localhost:5173"
 Write-Host "  Django API  : http://127.0.0.1:8000/agronomia-api/api/health"
 Write-Host "  Spring API  : http://127.0.0.1:8081/api/admin/health"
 Write-Host ""
