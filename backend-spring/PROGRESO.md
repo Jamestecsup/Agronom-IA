@@ -47,3 +47,11 @@ Django y Spring publican la misma ruta `POST /agronomia-api/api/images.php`. Dja
 ## Diseño diferido de la Fase 6
 
 Propuesta: añadir `POST /agronomia-api/api/identification-jobs` y `GET /agronomia-api/api/identification-jobs/{id}`, manteniendo los síncronos. Una migración Flyway V2 o posterior guardaría usuario, lote, estado y paso, tiempos, resultado y una clave de idempotencia por usuario. Un ejecutor acotado reclama trabajos pendientes, limita concurrencia y marca fallos recuperables. La web consultaría el estado con espera creciente y mostraría candidatas o ficha. Android conservaría el flujo síncrono hasta probar la transición.
+
+## Correcciones de ficha, tiempos y seguridad · 2026-11-24
+
+- Categorías: INFO registra longitud y claves faltantes, desconocidas y no textuales. La vista previa de hasta 300 caracteres solo existe con `AI_DEBUG_RESPONSES` activo, desactivado en la plantilla. Se normalizan claves en español y mayúsculas y se aplanan listas y objetos. Con cuatro o más categorías vacías se pide una sola corrección. Si sigue incompleta, se devuelve `insufficient`.
+- Plazos: 20 s para pistas sin reintento, 25 s para refinamiento, 90 s para categorías y 30 s para glosario y materiales en paralelo. Presupuesto común de 150 s para identificar o confirmar. Spring descarta esperas por cuota que exceden el tiempo disponible.
+- Seguridad: Django exige una clave o un permiso explícito de desarrollo. Spring verifica Bearer antes de resolver multipart, limita tamaño, texto y registros por IP, exige contraseñas de ocho caracteres y registra fecha UTC.
+- Verificación local: 33 pruebas Spring y 4 Django, más compilación de las dos webs. Un servidor lento envió las cabeceras sin terminar el cuerpo. `confirm` devolvió HTTP 502 en una prueba de 90,152 s, dentro de los 180 s requeridos. También se verificó el fallo de arranque de Django sin clave y el arranque con permiso explícito de desarrollo.
+- Se completaron las notas «Configuración de IA» y «HU-07». Se hicieron cero escaneos reales y cero llamadas a proveedores externos. Falta el escaneo real que se autorice por separado.

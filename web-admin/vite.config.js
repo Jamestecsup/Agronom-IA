@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// El panel habla con Spring Boot (puerto 8081). En desarrollo Vite hace de
+// El panel habla con Django (puerto 8000). En desarrollo Vite hace de
 // proxy para no depender de CORS; en producción sirve el build estático.
 export default defineConfig({
   plugins: [react()],

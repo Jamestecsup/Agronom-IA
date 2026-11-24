@@ -30,12 +30,16 @@ public class UserAccounts {
     }
 
     @Transactional
-    public Map<String, Object> register(Credentials input) {
+    public Map<String, Object> register(Credentials input, String remoteAddress) {
+        attempts.reserveRegistration(remoteAddress);
         String username = clean(input.username());
         String password = clean(input.password());
         String email = clean(input.email());
         if (username.isEmpty() || password.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Faltan username o password.");
+        }
+        if (password.codePointCount(0, password.length()) < 8) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "La contraseña debe tener al menos ocho caracteres.");
         }
         if (username.length() > 150 || email.length() > 254 || password.length() > 1024) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Los datos de la cuenta exceden la longitud permitida.");
@@ -44,7 +48,7 @@ public class UserAccounts {
             jdbc.update("""
                     INSERT INTO auth_user
                     (username, password, email, first_name, last_name, is_active, is_staff, is_superuser, date_joined)
-                    VALUES (?, ?, ?, '', '', TRUE, FALSE, FALSE, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, '', '', TRUE, FALSE, FALSE, UTC_TIMESTAMP(6))
                     """, username, passwords.encode(password), email);
         } catch (DuplicateKeyException error) {
             throw new ApiException(HttpStatus.CONFLICT, "El usuario ya existe.");

@@ -1,7 +1,7 @@
 # Instrucciones de la categoría uses
 
-Describe usos ornamentales, ecológicos o productivos respaldados. Omite propiedades medicinales y afirmaciones de toxicidad o comestibilidad que no puedas sostener. No sugieras consumir la planta para verificar su identificación.
+Describe usos ornamentales, ecológicos o productivos respaldados. Menciona propiedades medicinales, toxicidad o comestibilidad solo si hay evidencia fiable y pertinente. La identificación se verifica con rasgos botánicos.
 
-Escribe en español, sin anglicismos. Cuando falte evidencia, admite «no sé» y usa el marcador interno "unknown" si la categoría entera es incierta. La aplicación recuerda en cada sección que el cuidado depende del clima y de la variedad.
+Escribe de 4 a 6 frases en español, sin anglicismos, con datos concretos y rangos fiables. Explica cómo varían según el clima, el suelo o la variedad. Si falta un dato específico de una especie conocida, escribe la mejor guía general con sus condiciones. Usa el marcador "unknown" solo si no conoces la especie.
 
 Estas instrucciones describen el texto del valor de la categoría en el JSON de la ficha.

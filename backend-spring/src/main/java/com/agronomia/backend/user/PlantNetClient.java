@@ -1,5 +1,6 @@
 package com.agronomia.backend.user;
 
+import com.agronomia.backend.ai.AiClient;
 import com.agronomia.backend.images.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,7 +25,8 @@ import java.util.List;
 public class PlantNetClient {
     public record Photo(Path path, String mimeType) {}
 
-    private final RestClient http;
+    private final java.net.http.HttpClient transport = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(90)).build();
     private final String base;
     private final String key;
     private final String project;
@@ -38,13 +40,13 @@ public class PlantNetClient {
         this.key = key;
         this.project = project;
         this.language = language;
-        var factory = new JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(90)).build());
-        factory.setReadTimeout(Duration.ofSeconds(90));
-        this.http = RestClient.builder().requestFactory(factory).build();
     }
 
     public JsonNode identify(List<Photo> photos, String organ) {
+        return identify(photos, organ, AiClient.Deadline.after(Duration.ofSeconds(90)));
+    }
+
+    public JsonNode identify(List<Photo> photos, String organ, AiClient.Deadline deadline) {
         if (key.isBlank()) throw unavailable();
         var parts = new LinkedMultiValueMap<String, Object>();
         for (Photo photo : photos) {
@@ -56,6 +58,11 @@ public class PlantNetClient {
         var uri = UriComponentsBuilder.fromUriString(base).pathSegment("v2", "identify", project)
                 .queryParam("api-key", key).queryParam("lang", language).queryParam("nb-results", 10)
                 .build().encode().toUri();
+        long remaining = deadline.cap(Duration.ofSeconds(90)).remainingNanos();
+        if (remaining == 0) throw unavailable();
+        var factory = new JdkClientHttpRequestFactory(transport);
+        factory.setReadTimeout(Duration.ofNanos(remaining));
+        var http = RestClient.builder().requestFactory(factory).build();
         try {
             JsonNode response = http.post().uri(uri).contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(parts).retrieve().body(JsonNode.class);

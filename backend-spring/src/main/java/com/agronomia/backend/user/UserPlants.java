@@ -42,6 +42,7 @@ public class UserPlants {
     }
 
     public ObjectNode identify(long user, String batch, String organ) {
+        var deadline = AiClient.Deadline.after(java.time.Duration.ofSeconds(150));
         batch = batch.strip();
         if (batch.isBlank()) throw new ApiException(HttpStatus.BAD_REQUEST, "Falta batch_id.");
         if (batch.length() > 36 || organ.length() > 16) {
@@ -55,7 +56,7 @@ public class UserPlants {
         JsonNode raw = json.createObjectNode();
         ObjectNode result;
         try {
-            raw = plantNet.identify(photos, organ.isBlank() ? "auto" : organ.strip());
+            raw = plantNet.identify(photos, organ.isBlank() ? "auto" : organ.strip(), deadline);
         } catch (ApiException error) {
             saveRun(user, batch, organ, "failed", raw);
             throw error;
@@ -66,12 +67,12 @@ public class UserPlants {
                     : "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo.");
         } else if (ranked.get(0).path("score").asDouble() < 0.50) {
             result = state("ambiguous");
-            result.set("candidates", cards.candidates(ranked, true));
+            result.set("candidates", cards.candidates(ranked, true, deadline));
         } else {
             try {
                 result = state("identified");
-                result.set("plant", cards.generate(ranked.get(0)));
-                result.set("candidates", cards.candidates(ranked, false));
+                result.set("plant", cards.generate(ranked.get(0), deadline));
+                result.set("candidates", cards.candidates(ranked, false, deadline));
             } catch (PlantCards.NoPlantInformation ignored) {
                 ObjectNode header = cards.header(ranked.get(0));
                 String common = header.path("common_name").asText();
@@ -92,6 +93,7 @@ public class UserPlants {
     }
 
     public ObjectNode confirm(long user, String batch, String scientific) {
+        var deadline = AiClient.Deadline.after(java.time.Duration.ofSeconds(150));
         if (batch.isBlank() || scientific.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Faltan batch_id o scientific_name.");
         }
@@ -106,7 +108,7 @@ public class UserPlants {
                 .findFirst().orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
                         "La especie elegida no está entre las candidatas de ese lote."));
         try {
-            JsonNode plant = cards.generate(selected);
+            JsonNode plant = cards.generate(selected, deadline);
             savePlant(user, batch.strip(), plant);
             ObjectNode answer = state("identified");
             answer.set("plant", plant);

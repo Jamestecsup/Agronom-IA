@@ -61,6 +61,9 @@ public class UserChatController {
                                     @RequestParam(name = "plant_id", defaultValue = "") String plantId,
                                     @RequestParam(required = false) MultipartFile image) {
         long user = accounts.requireUser(token);
+        if (message.codePointCount(0, message.length()) > 4000) {
+            throw error(HttpStatus.BAD_REQUEST, "El mensaje no puede superar 4000 caracteres.");
+        }
         String caption = message.strip();
         if (caption.isEmpty() && image == null) {
             throw error(HttpStatus.BAD_REQUEST, "Escribe un mensaje o adjunta una foto.");

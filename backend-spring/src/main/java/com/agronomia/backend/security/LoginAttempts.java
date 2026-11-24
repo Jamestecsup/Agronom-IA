@@ -30,6 +30,16 @@ public class LoginAttempts {
         attempts.remove("account:" + account);
     }
 
+    public synchronized void reserveRegistration(String address) {
+        long now = Instant.now().getEpochSecond();
+        attempts.entrySet().removeIf(entry -> entry.getValue().expires <= now);
+        String key = "registration:" + address;
+        if (attempts.size() >= CAPACITY || count(key) >= 5) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos de registro. Inténtalo en unos minutos.");
+        }
+        increment(key, now);
+    }
+
     private int count(String key) {
         Attempts current = attempts.get(key);
         return current == null ? 0 : current.count;

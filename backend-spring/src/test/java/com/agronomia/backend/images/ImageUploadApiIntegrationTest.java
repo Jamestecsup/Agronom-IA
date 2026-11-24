@@ -30,6 +30,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -133,6 +134,13 @@ class ImageUploadApiIntegrationTest {
         mockMvc.perform(multipart(ENDPOINT).file(image("plant.png", "image/png", "png")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false));
+        assertThat(countStoredFiles()).isZero();
+    }
+
+    @Test
+    void rejectsMalformedMultipartBeforeParsingWhenThereIsNoBearer() throws Exception {
+        mockMvc.perform(post(ENDPOINT).contentType("multipart/form-data").content("sin boundary"))
+                .andExpect(status().isUnauthorized());
         assertThat(countStoredFiles()).isZero();
     }
 

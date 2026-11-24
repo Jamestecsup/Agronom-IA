@@ -20,8 +20,8 @@ public class UserAuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> register(@RequestBody UserAccounts.Credentials data) {
-        return accounts.register(data);
+    public Map<String, Object> register(@RequestBody UserAccounts.Credentials data, HttpServletRequest request) {
+        return accounts.register(data, request.getRemoteAddr());
     }
 
     @PostMapping("/login")

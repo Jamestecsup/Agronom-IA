@@ -1,10 +1,8 @@
-"""Agronom-IA backend Django (servicio de usuario).
-
-Recibe las fotos del móvil, las valida y almacena, y ejecuta el pipeline de
-identificación + información usando Pl@ntNet y Gemini con las skills.
-"""
+"""Configuración del backend de administración de Agronom-IA."""
 import os
 import sys
+
+from django.core.exceptions import ImproperlyConfigured
 
 # Usar PyMySQL como driver MySQL (evita dependencias nativas del sistema).
 try:
@@ -22,7 +20,11 @@ try:
 except ImportError:
     pass
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-dev-key")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "").strip()
+if not SECRET_KEY or SECRET_KEY == "insecure-dev-key":
+    if os.environ.get("DJANGO_ALLOW_INSECURE_KEY", "").lower() != "true":
+        raise ImproperlyConfigured("Configura DJANGO_SECRET_KEY antes de iniciar Django.")
+    SECRET_KEY = "insecure-dev-key"
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
 
 ALLOWED_HOSTS = [

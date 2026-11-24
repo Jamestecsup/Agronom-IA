@@ -26,7 +26,8 @@ spring:
       location: ${UPLOAD_TEMP_DIR:${java.io.tmpdir}/agronomia-upload-tmp}
       # Permit PHP-compatible application validation at 15 MiB before the servlet transport cap.
       max-file-size: 16MB
-      max-request-size: 80MB
+      # Cinco imágenes de hasta 15 MiB, más los encabezados multipart.
+      max-request-size: 76MB
       file-size-threshold: 1MB
   jackson:
     default-property-inclusion: non_null

@@ -5,15 +5,23 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -22,6 +30,11 @@ import java.util.stream.Collectors;
 
 @Service
 public class PlantCards {
+    private static final Logger LOG = LoggerFactory.getLogger(PlantCards.class);
+    private static final Duration MIN_OPTIONAL = Duration.ofSeconds(5);
+    private static final Map<String, String> ALIASES = Map.of(
+            "descripcion", "description", "luz", "light", "riego", "watering", "suelo", "soil",
+            "clima", "climate", "floracion", "flowering", "usos", "uses", "cuidados", "care");
     private static final List<String> KEYS = List.of(
             "description", "light", "watering", "soil", "climate", "flowering", "uses", "care");
     private static final List<String> TITLES = List.of(
@@ -67,7 +80,7 @@ public class PlantCards {
         return species.path("scientificNameWithoutAuthor").asText(species.path("scientificName").asText(""));
     }
 
-    public ArrayNode candidates(List<JsonNode> rows, boolean hints) {
+    public ArrayNode candidates(List<JsonNode> rows, boolean hints, AiClient.Deadline deadline) {
         ArrayNode output = mapper.createArrayNode();
         for (JsonNode row : rows) {
             ObjectNode item = header(row);
@@ -79,7 +92,7 @@ public class PlantCards {
         JsonNode details = optional("candidate-hints", skill("candidate-hints") + """
                 Devuelve un objeto con una clave por nombre científico y valores
                 {"hint":"pista visual","terms":[{"word":"término","meaning":"definición"}]}.
-                """, output.toString());
+                """, output.toString(), deadline, 20, false);
         for (JsonNode candidate : output) {
             ObjectNode item = (ObjectNode) candidate;
             JsonNode found = details.path(item.path("scientific_name").asText());
@@ -89,41 +102,50 @@ public class PlantCards {
         return output;
     }
 
-    public ObjectNode generate(JsonNode species) {
+    public ObjectNode generate(JsonNode species, AiClient.Deadline deadline) {
         ObjectNode plant = header(species);
         String fact = "Ficha de Pl@ntNet:\n" + plant + "\nReferencias taxonómicas:\n" + species.path("species");
-        String refined = optional("refine", skill("refine-prompt"), fact).path("prompt").asText("");
+        String refined = optional("refine", skill("refine-prompt"), fact, deadline, 25, true).path("prompt").asText("");
         String categoryRules = KEYS.stream().map(key -> "### " + key + "\n" + skill("categories/" + key))
                 .collect(Collectors.joining("\n"));
         ObjectNode shape = mapper.createObjectNode();
-        KEYS.forEach(key -> shape.put(key, "texto de la categoría o unknown"));
-        JsonNode categories = ask("categories", """
+        KEYS.forEach(key -> shape.put(key, "texto de la categoría"));
+        String system = """
                 Genera una ficha botánica en español. Lee las instrucciones de contenido para las ocho categorías.
                 """ + categoryRules + """
 
-                Devuelve exactamente un objeto JSON con las ocho claves del ejemplo.
-                Todas las claves son obligatorias. Su valor es un texto, sin objetos anidados.
-                Si faltan datos fiables para una categoría, conserva esa clave y pon el texto "unknown".
-                Ejemplo de forma obligatoria:
-                """ + shape, fact + "\n" + refined);
-        ObjectNode texts = mapper.createObjectNode();
-        ObjectNode materialTexts = mapper.createObjectNode();
-        for (String key : KEYS) {
-            String text = clean(categories.path(key));
-            if (!text.isEmpty()) {
-                texts.put(key, text);
-                if (MATERIAL_KEYS.contains(key)) materialTexts.put(key, text);
+                Devuelve un objeto JSON con las ocho claves obligatorias del ejemplo, cada una con un texto
+                de 4 a 6 frases. Da la mejor guía general con rangos y condiciones. Escribe "unknown" solo
+                si no conoces la especie. Ejemplo de forma obligatoria:
+                """ + shape;
+        String input = fact + "\n" + refined;
+        AiClient.Deadline categoryDeadline = deadline.cap(Duration.ofSeconds(90));
+        ObjectNode received = categories(system, input, categoryDeadline, true);
+        if (received.size() <= 4) {
+            if (categoryDeadline.remainingNanos() < MIN_OPTIONAL.toNanos()) throw new NoPlantInformation();
+            try {
+                received = categories(system + """
+
+                        Corrección obligatoria: escribe siempre la mejor guía general con sus condiciones.
+                        Usa "unknown" solo si no conoces la especie. Completa las ocho claves en un único JSON.
+                        """, input, categoryDeadline, false);
+            } catch (AiClient.Failure error) {
+                throw new NoPlantInformation();
             }
+            if (received.size() <= 4) throw new NoPlantInformation();
         }
-        if (texts.isEmpty()) throw new NoPlantInformation();
-        CompletableFuture<JsonNode> glossary = CompletableFuture.supplyAsync(
-                () -> optional("glossary", skill("glossary")
-                        + "\nDevuelve por categoría listas de objetos word y meaning.", texts.toString()), enrichment);
+        ObjectNode texts = received;
+        ObjectNode materialTexts = mapper.createObjectNode();
+        for (String key : MATERIAL_KEYS) {
+            if (texts.has(key)) materialTexts.set(key, texts.get(key));
+        }
+        CompletableFuture<JsonNode> glossary = optionalAsync("glossary", skill("glossary")
+                + "\nDevuelve por categoría listas de objetos word y meaning.", texts.toString(), deadline);
         CompletableFuture<JsonNode> materials = materialTexts.isEmpty()
                 ? CompletableFuture.completedFuture(mapper.createObjectNode())
-                : CompletableFuture.supplyAsync(() -> optional("materials", skill("materials")
-                        + "\nDevuelve por categoría listas de objetos name y detail.",
-                        plant.path("scientific_name").asText() + "\n" + materialTexts), enrichment);
+                : optionalAsync("materials", skill("materials")
+                    + "\nDevuelve por categoría listas de objetos name y detail.",
+                    plant.path("scientific_name").asText() + "\n" + materialTexts, deadline);
         JsonNode g = glossary.join();
         JsonNode m = materials.join();
         ArrayNode sections = plant.putArray("sections");
@@ -145,16 +167,72 @@ public class PlantCards {
         }
     }
 
-    private JsonNode ask(String step, String system, String user) {
-        return ai.json(step, List.of(AiClient.message("system", system), AiClient.message("user", user)), false);
+    private AiClient.JsonResponse ask(String step, String system, String user,
+                                      AiClient.Deadline deadline, boolean retry) {
+        return ai.jsonWithin(step, List.of(AiClient.message("system", system), AiClient.message("user", user)),
+                false, deadline, retry);
     }
 
-    private JsonNode optional(String step, String system, String user) {
+    private ObjectNode categories(String system, String input, AiClient.Deadline deadline, boolean retry) {
+        AiClient.JsonResponse response = ask("categories", system, input, deadline, retry);
+        Map<String, JsonNode> values = new LinkedHashMap<>();
+        response.value().fields().forEachRemaining(entry -> {
+            String name = Normalizer.normalize(entry.getKey().strip().toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                    .replaceAll("\\p{M}", "");
+            String key = ALIASES.getOrDefault(name, name);
+            if (KEYS.contains(key)) values.merge(key, entry.getValue(),
+                    (first, second) -> flatten(first).isBlank() ? second : first);
+        });
+        Set<String> missing = new TreeSet<>(KEYS);
+        missing.removeAll(values.keySet());
+        Set<String> unknown = new TreeSet<>();
+        Set<String> nonTextual = new TreeSet<>();
+        ObjectNode result = mapper.createObjectNode();
+        values.forEach((key, value) -> {
+            if (!value.isTextual()) nonTextual.add(key);
+            if (isUnknown(value)) unknown.add(key);
+            String text = flatten(value);
+            if (!text.isBlank()) result.put(key, text);
+        });
+        LOG.info("IA categories caracteres={} claves_faltantes={} claves_unknown={} claves_no_textuales={}",
+                response.characters(), missing, unknown, nonTextual);
+        return result;
+    }
+
+    private JsonNode optional(String step, String system, String user, AiClient.Deadline deadline,
+                              int seconds, boolean retry) {
+        if (deadline.remainingNanos() < MIN_OPTIONAL.toNanos()) {
+            LOG.info("IA paso={} omitido por plazo restante", step);
+            return mapper.createObjectNode();
+        }
         try {
-            return ask(step, system, user);
+            return ask(step, system, user, deadline.cap(Duration.ofSeconds(seconds)), retry).value();
         } catch (AiClient.Failure error) {
             return mapper.createObjectNode();
         }
+    }
+
+    private CompletableFuture<JsonNode> optionalAsync(String step, String system, String user,
+                                                      AiClient.Deadline deadline) {
+        return CompletableFuture.supplyAsync(() -> optional(step, system, user, deadline, 30, true), enrichment)
+                .completeOnTimeout(mapper.createObjectNode(), deadline.remainingNanos(), TimeUnit.NANOSECONDS);
+    }
+
+    private static String flatten(JsonNode node) {
+        if (node.isTextual()) return clean(node);
+        if (node.isNumber() || node.isBoolean()) return node.asText();
+        if (!node.isContainerNode()) return "";
+        List<String> values = new ArrayList<>();
+        for (JsonNode child : node) {
+            String text = flatten(child);
+            if (!text.isBlank()) values.add(text);
+        }
+        return String.join("\n", values);
+    }
+
+    private static boolean isUnknown(JsonNode value) {
+        return value.isTextual() && UNKNOWN.contains(
+                value.asText().strip().toLowerCase(Locale.ROOT).replaceFirst("\\.+$", ""));
     }
 
     private JsonNode array(JsonNode input) {
