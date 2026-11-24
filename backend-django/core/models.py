@@ -57,6 +57,7 @@ class PlantIdentification(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        managed = False
         db_table = "identificaciones_planta"
         verbose_name = "identificación de planta"
         verbose_name_plural = "identificaciones de plantas"
@@ -84,6 +85,7 @@ class IdentificationRun(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        managed = False
         db_table = "procesos_identificacion"
         verbose_name = "proceso de identificación"
         verbose_name_plural = "procesos de identificación"
@@ -106,6 +108,7 @@ class ChatMessage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        managed = False
         db_table = "mensajes_chat"
         verbose_name = "mensaje de chat"
         verbose_name_plural = "mensajes de chat"
@@ -128,6 +131,7 @@ class ChatProgressImage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        managed = False
         db_table = "imagenes_progreso_chat"
         verbose_name = "imagen de progreso del chat"
         verbose_name_plural = "imágenes de progreso del chat"
@@ -147,6 +151,7 @@ class PendingScheduleImport(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        managed = False
         db_table = "importaciones_horario_pendientes"
         verbose_name = "importación pendiente de horario"
         verbose_name_plural = "importaciones pendientes de horario"
@@ -160,6 +165,7 @@ class WeeklySchedule(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        managed = False
         db_table = "horarios_semanales"
         verbose_name = "horario semanal"
         verbose_name_plural = "horarios semanales"
@@ -179,6 +185,7 @@ class CarePlanTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        managed = False
         db_table = "tareas_cuidado"
         verbose_name = "tarea de cuidado"
         verbose_name_plural = "tareas de cuidado"
@@ -197,6 +204,7 @@ class Profile(models.Model):
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.USER)
 
     class Meta:
+        managed = False
         db_table = "perfiles_usuario"
         verbose_name = "perfil de usuario"
         verbose_name_plural = "perfiles de usuario"
