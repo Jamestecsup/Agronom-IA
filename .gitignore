@@ -21,7 +21,9 @@ local.properties
 __pycache__/
 *.py[cod]
 backend-django/db.sqlite3
-backend-django/.env
+.env
+.env.*
+!*.example
 backend-django/.venv/
 media/
 

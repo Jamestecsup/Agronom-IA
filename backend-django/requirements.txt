@@ -1,4 +1,4 @@
-# Django 5.x exige MariaDB 10.5+; la MariaDB de XAMPP es 10.4.
+# Django 4.2 se mantiene para conservar la compatibilidad de la aplicación con MySQL Server.
 Django>=4.2,<5.0
 djangorestframework>=3.14
 django-cors-headers>=4.3
@@ -6,3 +6,4 @@ PyMySQL>=1.1
 requests>=2.31
 Pillow>=10.0
 python-dotenv>=1.0
+cryptography>=41.0.0

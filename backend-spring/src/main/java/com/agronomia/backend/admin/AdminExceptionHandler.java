@@ -29,7 +29,7 @@ public class AdminExceptionHandler {
         log.error("Error de base de datos en el panel", exception);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new AdminDtos.ErrorResponse(false,
-                        "La base de datos no está disponible. Revisa que MySQL de XAMPP esté encendido."));
+                        "La base de datos no está disponible. Revisa que MySQL Server esté encendido."));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
