@@ -1,103 +1,24 @@
-# Agronom-IA: servicio de administración (Spring Boot)
+# Backend Spring Boot · usuario
 
-Servicio Java/Spring Boot del panel de administración. Comparte **una sola base
-MySQL Server** con el backend Django: Django atiende al móvil y a la web de
-usuario (identificación con Pl@ntNet + Gemini), y este servicio atiende a la web
-de administración (login con roles, usuarios, identificaciones y estadísticas).
+Spring Boot 3 y Java 17 sirven Android y la web de usuario en `127.0.0.1:8081/agronomia-api/api/`. Usa MySQL Connector/J, Flyway y PDFBox. El panel se sirve en Django.
 
-El módulo `images` proviene del trabajo de Fernando (rama `Fernando`) y se
-conserva como contrato heredado de subida de imágenes.
+## Arranque
 
-## Módulos
+Copia `application-example.env` a `.env`, configura las variables y lanza ambos backends desde la raíz con `scripts/iniciar-demo.ps1`. Para ejecutar Spring por separado, aprovisiona la base y ejecuta primero `scripts/migrar-db.ps1` desde la raíz. Luego ejecuta `.\mvnw.cmd spring-boot:run` desde este directorio. Spring lee su propio `.env`.
 
-    src/main/java/com/agronomia/backend/
-      AgronomiaBackendApplication.java
-      images/     subida de imágenes heredada (PHP-compatible)
-      admin/      panel: login con roles, usuarios, plantas, chat y estadísticas
-
-## Requisitos
-
-- JDK 17 (el proyecto usa Java 17).
-- MySQL Server encendido (puerto 3306).
-- Base `agronomia` con las tablas de Django ya migradas (ver `backend-django/README.md`).
-
-No hace falta instalar Maven: el proyecto incluye el wrapper (`mvnw.cmd`).
-
-## Cómo ejecutarlo
-
-1. Inicia el servicio de Windows de MySQL Server.
-2. Aplica las migraciones de Django una vez (crean las tablas internas `auth_*`
-   y `django_*`, además de las tablas de Agronom-IA con nombres en español):
-   ```powershell
-   cd backend-django
-   ..\scripts\migrar-db.ps1
-   ```
-3. Arranca Spring:
-   ```powershell
-   cd backend-spring
-   .\mvnw.cmd spring-boot:run
-   ```
-
-El servicio queda en `http://127.0.0.1:8081`.
-
-### Variables de entorno
-
-| Variable | Por defecto | Uso |
-|---|---|---|
-| `DB_URL` | `jdbc:mysql://127.0.0.1:3306/agronomia` | Conexión MySQL |
-| `DB_USERNAME` | requerido | Usuario de ejecución `agronomia_api` |
-| `DB_PASSWORD` | requerida | Contraseña de la cuenta de ejecución |
-| `SERVER_PORT` | `8081` | Puerto HTTP |
-| `ADMIN_TOKEN_SECRET` | `dev-only-change-me` | Firma de los tokens del panel |
-| `ADMIN_TOKEN_TTL_HOURS` | `8` | Duración de la sesión |
-| `ADMIN_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Orígenes permitidos del frontend |
-
-Define estas variables en el proceso antes de arrancar Spring. Usar `agronomia_api` con los permisos de ejecución descritos en el [README raíz](../README.md#1-base-de-datos). Reserva `agronomia_admin` para las migraciones de Django. Consulta `application-example.env` para el entorno de Spring.
-
-## Usuarios demo
-
-`py manage.py seed_demo` crea (solo para desarrollo local):
-
-| Usuario | Contraseña | Rol |
-|---|---|---|
-| `admin` | `Admin12345` | admin (entra al panel) |
-| `agricultor` | `Campo12345` | user (solo móvil/web de usuario) |
-
-Puedes cambiarlas con `DEMO_ADMIN_PASSWORD` / `DEMO_USER_PASSWORD` y
-`--reset-passwords`.
-
-## Endpoints del panel
-
-| Método y ruta | Descripción |
+| Variables | Uso |
 |---|---|
-| `POST /api/admin/auth/login` | Login; exige rol `admin` y devuelve token |
-| `GET /api/admin/auth/me` | Sesión actual (requiere token) |
-| `GET /api/admin/health` | Estado del servicio y de la base (público) |
-| `GET /api/admin/stats` | Totales, especies más identificadas y actividad de 14 días |
-| `GET /api/admin/users?q=&limit=` | Usuarios con su rol y estado |
-| `PATCH /api/admin/users/{id}` | Cambia `role` y/o `active` (no puedes quitarte tu propio rol) |
-| `GET /api/admin/plants?limit=` | Identificaciones recientes con usuario propietario |
-| `GET /api/admin/chats?limit=` | Mensajes recientes con usuario propietario |
-| `POST /agronomia-api/api/images.php` | Contrato heredado de Fernando para subir fotos (el flujo activo usa el de Django). |
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | MySQL Server 8.4 y cuenta `agronomia_api`. |
+| `DB_MIGRATE_USER`, `DB_MIGRATE_PASSWORD` | Cuenta `agronomia_admin` para Flyway. |
+| `USER_TOKEN_SECRET` | Firma de la API de usuario. Usa un secreto aleatorio de 24 caracteres como mínimo. |
+| `PLANTNET_API_KEY` | Identificar especies. `PLANTNET_BASE_URL`, `PLANTNET_PROJECT` y `PLANTNET_LANG` son opcionales. |
+| `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL` | Proveedor compatible con OpenAI. `AI_VISION_MODEL` usa el modelo de texto cuando se omite. |
+| `UPLOAD_DIR` | Directorio de imágenes, fotos de progreso y PDFs pendientes. Mantén el volumen privado. |
 
-Las rutas protegidas esperan `Authorization: Bearer <token>`.
+La cuenta de ejecución solo tiene permisos de datos. Flyway registra la línea base 1 después de que Django cree el esquema. Toda alteración posterior del dominio se versiona desde V2 y se refleja en los modelos de Django.
 
-Ejemplo:
+## Rutas y seguridad
 
-```powershell
-curl.exe -s http://127.0.0.1:8081/api/admin/health
+La API conserva registro y login, `images.php`, `identify`, `confirm`, `plants` y portadas, `chat` e historial con fotos, `schedule` e importaciones y cuidados. Las rutas privadas requieren Bearer. La carga exige JPEG/PNG y usuario activo. Los intentos de login se limitan por cuenta e IP en cada proceso. Para un despliegue de varias instancias, aplica un límite compartido en el perímetro. `GET /agronomia-api/api/health` verifica la base sin usar cuota.
 
-curl.exe -s -X POST http://127.0.0.1:8081/api/admin/auth/login `
-  -H "Content-Type: application/json" `
-  -d '{\"username\":\"admin\",\"password\":\"Admin12345\"}'
-```
-
-## Seguridad
-
-- Las contraseñas se validan con el mismo formato de Django
-  (`pbkdf2_sha256$iteraciones$salt$hash`): no se duplican usuarios ni se cambia
-  el almacenamiento.
-- El token va firmado con HMAC-SHA256 y caduca; no se guarda en base de datos.
-- No hay permisos de escritura sobre plantas ni chat: el panel solo lee esos datos.
-- El servicio escucha en loopback por defecto; no lo expongas a la red sin TLS y
-  autenticación.
+Ejecuta `.\mvnw.cmd test` para las pruebas locales de imágenes y proveedores HTTP simulados.

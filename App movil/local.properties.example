@@ -5,12 +5,12 @@
 # Ubicación del Android SDK (Android Studio suele configurarla solo)
 # sdk.dir=C\:\\Users\\USER\\AppData\\Local\\Android\\Sdk
 
-# --- Backend Django (servicio de usuario) ---
-# La app solo habla con Django: las claves de Pl@ntNet y de Gemini viven en
-# backend-django/.env y nunca se empaquetan en el APK.
+# --- Backend Spring Boot (servicio de usuario) ---
+# La app solo habla con Spring Boot: las claves de Pl@ntNet y del proveedor de IA viven en
+# backend-spring/.env y nunca se empaquetan en el APK.
 #
 # Emulador: 10.0.2.2 es la PC anfitriona.
-BACKEND_BASE_URL=http://10.0.2.2:8000/
+BACKEND_BASE_URL=http://10.0.2.2:8081/
 #
 # Móvil físico en la misma red: usa la IP de la PC, por ejemplo
-# BACKEND_BASE_URL=http://192.168.1.20:8000/
+# BACKEND_BASE_URL=http://192.168.1.20:8081/

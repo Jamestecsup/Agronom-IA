@@ -1,13 +1,13 @@
 # Agronom-IA · Web de administración
 
-Panel web (React + Vite) para el servicio **Spring Boot**. Permite entrar con
+Panel web (React + Vite) para el servicio **Django**. Permite entrar con
 una cuenta de rol `admin`, ver el resumen de actividad, gestionar usuarios y
-revisar las identificaciones y el chat generados por el backend Django.
+revisar las identificaciones y el chat generados por el backend Spring Boot.
 
 ## Requisitos
 
 - Node 18+ (probado con Node 24).
-- Spring Boot en `http://127.0.0.1:8081`.
+- Django en `http://127.0.0.1:8000`.
 - MySQL Server en el puerto 3306, con las tablas aplicadas mediante `scripts/migrar-db.ps1`.
 
 ## Cómo ejecutarlo
@@ -20,9 +20,9 @@ npm run dev
 
 Abre `http://localhost:5173`.
 
-Vite hace proxy de `/api` hacia Spring (`vite.config.js`), así que en
+Vite hace proxy de `/api` hacia Django (`vite.config.js`), así que en
 desarrollo no hace falta configurar CORS. En producción sirve el contenido de
-`dist/` y apunta `/api` al servicio Spring.
+`dist/` y apunta `/api` al servicio Django.
 
 ## Acceso
 
@@ -57,6 +57,6 @@ desarrollo local.
 
 ## Notas
 
-- El token lo emite Spring (HMAC, caduca a las 8 horas). Si caduca o el
+- El token lo emite Django (caduca a las 8 horas). Si caduca o el
   servidor responde 401, la app vuelve al login.
 - `npm run build` genera `dist/` para publicarlo como sitio estático.

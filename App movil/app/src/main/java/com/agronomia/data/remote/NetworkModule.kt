@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Fábrica central de Retrofit/OkHttp.
  *
- * Solo hay un cliente: el backend Django ([Constants.BACKEND_BASE_URL]). Las
+ * La API de usuario vive en Spring Boot ([Constants.BACKEND_BASE_URL]). Las
  * claves de Pl@ntNet y de la IA viven en el `.env` del backend, nunca aquí.
  */
 object NetworkModule {
@@ -84,7 +84,7 @@ object NetworkModule {
 
     val djangoApiService: DjangoApiService by lazy { createDjangoApiService() }
 
-    /** Canvas usa su propio token; no se debe enviar el token de la cuenta Django. */
+    /** Canvas usa su propio token; no se debe enviar el token de la cuenta de Agronom-IA. */
     fun createCanvasApiService(baseUrl: String): com.agronomia.data.canvas.CanvasApiService {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/') + "/"
         return Retrofit.Builder()

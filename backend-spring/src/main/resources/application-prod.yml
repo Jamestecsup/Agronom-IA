@@ -17,4 +17,4 @@ server:
 
 plant:
   storage:
-    directory: ${PLANT_UPLOAD_DIR}
+    directory: ${UPLOAD_DIR:${PLANT_UPLOAD_DIR:../media/plant-images}}

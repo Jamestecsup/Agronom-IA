@@ -29,7 +29,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         val backendBaseUrl: String = (localProperties.getProperty("BACKEND_BASE_URL")
-            ?: "http://10.0.2.2:8000/")
+            ?: "http://10.0.2.2:8081/")
             .trim()
             .removeSurrounding("\"")
 

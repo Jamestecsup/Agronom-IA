@@ -1,5 +1,5 @@
 /**
- * Cliente del API de administración (Spring Boot).
+ * Cliente del API de administración (Django).
  *
  * Guarda el token en localStorage y avisa a la app cuando el servidor responde
  * 401 para volver a la pantalla de login.
