@@ -1,5 +1,7 @@
 package com.agronomia.backend.schedule;
 
+import com.agronomia.backend.ai.AiClient;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -9,11 +11,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
@@ -28,6 +26,7 @@ import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -38,21 +37,11 @@ public class ScheduleAiService {
     private static final int MAX_IMAGE_EDGE = 1600;
 
     private final ObjectMapper mapper;
-    private final RestClient http = RestClient.builder().build();
-    private final String apiKey;
-    private final String baseUrl;
-    private final String model;
+    private final AiClient ai;
 
-    public ScheduleAiService(
-            ObjectMapper mapper,
-            @Value("${ai.api-key:}") String apiKey,
-            @Value("${ai.base-url}") String baseUrl,
-            @Value("${ai.model}") String model
-    ) {
+    public ScheduleAiService(ObjectMapper mapper, AiClient ai) {
         this.mapper = mapper;
-        this.apiKey = apiKey;
-        this.baseUrl = baseUrl;
-        this.model = model;
+        this.ai = ai;
     }
 
     public JsonNode parseWeeklySchedule(MultipartFile pdf) {
@@ -95,7 +84,7 @@ public class ScheduleAiService {
 
             JsonNode result = callAi(
                     "Eres un extractor de horarios académicos. Lee texto e imagen conjuntamente y produce únicamente JSON válido.",
-                    images
+                    images, true
             );
             ArrayNode classes = normalizeClasses(result.path("classes"));
             if (classes.isEmpty()) {
@@ -128,42 +117,20 @@ public class ScheduleAiService {
                 "Usa días ISO 1=lunes ... 7=domingo y horas 24h. Si no hay tarea segura, devuelve lista vacía. " +
                 "Datos de entrada:\nCLASES=" + classes.toString() + "\nPLANTAS=" + plants.toString());
         ArrayNode content = mapper.createArrayNode().add(prompt);
-        JsonNode result = callAi("Eres un agrónomo que organiza rutinas semanales sin cruzarlas con clases.", content);
+        JsonNode result = callAi("Eres un agrónomo que organiza rutinas semanales sin cruzarlas con clases.", content, false);
         ArrayNode tasks = normalizeTasks(result.path("tasks"), classes, plants);
         ObjectNode response = mapper.createObjectNode();
         response.set("tasks", tasks);
         return response;
     }
 
-    private JsonNode callAi(String system, ArrayNode userContent) {
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Spring no tiene configurada AI_API_KEY.");
-        }
+    private JsonNode callAi(String system, ArrayNode userContent, boolean vision) {
         try {
-            ObjectNode body = mapper.createObjectNode();
-            body.put("model", model);
-            body.put("temperature", 0.1);
-            body.putObject("response_format").put("type", "json_object");
-            ArrayNode messages = body.putArray("messages");
-            messages.addObject().put("role", "system").put("content", system);
-            messages.addObject().put("role", "user").set("content", userContent);
-
-            String url = baseUrl.replaceAll("/+$", "") + "/chat/completions";
-            JsonNode response = http.post().uri(url)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-            String content = response == null ? "" : response.path("choices").path(0).path("message").path("content").asText("");
-            int start = content.indexOf('{');
-            int end = content.lastIndexOf('}');
-            if (start < 0 || end <= start) throw new IllegalArgumentException("La IA no devolvió un objeto JSON.");
-            return mapper.readTree(content.substring(start, end + 1));
-        } catch (ResponseStatusException error) {
-            throw error;
-        } catch (Exception error) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "La IA no pudo procesar el horario. Inténtalo de nuevo.", error);
+            List<Map<String, Object>> parts = mapper.convertValue(userContent, new TypeReference<>() {});
+            return ai.json(vision ? "schedule-import" : "care-plan",
+                    List.of(AiClient.message("system", system), Map.of("role", "user", "content", parts)), vision);
+        } catch (AiClient.Failure error) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, error.getMessage());
         }
     }
 
