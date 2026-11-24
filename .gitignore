@@ -33,3 +33,9 @@ backend-spring/target/
 web-admin/dist/
 web-user/dist/
 
+
+# Archivos locales no necesarios
+Archivos no necesarios/.emulator-start.log
+Archivos no necesarios/.android-emulator-home/
+Archivos no necesarios/.android-emulator-user/
+Archivos no necesarios/.android-sdk-home/
