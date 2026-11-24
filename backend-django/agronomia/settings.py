@@ -36,7 +36,7 @@ ALLOWED_HOSTS = [
 CORS_ALLOWED_ORIGINS = [
     o.strip()
     for o in os.environ.get(
-        "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+        "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
     ).split(",")
     if o.strip()
 ]
@@ -113,32 +113,10 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# --- Configuración del pipeline ---
-PLANTNET_API_KEY = os.environ.get("PLANTNET_API_KEY", "")
-PLANTNET_BASE_URL = os.environ.get(
-    "PLANTNET_BASE_URL", "https://my-api.plantnet.org/"
-)
-PLANTNET_PROJECT = os.environ.get("PLANTNET_PROJECT", "all")
-PLANTNET_LANG = os.environ.get("PLANTNET_LANG", "es")
-
-AI_API_KEY = os.environ.get("AI_API_KEY", "")
-AI_BASE_URL = os.environ.get(
-    "AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"
-)
-AI_MODEL = os.environ.get("AI_MODEL", "gemini-3.5-flash-lite")
-
-PLANT_UPLOAD_DIR = os.environ.get("PLANT_UPLOAD_DIR", os.path.join(BASE_DIR, "..", "media", "plant-images"))
-MEDIA_ROOT = os.environ.get("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
-SPRING_SCHEDULE_URL = os.environ.get("SPRING_SCHEDULE_URL", "http://127.0.0.1:8081")
-SCHEDULE_INTERNAL_TOKEN = os.environ.get("SCHEDULE_INTERNAL_TOKEN", "dev-only-agronomia-schedule")
-MAX_SCHEDULE_PDF_BYTES = 15 * 1024 * 1024
-
-# Skills del pipeline (archivos Markdown cargados en runtime).
-SKILLS_DIR = os.path.join(BASE_DIR, "skills")
-
-# Límites de subida (compatibles con el móvil: 1-5 fotos, 15 MiB c/u).
-MAX_UPLOAD_IMAGES = 5
-MAX_IMAGE_BYTES = 15 * 1024 * 1024
+# El panel puede leer referencias a fotos del volumen compartido.
+PLANT_UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.environ.get(
+    "PLANT_UPLOAD_DIR", os.path.join(BASE_DIR, "..", "media", "plant-images")
+))
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [

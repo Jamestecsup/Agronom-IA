@@ -4,5 +4,5 @@ from django.urls import include, path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("agronomia-api/api/", include("core.urls")),
+    path("api/admin/", include("core.panel_urls")),
 ]
