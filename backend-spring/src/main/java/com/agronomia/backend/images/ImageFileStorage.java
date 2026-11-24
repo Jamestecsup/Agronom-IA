@@ -20,8 +20,8 @@ public class ImageFileStorage {
     private static final Logger log = LoggerFactory.getLogger(ImageFileStorage.class);
     private final Path root;
 
-    public ImageFileStorage(@Value("${plant.storage.directory}") Path root) {
-        this.root = root.toAbsolutePath().normalize();
+    public ImageFileStorage(@Value("${plant.storage.directory}") String root) {
+        this.root = Path.of(root).toAbsolutePath().normalize();
     }
 
     public List<PlantImageRecord> store(String batchId, List<ImageMetadata> images) {
