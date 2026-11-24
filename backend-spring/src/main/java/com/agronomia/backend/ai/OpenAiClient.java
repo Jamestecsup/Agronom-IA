@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -16,13 +17,17 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class OpenAiClient implements AiClient {
     private static final Logger LOG = LoggerFactory.getLogger(OpenAiClient.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(90);
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
+    private final HttpClient client;
+    private final Duration timeout;
     private final ObjectMapper mapper;
     private final URI endpoint;
     private final String key;
@@ -31,16 +36,24 @@ public class OpenAiClient implements AiClient {
     private final int maxRequests;
     private final AtomicInteger requests = new AtomicInteger();
 
+    @Autowired
     public OpenAiClient(ObjectMapper mapper, @Value("${ai.base-url}") String baseUrl,
                         @Value("${ai.api-key:}") String key, @Value("${ai.model}") String model,
                         @Value("${AI_VISION_MODEL:}") String visionModel,
                         @Value("${AI_MAX_REQUESTS:0}") int maxRequests) {
+        this(mapper, baseUrl, key, model, visionModel, maxRequests, TIMEOUT);
+    }
+
+    OpenAiClient(ObjectMapper mapper, String baseUrl, String key, String model,
+                 String visionModel, int maxRequests, Duration timeout) {
         this.mapper = mapper;
         this.endpoint = URI.create(baseUrl.replaceFirst("/+$", "") + "/chat/completions");
         this.key = key;
         this.model = model;
         this.visionModel = visionModel.isBlank() ? model : visionModel;
         this.maxRequests = maxRequests;
+        this.timeout = timeout;
+        this.client = HttpClient.newBuilder().connectTimeout(timeout).build();
     }
 
     @Override
@@ -77,16 +90,18 @@ public class OpenAiClient implements AiClient {
         payload.set("messages", mapper.valueToTree(messages));
         if (asJson) payload.putObject("response_format").put("type", "json_object");
         for (int retry = 0; retry <= 2; retry++) {
+            if (maxRequests > 0 && requests.incrementAndGet() > maxRequests) {
+                throw new Failure("Se alcanzó el presupuesto de llamadas a la IA.", false);
+            }
             long started = System.nanoTime();
+            long completed = 0L;
             int status = 0;
             try {
-                if (maxRequests > 0 && requests.incrementAndGet() > maxRequests) {
-                    throw new Failure("Se alcanzó el presupuesto de llamadas a la IA.", false);
-                }
-                var request = HttpRequest.newBuilder(endpoint).timeout(TIMEOUT)
+                var request = HttpRequest.newBuilder(endpoint).timeout(timeout)
                         .header("Authorization", "Bearer " + key).header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(payload.toString())).build();
-                var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                var response = receive(request);
+                completed = System.nanoTime();
                 status = response.statusCode();
                 JsonNode body = objectOrMissing(response.body());
                 if (status == 429 && retry < 2) {
@@ -103,14 +118,26 @@ public class OpenAiClient implements AiClient {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new Failure("La consulta a la IA se interrumpió.", false);
-            } catch (IOException error) {
+            } catch (ExecutionException | TimeoutException error) {
                 throw new Failure("La IA no respondió a tiempo o falló la conexión.", false);
             } finally {
                 LOG.info("IA paso={} intento={} HTTP={} tiempo_ms={}", step, retry + 1, status,
-                        (System.nanoTime() - started) / 1_000_000);
+                        ((completed == 0L ? System.nanoTime() : completed) - started) / 1_000_000);
             }
         }
         throw new Failure("No se pudo consultar la IA.", false);
+    }
+
+    private HttpResponse<String> receive(HttpRequest request)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        var response = client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+        try {
+            // HttpRequest.timeout por sí solo no cubre un cuerpo que se demora tras la cabecera.
+            return response.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+        } catch (InterruptedException | TimeoutException error) {
+            response.cancel(true);
+            throw error;
+        }
     }
 
     private JsonNode objectOrMissing(String text) {

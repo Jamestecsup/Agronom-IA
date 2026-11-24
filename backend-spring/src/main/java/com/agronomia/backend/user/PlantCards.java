@@ -95,10 +95,17 @@ public class PlantCards {
         String refined = optional("refine", skill("refine-prompt"), fact).path("prompt").asText("");
         String categoryRules = KEYS.stream().map(key -> "### " + key + "\n" + skill("categories/" + key))
                 .collect(Collectors.joining("\n"));
+        ObjectNode shape = mapper.createObjectNode();
+        KEYS.forEach(key -> shape.put(key, "texto de la categoría o unknown"));
         JsonNode categories = ask("categories", """
-                Genera una ficha botánica en español. Devuelve un objeto JSON con estas claves
-                y un texto por clave. Devuelve «unknown» si no conoces la categoría.
-                """ + KEYS + "\n" + categoryRules, fact + "\n" + refined);
+                Genera una ficha botánica en español. Lee las instrucciones de contenido para las ocho categorías.
+                """ + categoryRules + """
+
+                Devuelve exactamente un objeto JSON con las ocho claves del ejemplo.
+                Todas las claves son obligatorias. Su valor es un texto, sin objetos anidados.
+                Si faltan datos fiables para una categoría, conserva esa clave y pon el texto "unknown".
+                Ejemplo de forma obligatoria:
+                """ + shape, fact + "\n" + refined);
         ObjectNode texts = mapper.createObjectNode();
         ObjectNode materialTexts = mapper.createObjectNode();
         for (String key : KEYS) {
