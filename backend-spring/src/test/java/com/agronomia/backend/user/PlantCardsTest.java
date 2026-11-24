@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,7 +23,7 @@ class PlantCardsTest {
             "description", "light", "watering", "soil", "climate", "flowering", "uses", "care");
     private final ObjectMapper json = new ObjectMapper();
     private final Stub ai = new Stub();
-    private final PlantCards cards = new PlantCards(json, ai);
+    private final PlantCards cards = new PlantCards(json, ai, false, "estimula las defensas");
     private final JsonNode species = json.createObjectNode().set("species",
             json.createObjectNode().put("scientificNameWithoutAuthor", "Helianthus annuus"));
 
@@ -83,6 +84,106 @@ class PlantCardsTest {
         assertThat(ai.categories).hasSize(1);
     }
 
+    @Test
+    void parsesBatchesAndDiscardsMalformedEntriesWithoutLosingValidOnes() throws Exception {
+        ai.responses.add(full());
+        ai.enrichments.put("glossary", json.readTree("""
+                {"description":[{"word":"rizoma","meaning":"Tallo subterráneo."},
+                {"word":"raíz"},{"meaning":"Sin palabra"},{"word":" ","meaning":"Explicación."}],
+                "light":[],"soil":{},"":[{"word":"suelto","meaning":"Sin categoría."}]}
+                """));
+        ai.enrichments.put("materials", json.readTree("""
+                {"watering":[{"name":"Regadera","detail":"Dirige el agua a la base."},
+                {"name":"Té","detail":"Es seguro para consumir."}],"soil":[]}
+                """));
+
+        JsonNode sections = generate().path("sections");
+        assertThat(sections.path(0).path("terms")).hasSize(1);
+        assertThat(sections.path(0).path("terms").path(0).path("word").asText()).isEqualTo("rizoma");
+        assertThat(sections.path(1).path("terms")).isEmpty();
+        assertThat(sections.path(3).path("terms")).isEmpty();
+        assertThat(sections.path(2).path("materials")).hasSize(1);
+        assertThat(sections.path(3).path("materials")).isEmpty();
+        assertThat(ai.prompts.get("glossary")).contains("VARIAS categorías", "\"description\":[{\"word\":", "\"meaning\":");
+        assertThat(ai.prompts.get("materials")).contains("VARIAS categorías", "\"watering\":[{\"name\":", "\"detail\":");
+    }
+
+    @Test
+    void rejectsFlatEnrichmentWhenMultipleCategoriesWereRequested() throws Exception {
+        ai.responses.add(full());
+        ai.enrichments.put("glossary", json.readTree("""
+                {"terms":[{"word":"rizoma","meaning":"Tallo subterráneo."}]}
+                """));
+        ai.enrichments.put("materials", json.readTree("""
+                {"items":[{"name":"Regadera","detail":"Para regar."}]}
+                """));
+
+        for (JsonNode section : generate().path("sections")) {
+            assertThat(section.path("terms")).isEmpty();
+            assertThat(section.path("materials")).isEmpty();
+        }
+    }
+
+    @Test
+    void recoversFlatEnrichmentWhenOnlyOneCategoryWasSent() throws Exception {
+        ObjectNode response = json.createObjectNode();
+        KEYS.forEach(key -> response.put(key, "Se recomienda su uso medicinal."));
+        response.put("light", "Necesita luz directa.");
+        ai.responses.add(response);
+        ai.enrichments.put("glossary", json.readTree("""
+                {"terms":[{"word":"directa","meaning":"Luz sin sombra."}]}
+                """));
+        ai.enrichments.put("materials", json.readTree("""
+                {"items":[{"name":"Malla","detail":"Permite ajustar la exposición."}]}
+                """));
+
+        JsonNode sections = generate().path("sections");
+        assertThat(sections.path(1).path("terms").path(0).path("word").asText()).isEqualTo("directa");
+        assertThat(sections.path(1).path("materials").path(0).path("name").asText()).isEqualTo("Malla");
+        assertThat(sections.path(0).path("terms")).isEmpty();
+        assertThat(sections.path(0).path("body").asText()).contains("No hay información", SensitivePlantClaims.NOTICE);
+    }
+
+    @Test
+    void filtersSensitiveSentencesInEveryCategoryAndAddsOneNoticePerAffectedSection() {
+        var response = full();
+        KEYS.forEach(key -> response.put(key, """
+                Procura mantener el suelo húmedo. La planta NO ES TÓXICA. Puede comerse sin preparación.
+                Sirve como remedio. Esta planta ESTIMULA LAS DEFENSAS. Colócala a pleno sol.
+                """));
+        response.put("care", "Conserva la humedad del sustrato.");
+        ai.responses.add(response);
+
+        for (JsonNode section : generate().path("sections")) {
+            String body = section.path("body").asText();
+            if (section.path("key").asText().equals("care")) {
+                assertThat(body).contains("Conserva la humedad").doesNotContain(SensitivePlantClaims.NOTICE);
+            } else {
+                assertThat(body).contains("Procura mantener", "pleno sol")
+                        .containsOnlyOnce(SensitivePlantClaims.NOTICE)
+                        .doesNotContain("NO ES TÓXICA", "Puede comerse", "remedio", "ESTIMULA LAS DEFENSAS");
+            }
+        }
+        assertThat(new SensitivePlantClaims("").filter("Es comestible. Es ornamental. Dicen que es curativa.").removed())
+                .isEqualTo(2);
+    }
+
+    @Test
+    void explicitOptInKeepsCandidateHints() throws Exception {
+        ai.enrichments.put("candidate-hints", json.readTree("""
+                {"Helianthus annuus":{"hint":"Observa las hojas.","terms":[{"word":"hoja","meaning":"Parte de la planta."}]}}
+                """));
+        var withHints = new PlantCards(json, ai, true, "");
+        try {
+            JsonNode candidate = withHints.candidates(List.of(species), true,
+                    AiClient.Deadline.after(Duration.ofSeconds(30))).path(0);
+            assertThat(candidate.path("hint").asText()).isEqualTo("Observa las hojas.");
+            assertThat(candidate.path("terms")).hasSize(1);
+        } finally {
+            withHints.stop();
+        }
+    }
+
     private ObjectNode full() {
         var result = json.createObjectNode();
         KEYS.forEach(key -> result.put(key, "Guía concreta para " + key + "."));
@@ -96,6 +197,8 @@ class PlantCardsTest {
     private class Stub implements AiClient {
         final Queue<JsonNode> responses = new ArrayDeque<>();
         final List<String> categories = new ArrayList<>();
+        final Map<String, JsonNode> enrichments = new ConcurrentHashMap<>();
+        final Map<String, String> prompts = new ConcurrentHashMap<>();
 
         @Override
         public String reply(String step, List<Map<String, Object>> messages, boolean vision) {
@@ -108,7 +211,8 @@ class PlantCardsTest {
                 categories.add(messages.get(0).toString());
                 return responses.remove();
             }
-            return json.createObjectNode();
+            prompts.put(step, messages.get(0).toString());
+            return enrichments.getOrDefault(step, json.createObjectNode());
         }
     }
 }

@@ -1,26 +1,14 @@
 ---
 name: glossary
-description: Genera el glosario contextual de una categoría: palabras difíciles con su significado en contexto.
+description: Genera glosarios contextualizados para varias categorías de una ficha.
 ---
 
 # Skill: glossary
 
-Genera el glosario contextual de una categoría de cuidado: palabras difíciles con su significado en contexto.
+Recibes el nombre científico y un objeto con el texto de cada categoría. Por categoría, elige hasta ocho palabras difíciles tal como aparecen en el texto. Explica cada una en una o dos frases breves, en el contexto de esa categoría y en español común. Conserva los nombres científicos y prescinde de anglicismos y palabras inventadas.
 
-## Instrucciones
+Responde únicamente con un objeto JSON. Repite cada clave de categoría recibida y devuelve su lista de pares `word` y `meaning`. Si una categoría no tiene términos, usa `[]`. Ejemplo con dos categorías:
 
-Actúas dentro de una app que ayuda a agricultores sin conocimiento previo. Te doy la planta, la categoría de cuidado y el texto ya generado para esa categoría. Elige de 3 a 8 palabras difíciles de ese texto y explica cada una de forma sencilla y DENTRO DEL CONTEXTO de la categoría (qué significa ahí), en 1 o 2 frases cortas por palabra.
+`{"description":[{"word":"rizoma","meaning":"Tallo subterráneo del que nacen brotes."}],"soil":[]}`
 
-Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional y sin bloques de código Markdown, con exactamente esta forma:
-{"terms": [{"word": "palabra tal como aparece en el texto", "meaning": "significado sencillo en contexto"}]}
-Si no hay palabras difíciles, responde {"terms": []}.
-
-## Entrada
-
-Planta + categoría + texto de la categoría (skill category-info).
-
-## Salida
-
-JSON `{"terms": [{"word": "...", "meaning": "..."}]}`. En la app esas palabras salen resaltadas y al tocarlas se abre su significado.
-
-Usa términos en español y conserva el nombre científico si corresponde. Omite cantidades universales, promesas medicinales y afirmaciones de toxicidad que no se puedan sostener.
+Omite afirmaciones medicinales, de toxicidad, de comestibilidad o de consumo seguro. Basa la explicación en la especie recibida y en el texto de cada categoría.

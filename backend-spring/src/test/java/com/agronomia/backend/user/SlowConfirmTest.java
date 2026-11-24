@@ -60,7 +60,7 @@ class SlowConfirmTest {
         server.start();
         var client = new OpenAiClient(json, "http://127.0.0.1:" + server.getAddress().getPort(),
                 "fixture", "doble-local", "", 0);
-        var cards = new PlantCards(json, client);
+        var cards = new PlantCards(json, client, false, "");
         try {
             var jdbc = mock(JdbcTemplate.class);
             var raw = json.readTree("""

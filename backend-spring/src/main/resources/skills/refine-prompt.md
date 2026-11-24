@@ -23,4 +23,4 @@ La ficha de Pl@ntNet (nombre científico, autoría, nombres comunes, género, fa
 
 JSON `{"prompt": "..."}` que alimenta las skills de categoría, glosario y hints.
 
-Usa español y pide rangos sujetos a condiciones comprobables. Para una especie conocida, pide la mejor guía general y sus condiciones. Incluye datos específicos de variedad, clima, toxicidad o usos medicinales solo cuando haya una base fiable. Reserva "unknown" para especies desconocidas.
+Usa español común, sin anglicismos ni palabras inventadas. Pide rangos sujetos a condiciones comprobables y, para una especie conocida, la mejor guía general con sus condiciones. Mantén los usos específicos de la especie identificada. Omite afirmaciones medicinales, curativas, de toxicidad, de comestibilidad o de consumo seguro. Reserva "unknown" para especies desconocidas.

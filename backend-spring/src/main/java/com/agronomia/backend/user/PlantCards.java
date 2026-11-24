@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
@@ -48,11 +49,17 @@ public class PlantCards {
 
     private final ObjectMapper mapper;
     private final AiClient ai;
+    private final boolean candidateHints;
+    private final SensitivePlantClaims sensitiveClaims;
     private final ExecutorService enrichment = Executors.newFixedThreadPool(4);
 
-    public PlantCards(ObjectMapper mapper, AiClient ai) {
+    public PlantCards(ObjectMapper mapper, AiClient ai,
+                      @Value("${AI_CANDIDATE_HINTS:false}") boolean candidateHints,
+                      @Value("${AI_SENSITIVE_TERMS:}") String additionalSensitiveTerms) {
         this.mapper = mapper;
         this.ai = ai;
+        this.candidateHints = candidateHints;
+        this.sensitiveClaims = new SensitivePlantClaims(additionalSensitiveTerms);
     }
 
     @jakarta.annotation.PreDestroy
@@ -86,9 +93,13 @@ public class PlantCards {
             ObjectNode item = header(row);
             item.remove(List.of("common_name", "authorship"));
             item.set("common_names", array(row.path("species").path("commonNames")));
+            if (hints) {
+                item.put("hint", "");
+                item.putArray("terms");
+            }
             output.add(item);
         }
-        if (!hints) return output;
+        if (!hints || !candidateHints || output.isEmpty()) return output;
         JsonNode details = optional("candidate-hints", skill("candidate-hints") + """
                 Devuelve un objeto con una clave por nombre científico y valores
                 {"hint":"pista visual","terms":[{"word":"término","meaning":"definición"}]}.
@@ -112,6 +123,8 @@ public class PlantCards {
         KEYS.forEach(key -> shape.put(key, "texto de la categoría"));
         String system = """
                 Genera una ficha botánica en español. Lee las instrucciones de contenido para las ocho categorías.
+                Usa español común, sin anglicismos ni palabras inventadas. Habla solo de la especie identificada.
+                Omite afirmaciones medicinales, curativas, de toxicidad, de comestibilidad o de consumo seguro.
                 """ + categoryRules + """
 
                 Devuelve un objeto JSON con las ocho claves obligatorias del ejemplo, cada una con un texto
@@ -134,27 +147,36 @@ public class PlantCards {
             }
             if (received.size() <= 4) throw new NoPlantInformation();
         }
-        ObjectNode texts = received;
+        ObjectNode texts = mapper.createObjectNode();
+        Set<String> affected = new TreeSet<>();
+        int removed = 0;
+        for (String key : KEYS) {
+            var filtered = sensitiveClaims.filter(received.path(key).asText(""));
+            if (!filtered.text().isBlank()) texts.put(key, filtered.text());
+            if (filtered.removed() > 0) affected.add(key);
+            removed += filtered.removed();
+        }
+        LOG.info("Ficha IA oraciones_filtradas={}", removed);
         ObjectNode materialTexts = mapper.createObjectNode();
         for (String key : MATERIAL_KEYS) {
             if (texts.has(key)) materialTexts.set(key, texts.get(key));
         }
-        CompletableFuture<JsonNode> glossary = optionalAsync("glossary", skill("glossary")
-                + "\nDevuelve por categoría listas de objetos word y meaning.", texts.toString(), deadline);
-        CompletableFuture<JsonNode> materials = materialTexts.isEmpty()
-                ? CompletableFuture.completedFuture(mapper.createObjectNode())
-                : optionalAsync("materials", skill("materials")
-                    + "\nDevuelve por categoría listas de objetos name y detail.",
-                    plant.path("scientific_name").asText() + "\n" + materialTexts, deadline);
+        String scientificName = plant.path("scientific_name").asText();
+        CompletableFuture<JsonNode> glossary = enrich("glossary", "terms", "word", "meaning",
+                80, 300, 12, scientificName, texts, deadline);
+        CompletableFuture<JsonNode> materials = enrich("materials", "items", "name", "detail",
+                120, 400, 10, scientificName, materialTexts, deadline);
         JsonNode g = glossary.join();
         JsonNode m = materials.join();
         ArrayNode sections = plant.putArray("sections");
         for (int i = 0; i < KEYS.size(); i++) {
             String key = KEYS.get(i);
+            String body = texts.path(key).asText(FALLBACK) + CONDITIONS;
+            if (affected.contains(key)) body += " " + SensitivePlantClaims.NOTICE;
             ObjectNode section = sections.addObject().put("key", key).put("title", TITLES.get(i))
-                    .put("body", texts.path(key).asText(FALLBACK) + CONDITIONS);
-            section.set("terms", sanitized(g.path(key), "word", "meaning", 80, 300, 12));
-            section.set("materials", sanitized(m.path(key), "name", "detail", 120, 400, 10));
+                    .put("body", body);
+            section.set("terms", array(g.path(key)));
+            section.set("materials", array(m.path(key)));
         }
         return plant;
     }
@@ -216,6 +238,70 @@ public class PlantCards {
                                                       AiClient.Deadline deadline) {
         return CompletableFuture.supplyAsync(() -> optional(step, system, user, deadline, 30, true), enrichment)
                 .completeOnTimeout(mapper.createObjectNode(), deadline.remainingNanos(), TimeUnit.NANOSECONDS);
+    }
+
+    private CompletableFuture<JsonNode> enrich(String step, String flatKey, String label, String detail,
+                                               int maxLabel, int maxDetail, int maxItems, String species,
+                                               ObjectNode texts, AiClient.Deadline deadline) {
+        if (texts.isEmpty()) {
+            LOG.info("IA paso={} elementos_aceptados=0 elementos_descartados=0", step);
+            return CompletableFuture.completedFuture(mapper.createObjectNode());
+        }
+        ObjectNode example = mapper.createObjectNode();
+        texts.fieldNames().forEachRemaining(key -> example.putArray(key).addObject()
+                .put(label, "ejemplo").put(detail, "explicación en contexto"));
+        String prompt = skill(step) + """
+
+                Vas a recibir VARIAS categorías a la vez. Ignora cualquier forma de salida anterior.
+                Devuelve un único objeto JSON con una clave por categoría recibida y su lista como valor.
+                Usa las claves exactas de la entrada. Si una categoría no tiene elementos válidos, usa [].
+                Este es el formato exacto con las claves reales para esta solicitud:
+                """ + example;
+        return optionalAsync(step, prompt, species + "\n" + texts, deadline)
+                .thenApply(response -> parseEnrichment(step, flatKey, label, detail, maxLabel, maxDetail,
+                        maxItems, texts, response));
+    }
+
+    private JsonNode parseEnrichment(String step, String flatKey, String label, String detail,
+                                     int maxLabel, int maxDetail, int maxItems,
+                                     ObjectNode texts, JsonNode response) {
+        ObjectNode result = mapper.createObjectNode();
+        boolean flat = response.size() == 1 && response.path(flatKey).isArray() && texts.size() == 1;
+        if (flat) {
+            LOG.info("IA paso={} formato_plano_recuperado", step);
+            response = mapper.createObjectNode().set(texts.fieldNames().next(), response.path(flatKey));
+        }
+        int accepted = 0;
+        int discarded = 0;
+        int invalidGroups = 0;
+        var fields = response.fields();
+        while (fields.hasNext()) {
+            var field = fields.next();
+            var entries = field.getValue();
+            if (!texts.has(field.getKey()) || !entries.isArray()) {
+                invalidGroups++;
+                discarded += entries.isArray() ? entries.size() : 1;
+                continue;
+            }
+            ArrayNode valid = result.putArray(field.getKey());
+            for (JsonNode item : entries) {
+                String left = clean(item.path(label));
+                String right = clean(item.path(detail));
+                if (valid.size() >= maxItems || left.isBlank() || right.isBlank()
+                        || sensitiveClaims.containsSensitiveTerm(left) || sensitiveClaims.containsSensitiveTerm(right)) {
+                    discarded++;
+                    continue;
+                }
+                valid.addObject().put(label, limit(left, maxLabel)).put(detail, limit(right, maxDetail));
+                accepted++;
+            }
+        }
+        int missing = texts.size() - result.size();
+        if (missing > 0 || invalidGroups > 0) {
+            LOG.info("IA paso={} formato_inesperado grupos_ausentes={} grupos_invalidos={}", step, missing, invalidGroups);
+        }
+        LOG.info("IA paso={} elementos_aceptados={} elementos_descartados={}", step, accepted, discarded);
+        return result;
     }
 
     private static String flatten(JsonNode node) {
