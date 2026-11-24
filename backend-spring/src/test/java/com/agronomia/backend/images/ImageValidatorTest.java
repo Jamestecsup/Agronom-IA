@@ -26,18 +26,18 @@ class ImageValidatorTest {
     }
 
     @Test
-    void acceptsJpegAndWebpWhenTheyCanBeDecoded() throws Exception {
+    void acceptsJpegAndRejectsWebp() throws Exception {
         assertThat(validator.validate(multipart("plant.png", "image/png", imageBytes("jpeg"))).mimeType())
                 .isEqualTo("image/jpeg");
-        assertThat(validator.validate(multipart("plant.jpg", "image/jpeg", imageBytes("webp"))).mimeType())
-                .isEqualTo("image/webp");
+        assertThatThrownBy(() -> validator.validate(multipart("plant.jpg", "image/jpeg", imageBytes("webp"))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("JPG o PNG");
     }
 
     @Test
     void rejectsGifAsUnsupportedContent() throws Exception {
         assertThatThrownBy(() -> validator.validate(multipart("plant.jpg", "image/jpeg", imageBytes("gif"))))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("JPEG, PNG y WebP");
+                .hasMessageContaining("JPG o PNG");
     }
 
     @Test

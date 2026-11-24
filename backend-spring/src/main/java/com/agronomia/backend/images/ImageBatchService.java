@@ -30,7 +30,7 @@ public class ImageBatchService {
         this.transaction = new TransactionTemplate(transactionManager);
     }
 
-    public ImageDtos.UploadResponse upload(List<MultipartFile> files) {
+    public ImageDtos.UploadResponse upload(long userId, List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Envía entre una y cinco imágenes en el campo photos[].");
         }
@@ -42,7 +42,7 @@ public class ImageBatchService {
         String batchId = UUID.randomUUID().toString();
         List<PlantImageRecord> records = storage.store(batchId, validated);
         try {
-            transaction.executeWithoutResult(status -> repository.insertAll(records));
+            transaction.executeWithoutResult(status -> repository.insertAll(userId, records));
             List<ImageDtos.UploadedImage> images = records.stream()
                     .map(row -> new ImageDtos.UploadedImage(row.id(), row.relativePath(), row.mimeType(), row.fileSize()))
                     .toList();

@@ -6,11 +6,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -24,9 +26,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     ResponseEntity<ImageDtos.ErrorResponse> handleMethod(HttpRequestMethodNotSupportedException exception) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setAllow(java.util.Set.of(org.springframework.http.HttpMethod.POST));
+        if (exception.getSupportedHttpMethods() != null) headers.setAllow(exception.getSupportedHttpMethods());
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).headers(headers)
-                .body(new ImageDtos.ErrorResponse(false, "Método no permitido. Usa POST."));
+                .body(new ImageDtos.ErrorResponse(false, "Método no permitido."));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<ImageDtos.ErrorResponse> handleInvalidJson() {
+        return ResponseEntity.badRequest().body(new ImageDtos.ErrorResponse(false, "JSON inválido."));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    ResponseEntity<ImageDtos.ErrorResponse> handleUnknownPath() {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ImageDtos.ErrorResponse(false, "No se encontró el recurso."));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

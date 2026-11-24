@@ -8,8 +8,8 @@ import java.util.List;
 @Repository
 public class PlantImageRepository {
     private static final String INSERT_SQL = """
-            INSERT INTO imagenes_planta (id, batch_id, relative_path, mime_type, file_size, width, height)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO imagenes_planta (id, batch_id, relative_path, mime_type, file_size, width, height, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -18,7 +18,7 @@ public class PlantImageRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public void insertAll(List<PlantImageRecord> records) {
+    public void insertAll(long userId, List<PlantImageRecord> records) {
         jdbcTemplate.batchUpdate(INSERT_SQL, records, records.size(), (statement, image) -> {
             statement.setString(1, image.id());
             statement.setString(2, image.batchId());
@@ -27,6 +27,7 @@ public class PlantImageRepository {
             statement.setLong(5, image.fileSize());
             statement.setInt(6, image.width());
             statement.setInt(7, image.height());
+            statement.setLong(8, userId);
         });
     }
 }

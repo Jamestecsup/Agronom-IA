@@ -1,5 +1,6 @@
 package com.agronomia.backend.images;
 
+import com.agronomia.backend.security.UserTokens;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import org.springframework.mock.web.MockMultipartFile;
 
 import javax.imageio.ImageIO;
@@ -23,6 +25,7 @@ import java.util.Comparator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -38,18 +41,21 @@ class ImageUploadApiIntegrationTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired UserTokens tokens;
+    private String bearer;
     @MockitoBean PlantImageRepository repository;
     @Value("${plant.storage.directory}") String storageDirectory;
 
     @BeforeEach
     void setUp() throws Exception {
         reset(repository);
+        bearer = "Bearer " + tokens.issue(1L);
         PlantImageRepository jdbcRepository = new PlantImageRepository(jdbcTemplate);
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked") List<PlantImageRecord> rows = invocation.getArgument(0);
-            jdbcRepository.insertAll(rows);
+            @SuppressWarnings("unchecked") List<PlantImageRecord> rows = invocation.getArgument(1);
+            jdbcRepository.insertAll(invocation.getArgument(0), rows);
             return null;
-        }).when(repository).insertAll(anyList());
+        }).when(repository).insertAll(anyLong(), anyList());
         jdbcTemplate.update("DELETE FROM imagenes_planta");
         clearStorage();
     }
@@ -61,7 +67,7 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void preservesAndroidUploadContractAndPersistsOneImageAndRelativePath() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT).file(image("flower.jpg", "image/jpeg", "png")))
+        mockMvc.perform(authenticatedUpload().file(image("flower.jpg", "image/jpeg", "png")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.batch_id").isNotEmpty())
@@ -70,12 +76,13 @@ class ImageUploadApiIntegrationTest {
 
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT relative_path FROM imagenes_planta", String.class)).endsWith(".png");
+        assertThat(jdbcTemplate.queryForObject("SELECT user_id FROM imagenes_planta", Long.class)).isEqualTo(1L);
         assertThat(countStoredFiles()).isEqualTo(1);
     }
 
     @Test
     void acceptsTheMaximumFiveImagesAndPersistsTheWholeBatch() throws Exception {
-        var request = multipart(ENDPOINT);
+        var request = authenticatedUpload();
         for (int index = 0; index < 5; index++) {
             request.file(image("plant-" + index + ".jpg", "image/jpeg", "jpeg"));
         }
@@ -90,7 +97,7 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void rejectsMoreThanFiveBeforeWritingFilesOrRows() throws Exception {
-        var request = multipart(ENDPOINT);
+        var request = authenticatedUpload();
         for (int index = 0; index < 6; index++) request.file(image("plant-" + index + ".jpg", "image/jpeg", "jpeg"));
 
         mockMvc.perform(request)
@@ -103,28 +110,36 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void rejectsGifWithAConsistentJsonError() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT).file(image("plant.jpg", "image/jpeg", "gif")))
-                .andExpect(status().isUnsupportedMediaType())
+        mockMvc.perform(authenticatedUpload().file(image("plant.jpg", "image/jpeg", "gif")))
+                .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("JPEG, PNG y WebP")));
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("JPG o PNG")));
 
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM imagenes_planta", Integer.class)).isZero();
         assertThat(countStoredFiles()).isZero();
     }
 
     @Test
-    void acceptsDecodableWebpAndUsesItsDetectedExtension() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT).file(image("plant.png", "image/png", "webp")))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.images[0].mime_type").value("image/webp"));
+    void rejectsWebpEvenWithBearerAndPngFilename() throws Exception {
+        mockMvc.perform(authenticatedUpload()
+                        .file(image("plant.png", "image/png", "webp")))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false));
+        assertThat(countStoredFiles()).isZero();
+    }
 
-        assertThat(jdbcTemplate.queryForObject("SELECT relative_path FROM imagenes_planta", String.class)).endsWith(".webp");
+    @Test
+    void requiresBearerBeforeStoringAnImage() throws Exception {
+        mockMvc.perform(multipart(ENDPOINT).file(image("plant.png", "image/png", "png")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+        assertThat(countStoredFiles()).isZero();
     }
 
     @Test
     void rejectsCorruptContentEvenWhenItHasAnAllowedSignature() throws Exception {
         byte[] corruptPng = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3};
-        mockMvc.perform(multipart(ENDPOINT).file(new MockMultipartFile("photos[]", "flower.png", "image/png", corruptPng)))
+        mockMvc.perform(authenticatedUpload().file(new MockMultipartFile("photos[]", "flower.png", "image/png", corruptPng)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false));
 
@@ -136,12 +151,12 @@ class ImageUploadApiIntegrationTest {
     void cleansFilesWhenDatabaseInsertionFails() throws Exception {
         PlantImageRepository jdbcRepository = new PlantImageRepository(jdbcTemplate);
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked") List<PlantImageRecord> rows = invocation.getArgument(0);
-            jdbcRepository.insertAll(rows.subList(0, 1));
+            @SuppressWarnings("unchecked") List<PlantImageRecord> rows = invocation.getArgument(1);
+            jdbcRepository.insertAll(invocation.getArgument(0), rows.subList(0, 1));
             throw new org.springframework.dao.DataIntegrityViolationException("test failure after the first insert");
-        }).when(repository).insertAll(anyList());
+        }).when(repository).insertAll(anyLong(), anyList());
 
-        mockMvc.perform(multipart(ENDPOINT)
+        mockMvc.perform(authenticatedUpload()
                         .file(image("flower-a.jpg", "image/jpeg", "jpeg"))
                         .file(image("flower-b.jpg", "image/jpeg", "jpeg")))
                 .andExpect(status().isInternalServerError())
@@ -154,12 +169,18 @@ class ImageUploadApiIntegrationTest {
 
     @Test
     void missingPhotosProducesBadRequestJsonAndGetRemainsMethodNotAllowed() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT))
+        mockMvc.perform(authenticatedUpload())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
         mockMvc.perform(get(ENDPOINT))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.success").value(false));
+    }
+
+    private MockMultipartHttpServletRequestBuilder authenticatedUpload() {
+        var request = multipart(ENDPOINT);
+        request.header("Authorization", bearer);
+        return request;
     }
 
     private static MockMultipartFile image(String filename, String mime, String format) throws Exception {
