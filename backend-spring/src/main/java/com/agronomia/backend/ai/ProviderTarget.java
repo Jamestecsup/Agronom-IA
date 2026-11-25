@@ -47,6 +47,7 @@ final class ProviderTarget {
             int a = ip[0] & 255, b = ip[1] & 255, c = ip[2] & 255;
             return a > 0 && a < 224 && a != 10 && a != 127
                     && !(a == 100 && b >= 64 && b <= 127) && !(a == 169 && b == 254)
+                    && !(a == 168 && b == 63 && c == 129 && (ip[3] & 255) == 16)
                     && !(a == 172 && b >= 16 && b <= 31)
                     && !(a == 192 && (b == 168 || (b == 0 && (c == 0 || c == 2)) || (b == 88 && c == 99)))
                     && !(a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100)))
@@ -59,8 +60,8 @@ final class ProviderTarget {
     }
 
     private static boolean localAddress(InetAddress address) {
-        return address.isLoopbackAddress() || address.isSiteLocalAddress()
-                || (address.getAddress().length == 16 && (address.getAddress()[0] & 0xfe) == 0xfc);
+        // En desarrollo se permite ::1, pero no ULA como fd00:ec2::254 (metadatos).
+        return address.isLoopbackAddress() || (address.getAddress().length == 4 && address.isSiteLocalAddress());
     }
 
     private static ApiException invalid() {

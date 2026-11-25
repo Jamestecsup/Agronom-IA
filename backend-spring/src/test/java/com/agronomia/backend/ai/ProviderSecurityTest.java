@@ -22,7 +22,7 @@ class ProviderSecurityTest {
     @Test
     void rejectsIpRangesAndUnsafeUrlShapes() throws Exception {
         for (String address : new String[]{"0.0.0.0","127.1","10.0.0.1","100.100.100.200","169.254.169.254",
-                "172.31.10.9","192.168.1.1","192.0.2.1","198.18.0.1","224.0.0.1","::1","fc00::1","fe80::1",
+                "168.63.129.16","172.31.10.9","192.168.1.1","192.0.2.1","198.18.0.1","224.0.0.1","::1","fc00::1","fe80::1",
                 "::ffff:127.0.0.1","::ffff:169.254.169.254","2002:7f00:1::1","2001:db8::1"}) {
             assertThat(ProviderTarget.publicAddress(InetAddress.getByName(address))).as(address).isFalse();
         }
@@ -34,6 +34,8 @@ class ProviderSecurityTest {
             assertThatThrownBy(() -> strict.validate(url)).as(url).isInstanceOf(ApiException.class);
         }
         assertThatThrownBy(() -> local.validate("http://169.254.169.254/v1")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> local.validate("http://[fd00:ec2::254]/v1")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> local.validate("https://168.63.129.16/v1")).isInstanceOf(ApiException.class);
         assertThat(local.validate("http://127.0.0.1:9090/v1").host()).isEqualTo("127.0.0.1");
     }
 
