@@ -37,6 +37,13 @@ public class OpenAiClient implements AiClient {
     private final int maxRequests;
     private final boolean debugResponses;
     private final AtomicInteger requests = new AtomicInteger();
+    private final ThreadLocal<Runnable> charge = new ThreadLocal<>();
+
+    <T> T withCharge(Runnable operation, java.util.function.Supplier<T> action) {
+        charge.set(operation);
+        try { return action.get(); }
+        finally { charge.remove(); }
+    }
 
     @Autowired
     public OpenAiClient(ObjectMapper mapper, @Value("${ai.base-url}") String baseUrl,
@@ -129,6 +136,8 @@ public class OpenAiClient implements AiClient {
             if (maxRequests > 0 && requests.incrementAndGet() > maxRequests) {
                 throw new Failure("Se alcanzó el presupuesto de llamadas a la IA.", false);
             }
+            var quota = charge.get();
+            if (quota != null) quota.run();
             long started = System.nanoTime();
             long completed = 0L;
             int status = 0;
@@ -151,7 +160,7 @@ public class OpenAiClient implements AiClient {
                     throw new Failure(status == 429 ? "La IA alcanzó su límite de uso." : "No se pudo consultar la IA.", false);
                 }
                 String content = body.path("choices").path(0).path("message").path("content").asText("");
-                if (debugResponses) {
+                if (debugResponses && charge.get() == null) {
                     String preview = content.replace(key, "[redactado]").replaceAll("[\\p{Cntrl}]", " ");
                     LOG.info("IA paso={} respuesta inicial={}", step, preview.substring(0, Math.min(300, preview.length())));
                 }

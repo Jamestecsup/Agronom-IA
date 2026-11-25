@@ -45,18 +45,34 @@ public class ScheduleAiService {
     }
 
     public JsonNode parseWeeklySchedule(MultipartFile pdf) {
+        return parseWeeklySchedule(pdf, ai);
+    }
+
+    public JsonNode parseWeeklySchedule(MultipartFile pdf, long user) {
+        return parseWeeklySchedule(pdf, ai.forUser(user));
+    }
+
+    private JsonNode parseWeeklySchedule(MultipartFile pdf, AiClient client) {
         if (pdf == null || pdf.isEmpty() || pdf.getSize() > MAX_PDF_BYTES) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El PDF está vacío o supera 15 MB.");
         }
+        if (!client.supportsVision()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "El modelo activo no admite imágenes de PDF.");
         try (PDDocument document = Loader.loadPDF(pdf.getBytes())) {
             if (document.isEncrypted() || document.getNumberOfPages() < 1 || document.getNumberOfPages() > MAX_PAGES) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "El horario debe tener entre 1 y 5 páginas y no estar protegido.");
+            }
+            int budget = client.inputBudget();
+            int availablePages = budget == Integer.MAX_VALUE ? MAX_PAGES : (budget - 440) / 1024;
+            if (document.getNumberOfPages() > availablePages) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "El horario no cabe en el contexto del modelo activo. Reduce el número de páginas.");
             }
             String text = new PDFTextStripper().getText(document);
             PDFRenderer renderer = new PDFRenderer(document);
             ArrayNode images = mapper.createArrayNode();
             for (int page = 0; page < document.getNumberOfPages(); page++) {
-                BufferedImage image = renderer.renderImageWithDPI(page, 110, ImageType.RGB);
+                BufferedImage image = renderer.renderImageWithDPI(page, budget == Integer.MAX_VALUE ? 110 : 85, ImageType.RGB);
                 image = resizeIfNeeded(image);
                 ByteArrayOutputStream output = new ByteArrayOutputStream();
                 ImageIO.write(image, "jpg", output);
@@ -79,10 +95,11 @@ public class ScheduleAiService {
                     "\"start_time\":\"08:00\",\"end_time\":\"10:30\",\"section\":\"\"}]}. " +
                     "day_of_week usa ISO 1=lunes ... 7=domingo; horas en formato 24h HH:mm. " +
                     "Si el código se ve en la grilla y el nombre solo aparece en la leyenda inferior, relaciónalos. " +
-                    "No inventes datos. Texto extraído del PDF:\n" + truncate(text, 45_000));
+                    "No inventes datos. Texto extraído del PDF:\n" + truncate(text, budget == Integer.MAX_VALUE
+                            ? 45_000 : Math.max(0, (budget - 440 - 1024 * document.getNumberOfPages()))));
             images.insert(0, prompt);
 
-            JsonNode result = callAi(
+            JsonNode result = callAi(client,
                     "Eres un extractor de horarios académicos. Lee texto e imagen conjuntamente y produce únicamente JSON válido.",
                     images, true
             );
@@ -93,7 +110,7 @@ public class ScheduleAiService {
             ObjectNode response = mapper.createObjectNode();
             response.set("classes", classes);
             return response;
-        } catch (ResponseStatusException error) {
+        } catch (ResponseStatusException | com.agronomia.backend.images.ApiException error) {
             throw error;
         } catch (Exception error) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No se pudo leer el PDF o analizar el horario con la IA.", error);
@@ -101,11 +118,44 @@ public class ScheduleAiService {
     }
 
     public JsonNode draftCarePlan(JsonNode request) {
+        return draftCarePlan(request, ai);
+    }
+
+    public JsonNode draftCarePlan(JsonNode request, long user) {
+        return draftCarePlan(request, ai.forUser(user));
+    }
+
+    private JsonNode draftCarePlan(JsonNode request, AiClient client) {
         JsonNode classes = request.path("classes");
         JsonNode plants = request.path("plants");
         if (!classes.isArray() || classes.isEmpty() || !plants.isArray() || plants.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Se necesita un horario confirmado y al menos una planta.");
         }
+        if (client.inputBudget() == Integer.MAX_VALUE) return careBatch(client, classes, plants);
+        var compactSchedule = mapper.createArrayNode();
+        classes.forEach(row -> compactSchedule.addObject().put("day_of_week", row.path("day_of_week").asInt())
+                .put("start_time",row.path("start_time").asText()).put("end_time",row.path("end_time").asText()));
+        int remaining = client.inputBudget() - 480 - client.estimateCharacters(compactSchedule.toString().length());
+        if (remaining < 120) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "El horario ocupa demasiado contexto para generar el plan de cuidados.");
+        int batchSize = Math.min(4, Math.max(1, remaining / 450));
+        int charLimit = Math.max(80, Math.min(1800, (remaining / batchSize - 70)));
+        var tasks = mapper.createArrayNode();
+        var batch = mapper.createArrayNode();
+        for (JsonNode plant : plants) {
+            var entry = plant.deepCopy();
+            if (entry instanceof ObjectNode object) object.put("care_information", truncate(entry.path("care_information").asText(), charLimit));
+            batch.add(entry);
+            if (batch.size() == batchSize) {
+                tasks.addAll((ArrayNode)careBatch(client, compactSchedule, batch).path("tasks"));
+                batch.removeAll();
+            }
+        }
+        if (!batch.isEmpty()) tasks.addAll((ArrayNode)careBatch(client, compactSchedule, batch).path("tasks"));
+        return mapper.createObjectNode().set("tasks",tasks);
+    }
+
+    private JsonNode careBatch(AiClient client, JsonNode classes, JsonNode plants) {
         ObjectNode prompt = mapper.createObjectNode();
         prompt.put("type", "text");
         prompt.put("text", "Propón acciones recurrentes semanales de cuidado para estas plantas, respetando sus indicaciones " +
@@ -117,17 +167,17 @@ public class ScheduleAiService {
                 "Usa días ISO 1=lunes ... 7=domingo y horas 24h. Si no hay tarea segura, devuelve lista vacía. " +
                 "Datos de entrada:\nCLASES=" + classes.toString() + "\nPLANTAS=" + plants.toString());
         ArrayNode content = mapper.createArrayNode().add(prompt);
-        JsonNode result = callAi("Eres un agrónomo que organiza rutinas semanales sin cruzarlas con clases.", content, false);
+        JsonNode result = callAi(client, "Eres un agrónomo que organiza rutinas semanales sin cruzarlas con clases.", content, false);
         ArrayNode tasks = normalizeTasks(result.path("tasks"), classes, plants);
         ObjectNode response = mapper.createObjectNode();
         response.set("tasks", tasks);
         return response;
     }
 
-    private JsonNode callAi(String system, ArrayNode userContent, boolean vision) {
+    private JsonNode callAi(AiClient client, String system, ArrayNode userContent, boolean vision) {
         try {
             List<Map<String, Object>> parts = mapper.convertValue(userContent, new TypeReference<>() {});
-            return ai.json(vision ? "schedule-import" : "care-plan",
+            return client.json(vision ? "schedule-import" : "care-plan",
                     List.of(AiClient.message("system", system), Map.of("role", "user", "content", parts)), vision);
         } catch (AiClient.Failure error) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, error.getMessage());

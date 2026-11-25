@@ -26,7 +26,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/agronomia-api/api/chat")
+@RequestMapping("/agronomia-api/api")
 public class UserChatController {
     private static final String PHOTO_PROMPT = "Comparto una foto del progreso de mi planta. ¿Qué observas y qué cuidado me recomiendas?";
     private final UserAccounts accounts;
@@ -53,7 +53,7 @@ public class UserChatController {
         this.transaction = new TransactionTemplate(transactionManager);
     }
 
-    @PostMapping
+    @PostMapping("/chat")
     public Map<String, Object> chat(@RequestHeader(name = "Authorization", required = false) String token,
                                     @RequestParam(defaultValue = "") String message,
                                     @RequestParam(name = "session_id", defaultValue = "default") String sessionId,
@@ -61,6 +61,10 @@ public class UserChatController {
                                     @RequestParam(name = "plant_id", defaultValue = "") String plantId,
                                     @RequestParam(required = false) MultipartFile image) {
         long user = accounts.requireUser(token);
+        var client = ai.forUser(user);
+        if (image != null && !client.supportsVision()) {
+            throw error(HttpStatus.UNPROCESSABLE_ENTITY, "El modelo activo no admite fotos.");
+        }
         if (message.codePointCount(0, message.length()) > 4000) {
             throw error(HttpStatus.BAD_REQUEST, "El mensaje no puede superar 4000 caracteres.");
         }
@@ -90,15 +94,19 @@ public class UserChatController {
         else if (subject.isBlank()) subject = plants.plants(user).stream().findFirst()
                 .map(UserChatController::context).orElse("Aún no se ha detectado ninguna planta. Sugiere usar el escáner.");
         var turn = new ArrayList<Map<String, Object>>();
+        if (client.inputBudget() != Integer.MAX_VALUE && subject.length() > client.inputBudget() / 2) {
+            subject = subject.substring(0, client.inputBudget() / 2);
+        }
         turn.add(Map.of("type", "text", "text", question + "\n\n" + subject));
         if (photo != null) {
             turn.add(Map.of("type", "image_url", "image_url", Map.of("url", "data:" + photo.mimeType() + ";base64,"
                     + Base64.getEncoder().encodeToString(photoBytes))));
         }
         prompt.add(Map.of("role", "user", "content", turn));
+        while (prompt.size() > 2 && client.estimate(prompt) > client.inputBudget()) prompt.remove(1);
         String reply;
         try {
-            reply = ai.reply("chat", prompt, photo != null);
+            reply = client.reply("chat", prompt, photo != null);
         } catch (AiClient.Failure error) {
             throw error(HttpStatus.BAD_GATEWAY, error.visionUnsupported() ? error.getMessage()
                     : "No pudimos responder en este momento. Inténtalo de nuevo.");
@@ -111,6 +119,7 @@ public class UserChatController {
                 Files.write(target, photoBytes, java.nio.file.StandardOpenOption.CREATE_NEW);
             }
             transaction.executeWithoutResult(status -> {
+                lockAccount(user);
                 String userMessage = insertMessage(user, session, "user", question);
                 if (photo != null) {
                     jdbc.update("""
@@ -129,7 +138,7 @@ public class UserChatController {
         return Map.of("success", true, "reply", reply);
     }
 
-    @GetMapping("/history")
+    @GetMapping("/chat/history")
     public Map<String, Object> history(@RequestHeader(name = "Authorization", required = false) String token,
                                        @RequestParam(name = "plant_id", defaultValue = "") String plantId) {
         long user = accounts.requireUser(token);
@@ -151,7 +160,7 @@ public class UserChatController {
         return Map.of("success", true, "messages", rows);
     }
 
-    @GetMapping("/images")
+    @GetMapping("/chat/images")
     public Map<String, Object> images(@RequestHeader(name = "Authorization", required = false) String token,
                                       @RequestParam(name = "plant_id", defaultValue = "") String plantId) {
         long user = accounts.requireUser(token);
@@ -165,7 +174,7 @@ public class UserChatController {
         return Map.of("success", true, "images", rows);
     }
 
-    @GetMapping("/images/{imageId}")
+    @GetMapping("/chat/images/{imageId}")
     public ResponseEntity<FileSystemResource> image(@RequestHeader(name = "Authorization", required = false) String token,
                                                      @PathVariable String imageId) {
         long user = accounts.requireUser(token);
@@ -176,6 +185,72 @@ public class UserChatController {
                 """, (row, index) -> files.response(row.getString(1), row.getString(2)),
                 UserPlants.databaseId(imageId), user, user).stream().findFirst()
                 .orElseThrow(() -> error(HttpStatus.NOT_FOUND, "No se encontró esa imagen en tu cuenta."));
+    }
+
+    @DeleteMapping("/chat")
+    public ResponseEntity<Void> deleteChat(@RequestHeader(name = "Authorization", required = false) String token,
+                                           @RequestParam("plant_id") String plantId) {
+        long user = accounts.requireUser(token);
+        var plant = plants.requirePlant(user, plantId.strip());
+        deleteHistory(user, plant);
+        return ResponseEntity.noContent().cacheControl(org.springframework.http.CacheControl.noStore()).build();
+    }
+
+    @DeleteMapping("/chats")
+    public ResponseEntity<Void> deleteAllChats(@RequestHeader(name = "Authorization", required = false) String token,
+                                               @RequestParam(defaultValue = "false") boolean confirm) {
+        long user = accounts.requireUser(token);
+        if (!confirm) throw error(HttpStatus.BAD_REQUEST, "Confirma la eliminación de todos los chats.");
+        deleteHistory(user, null);
+        return ResponseEntity.noContent().cacheControl(org.springframework.http.CacheControl.noStore()).build();
+    }
+
+    private void deleteHistory(long user, UserPlants.StoredPlant plant) {
+        var staged = new java.util.LinkedHashMap<Path,Path>();
+        try {
+            transaction.executeWithoutResult(status -> {
+                lockAccount(user);
+                var paths = plant == null
+                        ? jdbc.queryForList("SELECT relative_path FROM imagenes_progreso_chat WHERE user_id=?", String.class, user)
+                        : jdbc.queryForList("SELECT relative_path FROM imagenes_progreso_chat WHERE user_id=? AND plant_id=?",
+                            String.class, user, plant.id());
+                for (String path : paths) {
+                    if (!path.matches("progress/[a-fA-F0-9-]{36}/[a-fA-F0-9-]{36}\\.(?:jpeg|jpg|png)")) {
+                        throw error(HttpStatus.CONFLICT, "La ruta de una imagen de progreso no es válida.");
+                    }
+                    if (!Files.exists(files.resolve(path), java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
+                    Path source = files.existing(path);
+                    Path hidden = source.resolveSibling(".deleted-" + UUID.randomUUID());
+                    try {
+                        Files.move(source, hidden, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                        staged.put(source, hidden);
+                    } catch (IOException e) {
+                        throw error(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo preparar la eliminación de las fotos.");
+                    }
+                }
+                if (plant == null) {
+                    jdbc.update("DELETE FROM imagenes_progreso_chat WHERE user_id=?", user);
+                    jdbc.update("DELETE FROM mensajes_chat WHERE user_id=?", user);
+                } else {
+                    jdbc.update("DELETE FROM imagenes_progreso_chat WHERE user_id=? AND plant_id=?", user, plant.id());
+                    jdbc.update("DELETE FROM mensajes_chat WHERE user_id=? AND session_id=?", user, plant.sessionId());
+                }
+            });
+        } catch (RuntimeException failure) {
+            staged.forEach((source, hidden) -> {
+                try { Files.move(hidden, source, java.nio.file.StandardCopyOption.ATOMIC_MOVE); }
+                catch (IOException e) { failure.addSuppressed(e); }
+            });
+            throw failure;
+        }
+        for (Path hidden : staged.values()) {
+            try { Files.deleteIfExists(hidden); }
+            catch (IOException e) { org.slf4j.LoggerFactory.getLogger(getClass()).warn("No se pudo purgar una foto aislada."); }
+        }
+    }
+
+    private void lockAccount(long user) {
+        jdbc.queryForObject("SELECT id FROM auth_user WHERE id=? FOR UPDATE", Long.class, user);
     }
 
     private String insertMessage(long user, String session, String role, String content) {

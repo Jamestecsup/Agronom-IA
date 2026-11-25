@@ -67,11 +67,13 @@ public class UserPlants {
                     : "La coincidencia es muy baja. Toma mejores fotos e inténtalo de nuevo.");
         } else if (ranked.get(0).path("score").asDouble() < 0.50) {
             result = state("ambiguous");
-            result.set("candidates", cards.candidates(ranked, true, deadline));
+            result.set("candidates", cards.hasCandidateHints()
+                    ? cards.candidates(ranked, true, deadline, cards.client(user))
+                    : cards.candidates(ranked, true, deadline));
         } else {
             try {
                 result = state("identified");
-                result.set("plant", cards.generate(ranked.get(0), deadline));
+                result.set("plant", cards.generate(ranked.get(0), deadline, cards.client(user)));
                 result.set("candidates", cards.candidates(ranked, false, deadline));
             } catch (PlantCards.NoPlantInformation ignored) {
                 ObjectNode header = cards.header(ranked.get(0));
@@ -108,7 +110,7 @@ public class UserPlants {
                 .findFirst().orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
                         "La especie elegida no está entre las candidatas de ese lote."));
         try {
-            JsonNode plant = cards.generate(selected, deadline);
+            JsonNode plant = cards.generate(selected, deadline, cards.client(user));
             savePlant(user, batch.strip(), plant);
             ObjectNode answer = state("identified");
             answer.set("plant", plant);
@@ -135,6 +137,14 @@ public class UserPlants {
 
     public Map<String, Object> list(long user) {
         return Map.of("success", true, "plants", plants(user).stream().map(StoredPlant::summary).toList());
+    }
+
+    public ObjectNode detail(long user, String id) {
+        var stored = requirePlant(user, id);
+        var result = json.createObjectNode();
+        result.putPOJO("summary", stored.summary());
+        result.set("plant", stored.card());
+        return result;
     }
 
     public ResponseEntity<FileSystemResource> cover(long user, String plantId) {
@@ -197,11 +207,13 @@ public class UserPlants {
     }
 
     private void savePlant(long user, String batch, JsonNode plant) {
+        String id = newId();
+        ((ObjectNode) plant).put("id", publicId(id));
         jdbc.update("""
                 INSERT INTO identificaciones_planta
                 (id,user_id,batch_id,scientific_name,common_name,family,confidence,result_json,created_at)
                 VALUES (?,?,?,?,?,?,?,?,UTC_TIMESTAMP(6))
-                """, newId(), user, batch, plant.path("scientific_name").asText(), plant.path("common_name").asText(),
+                """, id, user, batch, plant.path("scientific_name").asText(), plant.path("common_name").asText(),
                 plant.path("family").asText(), plant.path("confidence").asDouble(), plant.toString());
     }
 

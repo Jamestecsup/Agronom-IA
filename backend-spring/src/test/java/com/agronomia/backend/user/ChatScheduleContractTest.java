@@ -44,6 +44,8 @@ class ChatScheduleContractTest {
     @SuppressWarnings({"unchecked", "rawtypes"})
     void chatProvidesTheLastTwelveTurnsAndRejectsExcessInput() {
         var ai = mock(AiClient.class);
+        when(ai.forUser(anyLong())).thenReturn(ai);
+        when(ai.inputBudget()).thenReturn(Integer.MAX_VALUE);
         var chat = chat(ai);
         when(jdbc.query(contains("LIMIT 12"), any(RowMapper.class), eq(USER), eq("default")))
                 .thenReturn(new ArrayList<>(java.util.stream.IntStream.iterate(12, i -> i - 1).limit(12)
@@ -68,6 +70,9 @@ class ChatScheduleContractTest {
     @SuppressWarnings({"unchecked", "rawtypes"})
     void photoWithoutVisionReturns502WithoutPersistingAnyTurns() throws Exception {
         var ai = mock(AiClient.class);
+        when(ai.forUser(anyLong())).thenReturn(ai);
+        when(ai.inputBudget()).thenReturn(Integer.MAX_VALUE);
+        when(ai.supportsVision()).thenReturn(true);
         var chat = chat(ai);
         var plant = plantFixture();
         when(plants.requirePlant(USER, plant.publicId())).thenReturn(plant);
@@ -91,6 +96,24 @@ class ChatScheduleContractTest {
         try (var paths = Files.list(storage)) {
             assertThat(paths.count()).isZero();
         }
+    }
+
+    @Test
+    void deletesOnlyOwnedChatAndItsFilesAndCanRepeat() throws Exception {
+        var chat = chat(mock(AiClient.class));
+        var plant = plantFixture();
+        when(plants.requirePlant(USER, plant.publicId())).thenReturn(plant);
+        String relative = "progress/" + plant.publicId() + "/" + UUID.randomUUID() + ".jpg";
+        Path photo = storage.resolve(relative);
+        Files.createDirectories(photo.getParent());
+        Files.write(photo, new byte[]{1});
+        when(jdbc.queryForList(contains("WHERE user_id=? AND plant_id=?"), eq(String.class), eq(USER), eq(plant.id())))
+                .thenReturn(List.of(relative), List.of());
+        assertThat(chat.deleteChat(BEARER, plant.publicId()).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(photo).doesNotExist();
+        assertThat(chat.deleteChat(BEARER, plant.publicId()).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        verify(jdbc, times(2)).update(contains("DELETE FROM mensajes_chat WHERE user_id=? AND session_id=?"), eq(USER), eq(plant.sessionId()));
+        assertThatThrownBy(() -> chat.deleteAllChats(BEARER, false)).isInstanceOf(ApiException.class);
     }
 
     @Test
@@ -124,7 +147,7 @@ class ChatScheduleContractTest {
                 .put("title", "No válido").put("start_time", "08:30").put("duration_minutes", 20);
         tasks.addObject().put("plant_id", plant.publicId()).put("day_of_week", 1)
                 .put("title", "Válido").put("start_time", "10:00").put("duration_minutes", 20);
-        when(engine.draftCarePlan(any())).thenReturn(response);
+        when(engine.draftCarePlan(any(), anyLong())).thenReturn(response);
         var drafted = schedules.draft(BEARER).path("tasks");
         assertThat(drafted.size()).isEqualTo(1);
         assertThat(drafted.get(0).path("title").asText()).isEqualTo("Válido");

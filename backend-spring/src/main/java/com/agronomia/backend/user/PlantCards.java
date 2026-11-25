@@ -89,6 +89,10 @@ public class PlantCards {
     }
 
     public ArrayNode candidates(List<JsonNode> rows, boolean hints, AiClient.Deadline deadline) {
+        return candidates(rows, hints, deadline, ai);
+    }
+
+    ArrayNode candidates(List<JsonNode> rows, boolean hints, AiClient.Deadline deadline, AiClient client) {
         ArrayNode output = mapper.createArrayNode();
         for (JsonNode row : rows) {
             ObjectNode item = header(row);
@@ -101,7 +105,7 @@ public class PlantCards {
             output.add(item);
         }
         if (!hints || !candidateHints || output.isEmpty()) return output;
-        JsonNode details = optional("candidate-hints", skill("candidate-hints") + """
+        JsonNode details = optional(client, "candidate-hints", skill("candidate-hints") + """
                 Devuelve un objeto con una clave por nombre científico y valores
                 {"hint":"pista visual","terms":[{"word":"término","meaning":"definición"}]}.
                 """, output.toString(), deadline, 20, false);
@@ -115,9 +119,17 @@ public class PlantCards {
     }
 
     public ObjectNode generate(JsonNode species, AiClient.Deadline deadline) {
+        return generate(species, deadline, ai);
+    }
+
+    AiClient client(long user) { return ai.forUser(user); }
+    boolean hasCandidateHints() { return candidateHints; }
+
+    ObjectNode generate(JsonNode species, AiClient.Deadline deadline, AiClient client) {
         ObjectNode plant = header(species);
         String fact = "Ficha de Pl@ntNet:\n" + plant + "\nReferencias taxonómicas:\n" + species.path("species");
-        String refined = optional("refine", skill("refine-prompt"), fact, deadline, 25, true).path("prompt").asText("");
+        String refined = client.inputBudget() < 2000 ? "" :
+                optional(client, "refine", skill("refine-prompt"), fact, deadline, 25, true).path("prompt").asText("");
         String categoryRules = KEYS.stream().map(key -> "### " + key + "\n" + skill("categories/" + key))
                 .collect(Collectors.joining("\n"));
         ObjectNode shape = mapper.createObjectNode();
@@ -134,11 +146,13 @@ public class PlantCards {
                 """ + shape;
         String input = fact + "\n" + refined;
         AiClient.Deadline categoryDeadline = deadline.cap(Duration.ofSeconds(90));
-        ObjectNode received = categories(system, input, categoryDeadline, true);
+        boolean small = !fits(client, system, input) || client.outputBudget() < KEYS.size() * 100;
+        ObjectNode received = small ? smallCategories(client, plant, categoryDeadline)
+                : categories(client, system, input, categoryDeadline, true);
         if (received.size() <= 4) {
             if (categoryDeadline.remainingNanos() < MIN_OPTIONAL.toNanos()) throw new NoPlantInformation();
             try {
-                received = categories(system + """
+                received = small ? smallCategories(client, plant, categoryDeadline) : categories(client, system + """
 
                         Corrección obligatoria: escribe siempre la mejor guía general con sus condiciones.
                         Usa "unknown" solo si no conoces la especie. Completa las ocho claves en un único JSON.
@@ -158,7 +172,7 @@ public class PlantCards {
             removed += filtered.removed();
         }
         LOG.info("Ficha IA oraciones_filtradas={}", removed);
-        Enrichment enrichment = enrichments(plant.path("scientific_name").asText(), texts, deadline, true);
+        Enrichment enrichment = enrichments(client, plant.path("scientific_name").asText(), texts, deadline, true);
         JsonNode g = enrichment.glossary();
         JsonNode m = enrichment.materials();
         ArrayNode sections = plant.putArray("sections");
@@ -182,14 +196,14 @@ public class PlantCards {
         }
     }
 
-    private AiClient.JsonResponse ask(String step, String system, String user,
+    private AiClient.JsonResponse ask(AiClient client, String step, String system, String user,
                                       AiClient.Deadline deadline, boolean retry) {
-        return ai.jsonWithin(step, List.of(AiClient.message("system", system), AiClient.message("user", user)),
+        return client.jsonWithin(step, List.of(AiClient.message("system", system), AiClient.message("user", user)),
                 false, deadline, retry);
     }
 
-    private ObjectNode categories(String system, String input, AiClient.Deadline deadline, boolean retry) {
-        AiClient.JsonResponse response = ask("categories", system, input, deadline, retry);
+    private ObjectNode categories(AiClient client, String system, String input, AiClient.Deadline deadline, boolean retry) {
+        AiClient.JsonResponse response = ask(client, "categories", system, input, deadline, retry);
         Map<String, JsonNode> values = new LinkedHashMap<>();
         response.value().fields().forEachRemaining(entry -> {
             String name = Normalizer.normalize(entry.getKey().strip().toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
@@ -214,12 +228,12 @@ public class PlantCards {
         return result;
     }
 
-    private JsonNode optional(String step, String system, String user, AiClient.Deadline deadline,
+    private JsonNode optional(AiClient client, String step, String system, String user, AiClient.Deadline deadline,
                               int seconds, boolean retry) {
         AiClient.Deadline allowance = optionalDeadline(step, deadline, seconds);
-        if (allowance == null) return mapper.missingNode();
+        if (allowance == null || !fits(client, system, user)) return mapper.missingNode();
         try {
-            return ask(step, system, user, allowance, retry).value();
+            return ask(client, step, system, user, allowance, retry).value();
         } catch (AiClient.Failure error) {
             return mapper.missingNode();
         }
@@ -238,42 +252,65 @@ public class PlantCards {
     }
 
     Enrichment enrichments(String species, ObjectNode texts, AiClient.Deadline deadline, boolean retry) {
+        return enrichments(ai, species, texts, deadline, retry);
+    }
+
+    private Enrichment enrichments(AiClient client, String species, ObjectNode texts, AiClient.Deadline deadline, boolean retry) {
         ObjectNode materialTexts = mapper.createObjectNode();
         for (String key : KEYS) {
             if (MATERIAL_KEYS.contains(key) && texts.has(key)) materialTexts.set(key, texts.get(key));
         }
-        var glossary = enrich("glossary", "terms", "word", "meaning",
+        var glossary = enrich(client, "glossary", "terms", "word", "meaning",
                 80, 160, 5, species, texts, deadline, retry);
-        var materials = enrich("materials", "items", "name", "detail",
+        if (client.inputBudget() != Integer.MAX_VALUE) await(glossary);
+        var materials = enrich(client, "materials", "items", "name", "detail",
                 100, 180, 4, species, materialTexts, deadline, retry);
-        return new Enrichment(glossary.join(), materials.join());
+        return new Enrichment(await(glossary), await(materials));
     }
 
     record Enrichment(JsonNode glossary, JsonNode materials) {}
 
-    private CompletableFuture<JsonNode> enrich(String step, String flatKey, String label, String detail,
+    private CompletableFuture<JsonNode> enrich(AiClient client, String step, String flatKey, String label, String detail,
                                                int maxLabel, int maxDetail, int maxItems, String species,
                                                ObjectNode texts, AiClient.Deadline deadline, boolean retry) {
         if (texts.isEmpty()) {
             LOG.info("IA paso={} elementos_aceptados=0 elementos_descartados=0", step);
             return CompletableFuture.completedFuture(mapper.createObjectNode());
         }
-        ObjectNode example = mapper.createObjectNode();
-        texts.fieldNames().forEachRemaining(key -> example.putArray(key).addObject()
-                .put(label, "ejemplo").put(detail, "explicación en contexto"));
-        String prompt = skill(step) + """
-
-                Vas a recibir VARIAS categorías a la vez. Ignora cualquier forma de salida anterior.
-                Devuelve un único objeto JSON con una clave por categoría recibida y su lista como valor.
-                Usa las claves exactas de la entrada. Si una categoría no tiene elementos válidos, usa [].
-                Este es el formato exacto con las claves reales para esta solicitud:
-                """ + example;
+        String prompt = enrichmentPrompt(step, label, detail, texts);
+        int maxKeys = Math.max(1, client.outputBudget() / (maxItems * 35));
+        if (texts.size() > 1 && (texts.size() > maxKeys || !fits(client, prompt, species + "\n" + texts))) {
+            var groups = new ArrayList<java.util.function.Supplier<JsonNode>>();
+            var group = mapper.createObjectNode();
+            for (String key : KEYS) {
+                if (!texts.has(key)) continue;
+                int maxChars = Math.max(80, client.inputBudget());
+                String value = limit(texts.path(key).asText(), maxChars);
+                var expanded = group.deepCopy().put(key, value);
+                if (!group.isEmpty() && (expanded.size() > maxKeys
+                        || !fits(client, enrichmentPrompt(step, label, detail, expanded), species + "\n" + expanded))) {
+                    var complete = group;
+                    groups.add(() -> await(enrich(client, step, flatKey, label, detail, maxLabel, maxDetail,
+                            maxItems, species, complete, deadline, retry)));
+                    group = mapper.createObjectNode().put(key, value);
+                } else {
+                    group = expanded;
+                }
+            }
+            var last = group;
+            groups.add(() -> await(enrich(client, step, flatKey, label, detail, maxLabel, maxDetail,
+                    maxItems, species, last, deadline, retry)));
+            var combined = mapper.createObjectNode();
+            batches(groups, client.concurrency(), value -> value.fields().forEachRemaining(
+                    entry -> combined.set(entry.getKey(), entry.getValue())));
+            return CompletableFuture.completedFuture(combined);
+        }
         var messages = List.of(AiClient.message("system", prompt), AiClient.message("user", species + "\n" + texts));
         return CompletableFuture.supplyAsync(() -> {
                     AiClient.Deadline allowance = optionalDeadline(step, deadline, ENRICHMENT_SECONDS);
-                    if (allowance == null) return mapper.missingNode();
+                    if (allowance == null || client.estimate(messages) > client.inputBudget()) return mapper.missingNode();
                     try {
-                        return ai.auxiliaryJsonWithin(step, messages, allowance, retry).value();
+                        return client.auxiliaryJsonWithin(step, messages, allowance, retry).value();
                     } catch (AiClient.Failure error) {
                         return mapper.missingNode();
                     }
@@ -281,6 +318,70 @@ public class PlantCards {
                 .completeOnTimeout(mapper.missingNode(), deadline.remainingNanos(), TimeUnit.NANOSECONDS)
                 .thenApply(response -> parseEnrichment(step, flatKey, label, detail, maxLabel, maxDetail,
                         maxItems, texts, response));
+    }
+
+    private String enrichmentPrompt(String step, String label, String detail, ObjectNode texts) {
+        ObjectNode example = mapper.createObjectNode();
+        texts.fieldNames().forEachRemaining(key -> example.putArray(key).addObject()
+                .put(label, "ejemplo").put(detail, "explicación en contexto"));
+        return skill(step) + """
+
+                Vas a recibir VARIAS categorías a la vez. Ignora cualquier forma de salida anterior.
+                Devuelve un único objeto JSON con una clave por categoría recibida y su lista como valor.
+                Usa las claves exactas de la entrada. Si una categoría no tiene elementos válidos, usa [].
+                Este es el formato exacto con las claves reales para esta solicitud:
+                """ + example;
+    }
+
+    private boolean fits(AiClient client, String system, String input) {
+        return client.estimate(List.of(AiClient.message("system", system), AiClient.message("user", input)))
+                <= client.inputBudget();
+    }
+
+    private ObjectNode smallCategories(AiClient client, ObjectNode plant, AiClient.Deadline deadline) {
+        String input = "Especie: " + plant.path("scientific_name").asText();
+        var jobs = new ArrayList<java.util.function.Supplier<JsonNode>>();
+        for (int start = 0; start < KEYS.size();) {
+            int end = start + 1;
+            while (end < KEYS.size() && (end - start + 1) * 100 <= client.outputBudget()
+                    && fits(client, smallPrompt(KEYS.subList(start, end + 1)), input)) end++;
+            String prompt = smallPrompt(KEYS.subList(start, end));
+            jobs.add(() -> {
+                if (!fits(client, prompt, input) || deadline.remainingNanos() < MIN_OPTIONAL.toNanos()) return mapper.missingNode();
+                return categories(client, prompt, input, deadline, false);
+            });
+            start = end;
+        }
+        var result = mapper.createObjectNode();
+        batches(jobs, client.concurrency(), response -> response.fields().forEachRemaining(
+                entry -> result.set(entry.getKey(), entry.getValue())));
+        return result;
+    }
+
+    private String smallPrompt(List<String> keys) {
+        return "Cuidados botánicos en español común. Omite afirmaciones medicinales, toxicidad y consumo. "
+                + "Devuelve un objeto JSON con texto breve y concreto por clave para la especie de entrada.\n"
+                + keys.stream().map(key -> key + ": " + TITLES.get(KEYS.indexOf(key))).collect(Collectors.joining("\n"));
+    }
+
+    private void batches(List<java.util.function.Supplier<JsonNode>> jobs, int concurrency,
+                         java.util.function.Consumer<JsonNode> accept) {
+        int size = Math.max(1, Math.min(4, concurrency));
+        for (int start = 0; start < jobs.size(); start += size) {
+            var wave = jobs.subList(start, Math.min(start + size, jobs.size())).stream()
+                    .map(job -> CompletableFuture.supplyAsync(job))
+                    .toList();
+            wave.forEach(job -> accept.accept(await(job)));
+        }
+    }
+
+    private static JsonNode await(CompletableFuture<JsonNode> result) {
+        try {
+            return result.join();
+        } catch (java.util.concurrent.CompletionException failure) {
+            if (failure.getCause() instanceof RuntimeException cause) throw cause;
+            throw failure;
+        }
     }
 
     private JsonNode parseEnrichment(String step, String flatKey, String label, String detail,

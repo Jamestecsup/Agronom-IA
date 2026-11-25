@@ -83,7 +83,7 @@ public class UserScheduleController {
         }
         ArrayNode parsed;
         try {
-            parsed = normalize(scheduleAi.parseWeeklySchedule(pdf).path("classes"));
+            parsed = normalize(scheduleAi.parseWeeklySchedule(pdf, user).path("classes"));
         } catch (ResponseStatusException error) {
             throw new ApiException(HttpStatus.valueOf(error.getStatusCode().value()), error.getReason());
         }
@@ -170,7 +170,7 @@ public class UserScheduleController {
         input.set("plants", payload);
         JsonNode proposed;
         try {
-            proposed = scheduleAi.draftCarePlan(input).path("tasks");
+            proposed = scheduleAi.draftCarePlan(input, user).path("tasks");
         } catch (ResponseStatusException error) {
             throw new ApiException(HttpStatus.valueOf(error.getStatusCode().value()), error.getReason());
         }

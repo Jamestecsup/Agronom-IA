@@ -10,6 +10,29 @@ public interface AiClient {
     String reply(String step, List<Map<String, Object>> messages, boolean vision);
     JsonNode json(String step, List<Map<String, Object>> messages, boolean vision);
 
+    default AiClient forUser(long user) { return this; }
+    default boolean supportsVision() { return true; }
+    default int inputBudget() { return Integer.MAX_VALUE; }
+    default int outputBudget() { return Integer.MAX_VALUE; }
+    default int concurrency() { return 1; }
+    default int estimateCharacters(int characters) { return (int)Math.ceil(characters / 3.0 * 1.2); }
+    default int estimate(List<Map<String, Object>> messages) {
+        int total = 4;
+        for (var message : messages) {
+            total += 8;
+            Object content = message.get("content");
+            if (content instanceof List<?> parts) {
+                for (Object part : parts) {
+                    if (part instanceof Map<?, ?> item) {
+                        if ("image_url".equals(item.get("type"))) total += 1024;
+                        else if (item.get("text") instanceof String text) total += estimateCharacters(text.length());
+                    }
+                }
+            }
+        }
+        return total;
+    }
+
     default JsonResponse jsonWithin(String step, List<Map<String, Object>> messages, boolean vision,
                                     Deadline deadline, boolean retry) {
         deadline.requireTime();

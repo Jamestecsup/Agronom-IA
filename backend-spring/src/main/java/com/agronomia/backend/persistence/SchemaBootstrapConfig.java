@@ -18,16 +18,19 @@ public class SchemaBootstrapConfig {
             "imagenes_progreso_chat", "importaciones_horario_pendientes",
             "horarios_semanales", "tareas_cuidado"
     );
+    private static final List<String> IA_TABLES = List.of("proveedores_ia", "preferencias_usuario", "uso_ia_diario");
 
     @Bean
     FlywayMigrationStrategy migrateExistingDjangoSchema() {
         return flyway -> {
-            requireDjangoTables(flyway.getConfiguration().getDataSource());
+            var source = flyway.getConfiguration().getDataSource();
+            requireTables(source, REQUIRED_TABLES, "Ejecuta primero scripts\\migrar-db.ps1.");
             flyway.migrate();
+            requireTables(source, IA_TABLES, "Comprueba que Flyway haya aplicado V2 y V3.");
         };
     }
 
-    private static void requireDjangoTables(DataSource dataSource) {
+    private static void requireTables(DataSource dataSource, List<String> required, String solution) {
         var tables = new HashSet<String>();
         try (var connection = dataSource.getConnection();
              var rows = connection.getMetaData().getTables(connection.getCatalog(), null, "%", null)) {
@@ -40,10 +43,10 @@ public class SchemaBootstrapConfig {
         } catch (SQLException error) {
             throw new IllegalStateException("No se pudo verificar el esquema MySQL antes de iniciar Flyway.", error);
         }
-        var missing = REQUIRED_TABLES.stream().filter(table -> !tables.contains(table)).toList();
+        var missing = required.stream().filter(table -> !tables.contains(table)).toList();
         if (!missing.isEmpty()) {
             throw new IllegalStateException("Faltan tablas en MySQL (" + String.join(", ", missing)
-                    + "). Ejecuta primero scripts\\migrar-db.ps1.");
+                    + "). " + solution);
         }
     }
 }

@@ -42,4 +42,11 @@ public class UserPlantsController {
                                                      @PathVariable String plantId) {
         return plants.cover(accounts.requireUser(bearer), plantId);
     }
+
+    @GetMapping("/plants/{plantId}")
+    public ResponseEntity<JsonNode> detail(@RequestHeader(name = "Authorization", required = false) String bearer,
+                                            @PathVariable String plantId) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(plants.detail(accounts.requireUser(bearer), plantId));
+    }
 }

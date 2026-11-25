@@ -231,6 +231,35 @@ class PlantCardsTest {
         return result;
     }
 
+    @Test
+    void smallModelUsesOneCategoryPerCallWithinItsOutputBudget() {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        AiClient compact = new AiClient() {
+            @Override public int inputBudget() { return 750; }
+            @Override public int outputBudget() { return 128; }
+            @Override public int concurrency() { return 2; }
+
+            @Override public String reply(String step, List<Map<String,Object>> messages, boolean vision) {
+                throw new AssertionError("Solo se esperaba JSON");
+            }
+
+            @Override public JsonNode json(String step, List<Map<String,Object>> messages, boolean vision) {
+                assertThat(estimate(messages)).isLessThanOrEqualTo(inputBudget());
+                var object = json.createObjectNode();
+                if (!step.equals("categories")) return object;
+                for (String key : KEYS) {
+                    if (messages.toString().contains(key + ":")) object.put(key, "Guía de la especie.");
+                }
+                assertThat(object.size()).isEqualTo(1);
+                calls.incrementAndGet();
+                return object;
+            }
+        };
+        var response = cards.generate(species, AiClient.Deadline.after(Duration.ofSeconds(150)), compact);
+        assertThat(response.path("sections")).hasSize(8);
+        assertThat(calls).hasValue(8);
+    }
+
     private ObjectNode generate() {
         return cards.generate(species, AiClient.Deadline.after(Duration.ofSeconds(150)));
     }
