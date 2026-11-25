@@ -21,6 +21,7 @@ export default function Chat({ initialPlant = "" }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const bodyRef = useRef(null);
+  const followLatest = useRef(true);
   const photoInput = useRef(null);
   const submitting = useRef(false);
   const activePlantId = useRef(selectedId);
@@ -67,6 +68,7 @@ export default function Chat({ initialPlant = "" }) {
       return undefined;
     }
     let active = true;
+    followLatest.current = true;
     setMessages([]);
     setError("");
     setBusy(false);
@@ -81,14 +83,22 @@ export default function Chat({ initialPlant = "" }) {
   }, [selectedId]);
 
   useEffect(() => {
-    if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    const body = bodyRef.current;
+    if (body && followLatest.current) body.scrollTop = body.scrollHeight;
   }, [messages, busy]);
+
+  function selectPlant(id) {
+    setSelectedId(id);
+    setPhoto(null);
+    navigate("/chat?plant=" + encodeURIComponent(id));
+  }
 
   async function submit(event) {
     event.preventDefault();
     const text = draft.trim();
     if ((!text && !photo) || !selectedPlant || submitting.current || busy || deleting || loadingHistory) return;
     submitting.current = true;
+    followLatest.current = true;
     const plantId = selectedPlant.id;
     setDraft("");
     setError("");
@@ -141,26 +151,33 @@ export default function Chat({ initialPlant = "" }) {
         ) : plants.length === 0 ? (
           <p className="chat-empty-list">Todavía no tienes plantas identificadas.</p>
         ) : (
-          <div className="chat-plant-options">
-            {plants.map((plant) => (
-              <button
-                key={plant.id}
-                className={`chat-plant-option ${selectedId === plant.id ? "active" : ""}`}
-                disabled={busy || deleting}
-                aria-pressed={selectedId === plant.id}
-                onClick={() => {
-                  setSelectedId(plant.id); setPhoto(null);
-                  navigate("/chat?plant=" + encodeURIComponent(plant.id));
-                }}
-              >
-                <span className="chat-plant-copy">
-                  <strong>{plant.common_name || plant.scientific_name}</strong>
-                  <em>{plant.scientific_name}</em>
-                  <small>{new Date(plant.created_at).toLocaleDateString("es-PE")}</small>
-                </span>
-              </button>
-            ))}
-          </div>
+          <>
+            <label className="chat-plant-picker">
+              Tus plantas
+              <select value={selectedId} disabled={busy || deleting} onChange={(event) => selectPlant(event.target.value)}>
+                {plants.map((plant) => <option key={plant.id} value={plant.id}>
+                  {plant.common_name || plant.scientific_name} · {new Date(plant.created_at).toLocaleDateString("es-PE")}
+                </option>)}
+              </select>
+            </label>
+            <div className="chat-plant-options">
+              {plants.map((plant) => (
+                <button
+                  key={plant.id}
+                  className={`chat-plant-option ${selectedId === plant.id ? "active" : ""}`}
+                  disabled={busy || deleting}
+                  aria-pressed={selectedId === plant.id}
+                  onClick={() => selectPlant(plant.id)}
+                >
+                  <span className="chat-plant-copy">
+                    <strong>{plant.common_name || plant.scientific_name}</strong>
+                    <em>{plant.scientific_name}</em>
+                    <small>{new Date(plant.created_at).toLocaleDateString("es-PE")}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </aside>
 
@@ -183,7 +200,10 @@ export default function Chat({ initialPlant = "" }) {
           </details>}
         </header>
 
-        <div className="chat-conversation-body" ref={bodyRef}>
+        <div className="chat-conversation-body" ref={bodyRef} role="region" aria-label="Historial de mensajes"
+          tabIndex={0} onScroll={({ currentTarget: body }) => {
+            followLatest.current = body.scrollHeight - body.clientHeight - body.scrollTop <= 24;
+          }}>
           {!selectedPlant && !loadingPlants && (
             <div className="chat-welcome">
               <PlantPhoto className="chat-welcome-photo" alt="Ilustración botánica" />

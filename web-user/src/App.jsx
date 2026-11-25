@@ -79,7 +79,7 @@ export default function App() {
     <Login onLogin={login} />
   </Suspense>;
 
-  return <div className="app">
+  return <div className={pathname === "/chat" ? "app app-chat" : "app"}>
     <a className="skip-link" href="#main-content">Ir al contenido</a>
     <Header username={session.username} path={pathname} onLogout={logout} />
     <main id="main-content" ref={main} tabIndex={-1} className={pathname === "/chat" ? "page page-chat" : "page"}>

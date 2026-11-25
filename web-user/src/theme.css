@@ -131,5 +131,17 @@ a { color: var(--green-800); }
   .user span { display: none; }
   .chat-conversation-head { flex-wrap: wrap; gap: .5rem; padding-inline: 1rem; }
   .chat-menu { margin-inline-start: 0; }
-  .chat-page-form input:not([type="file"]) { flex-basis: 100%; }
+  .app-chat .nav { display: flex; flex-wrap: wrap; justify-content: space-between; }
+  .app-chat .header-inner { gap: .25rem; padding-block: .25rem; }
+  .chat-page-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem; padding: .5rem; }
+  .chat-page-form input:not([type="file"]) { grid-column: 1 / -1; }
+  .chat-photo-control { max-width: 100%; }
+}
+
+@media (max-height: 500px) {
+  .page.page-chat { padding-block: 2px; }
+  .chat-conversation-head { min-height: 44px; padding-block: 2px; }
+  .chat-conversation-head .chat-head-eyebrow { display: none; }
+  .chat-conversation-head .plant-cover { width: 44px; }
+  .chat-page-form { padding-block: 4px; }
 }
