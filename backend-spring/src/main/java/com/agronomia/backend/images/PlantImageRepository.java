@@ -31,4 +31,19 @@ public class PlantImageRepository {
             else statement.setLong(8, image.userId());
         });
     }
+
+    public List<String> findRelativePathsByBatchIdAndUserId(String batchId, long userId) {
+        return jdbcTemplate.query(
+                "SELECT relative_path FROM plant_images WHERE batch_id=? AND user_id=? ORDER BY created_at ASC",
+                (rs, rowNum) -> rs.getString("relative_path"), batchId, userId);
+    }
+
+    public java.util.Optional<String> findFirstRelativePathByBatchIdAndUserId(String batchId, long userId) {
+        return jdbcTemplate.query(
+                        "SELECT relative_path FROM plant_images WHERE batch_id=? AND user_id=? " +
+                                "ORDER BY created_at ASC LIMIT 1",
+                        (rs, rowNum) -> rs.getString("relative_path"), batchId, userId)
+                .stream()
+                .findFirst();
+    }
 }

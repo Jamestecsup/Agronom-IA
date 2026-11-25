@@ -1,8 +1,7 @@
 """URL configuration for Agronom-IA backend Django."""
+from core import admin_api
 from django.contrib import admin
 from django.urls import path
-
-from core import admin_api
 
 urlpatterns = [
     path("admin/", admin.site.urls),

@@ -9,22 +9,31 @@ Endpoints:
   POST /agronomia-api/api/register    → autorregistro (rol user)
   POST /agronomia-api/api/login       → validación de credenciales
 """
-import logging
 import json
+import logging
 import os
 import uuid
-from datetime import datetime, time, timedelta
+from datetime import time, timedelta
 
 import requests
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.utils import timezone
 from django.http import FileResponse, JsonResponse
+from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
 from core.authentication import user_from_request
-from core.models import CarePlanTask, ChatMessage, ChatProgressImage, IdentificationRun, PendingScheduleImport, PlantIdentification, PlantImage, WeeklySchedule
+from core.models import (
+    CarePlanTask,
+    ChatMessage,
+    ChatProgressImage,
+    IdentificationRun,
+    PendingScheduleImport,
+    PlantIdentification,
+    PlantImage,
+    WeeklySchedule,
+)
 from core.services import chat as chat_service
 from core.services import gemini, pipeline
 

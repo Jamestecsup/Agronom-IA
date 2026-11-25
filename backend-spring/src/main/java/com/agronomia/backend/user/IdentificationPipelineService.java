@@ -17,12 +17,12 @@ public class IdentificationPipelineService {
     public static final double MIN_CONFIDENCE = 0.20;
     public static final double CONFIDENT_CONFIDENCE = 0.50;
 
-    private final PlantNetService plantNet;
-    private final UserAiService ai;
+    private final PlantIdentificationClient plantNet;
+    private final PlantAiClient ai;
     private final String project;
     private final String lang;
 
-    public IdentificationPipelineService(PlantNetService plantNet, UserAiService ai,
+    public IdentificationPipelineService(PlantIdentificationClient plantNet, PlantAiClient ai,
                                         @Value("${plantnet.project:${PLANTNET_PROJECT:all}}") String project,
                                         @Value("${plantnet.lang:${PLANTNET_LANG:es}}") String lang) {
         this.plantNet = plantNet; this.ai = ai; this.project = project; this.lang = lang;

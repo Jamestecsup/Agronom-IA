@@ -18,7 +18,7 @@ import java.time.Duration;
 import java.util.*;
 
 @Service
-public class PlantNetService {
+public class PlantNetService implements PlantIdentificationClient {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
     private final ObjectMapper json;
     private final String apiKey;

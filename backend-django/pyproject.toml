@@ -1,0 +1,11 @@
+﻿[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["core", "agronomia"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"

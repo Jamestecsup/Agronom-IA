@@ -1,4 +1,4 @@
-"""Pruebas del pipeline de identificación (sin llamar a Pl@ntNet ni a la IA).
+﻿"""Pruebas unitarias del pipeline de identificación (sin llamar a Pl@ntNet ni a la IA).
 
 Se parchean los servicios externos: comprueban la lógica de umbrales, el
 manejo de "unknown" y el estado `insufficient` de la HU-7.
