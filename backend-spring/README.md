@@ -13,12 +13,35 @@ Copia `application-example.env` a `.env`, configura las variables y lanza ambos 
 | `USER_TOKEN_SECRET` | Firma de la API de usuario. Usa un secreto aleatorio de 24 caracteres como mínimo. |
 | `PLANTNET_API_KEY` | Identificar especies. `PLANTNET_BASE_URL`, `PLANTNET_PROJECT` y `PLANTNET_LANG` son opcionales. |
 | `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL` | Proveedor compatible con OpenAI. `AI_VISION_MODEL` usa el modelo de texto cuando se omite. |
+| `AI_KEYS_MASTER_KEY` | Clave maestra AES-256 en Base64 (32 bytes aleatorios) para guardar perfiles propios. Mantén una copia protegida. |
+| `AI_KEYS_KID`, `AI_KEYS_PREVIOUS` | Identificador activo (por defecto `v1`) y mapa JSON de claves históricas por identificador para rotación. Una alta o actualización de credencial cifra con el identificador activo. Conserva los identificadores históricos hasta reemplazar las credenciales. |
+| `AI_ALLOW_PRIVATE_HOSTS` | Opt-in local de desarrollo, apagado por defecto. HTTP solo se admite para hosts locales permitidos. |
+| `AI_SYSTEM_DAILY_QUOTA` | Máximo de intentos de proveedor del sistema por usuario al día en UTC. Por defecto, 100. |
 | `UPLOAD_DIR` | Directorio de imágenes, fotos de progreso y PDFs pendientes. Mantén el volumen privado. |
 
-La cuenta de ejecución solo tiene permisos de datos. Flyway registra la línea base 1 después de que Django cree el esquema. Toda alteración posterior del dominio se versiona desde V2 y se refleja en los modelos de Django.
+La cuenta de ejecución solo tiene permisos de datos. Flyway registra la línea base 1 después de que Django cree el esquema. V2 crea proveedores y preferencias y V3 crea el contador diario. Flyway usa `agronomia_admin`. Spring comprueba estas tablas después de migrar.
 
 ## Rutas y seguridad
 
 La API conserva registro y login, `images.php`, `identify`, `confirm`, `plants` y portadas, `chat` e historial con fotos, `schedule` e importaciones y cuidados. Las rutas privadas requieren Bearer. La carga exige JPEG/PNG y usuario activo. Los intentos de login se limitan por cuenta e IP en cada proceso. Para un despliegue de varias instancias, aplica un límite compartido en el perímetro. `GET /agronomia-api/api/health` verifica la base sin usar cuota.
 
 Ejecuta `.\mvnw.cmd test` para las pruebas locales de imágenes y proveedores HTTP simulados.
+
+## Contrato aditivo de IA y privacidad
+
+Prefijo `/agronomia-api/api` y autenticación Bearer de usuario. Los perfiles y preferencias se devuelven con `Cache-Control: no-store`.
+
+| Ruta | Contrato |
+|---|---|
+| GET `/ai/presets` | Devuelve `presets` con nombre, URL base e identificador del modelo para rellenar el formulario. |
+| GET `/ai/providers` | Devuelve `active_id` y `providers` con estado, capacidades y `key_suffix`. |
+| POST `/ai/providers` | Crea un perfil con `name`, `base_url`, `model`, `api_key` y límites opcionales `context_window`, `max_output_tokens`, `max_concurrency`. |
+| PATCH o DELETE `/ai/providers/{id}` | Edita o quita un perfil propio. Si cambia la URL, se exige introducir la clave para ese destino. |
+| POST `/ai/providers/{id}/test` | Prueba el modelo con datos sintéticos y devuelve un perfil actualizado. |
+| PUT `/ai/selection` | Recibe `provider_id` y `consent`. El valor nulo vuelve al sistema. |
+| GET `/ai/capabilities` | Devuelve `provider_id` y `features` con `available` y `reason` por función. |
+| GET o PUT `/preferences` | Lee o guarda `{version: 1, preferences: {...}}`. Se admiten únicamente los tokens de la interfaz. |
+| GET `/plants/{id}` | Devuelve `summary` y la ficha `plant` de una planta propia. |
+| DELETE `/chat?plant_id=…` y `/chats?confirm=true` | Elimina mensajes y fotos con 204. Los archivos se aíslan durante la transacción y se purgan al confirmar. |
+
+El proveedor propio recibe datos solo tras activación con consentimiento. Las pruebas de conexión envían texto e imagen sintéticos. HTTPS con DNS validado y conexión fijada a las direcciones aprobadas es el modo normal. La cuota diaria del sistema se guarda en MySQL. Los límites de tasa y concurrencia de proveedores propios son por proceso.
