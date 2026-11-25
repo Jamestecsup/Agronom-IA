@@ -1,6 +1,5 @@
 from django.db import migrations
 
-
 RENAMES = [
     ("imagenes_planta", "plant_images"),
     ("identificaciones_planta", "plant_identifications"),

@@ -1,6 +1,5 @@
 from django.db import connection, migrations
 
-
 CREATE_SQLITE = [
     """
     CREATE TABLE IF NOT EXISTS plant_images (

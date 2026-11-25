@@ -12,11 +12,11 @@ import java.util.*;
 @Service
 public class UserChatService {
     private final UserPlantService plants;
-    private final UserAiService ai;
+    private final PlantAiClient ai;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     private final Path uploadDir;
 
-    public UserChatService(UserPlantService plants, UserAiService ai, org.springframework.jdbc.core.JdbcTemplate jdbc,
+    public UserChatService(UserPlantService plants, PlantAiClient ai, org.springframework.jdbc.core.JdbcTemplate jdbc,
                            @Value("${plant.storage.directory:${PLANT_UPLOAD_DIR:C:/xampp/plant-images}}") String uploadDir) {
         this.plants = plants; this.ai = ai; this.jdbc = jdbc; this.uploadDir = Path.of(uploadDir);
     }

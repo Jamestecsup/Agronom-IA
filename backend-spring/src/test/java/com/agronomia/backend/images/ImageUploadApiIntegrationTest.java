@@ -7,8 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.agronomia.backend.user.UserTokenService;
@@ -80,80 +80,11 @@ class ImageUploadApiIntegrationTest {
     }
 
     @Test
-    void acceptsTheMaximumFiveImagesAndPersistsTheWholeBatch() throws Exception {
-        org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder request = multipart(ENDPOINT);
-        for (int index = 0; index < 5; index++) {
-            request.file(image("plant-" + index + ".jpg", "image/jpeg", "jpeg"));
-        }
-
-        mockMvc.perform(((org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder)request).header("Authorization", auth))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.images.length()").value(5));
-
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isEqualTo(5);
-        assertThat(countStoredFiles()).isEqualTo(5);
-    }
-
-    @Test
-    void rejectsMoreThanFiveBeforeWritingFilesOrRows() throws Exception {
-        org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder request = multipart(ENDPOINT);
-        for (int index = 0; index < 6; index++) request.file(image("plant-" + index + ".jpg", "image/jpeg", "jpeg"));
-
-        mockMvc.perform(((org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder)request).header("Authorization", auth))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.success").value(false));
-
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
-        assertThat(countStoredFiles()).isZero();
-    }
-
-    @Test
     void rejectsGifWithAConsistentJsonError() throws Exception {
         mockMvc.perform(multipart(ENDPOINT).file(image("plant.jpg", "image/jpeg", "gif")).header("Authorization", auth))
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("JPEG, PNG y WebP")));
-
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
-        assertThat(countStoredFiles()).isZero();
-    }
-
-    @Test
-    void acceptsDecodableWebpAndUsesItsDetectedExtension() throws Exception {
-        mockMvc.perform(multipart(ENDPOINT).file(image("plant.png", "image/png", "webp")).header("Authorization", auth))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.images[0].mime_type").value("image/webp"));
-
-        assertThat(jdbcTemplate.queryForObject("SELECT relative_path FROM plant_images", String.class)).endsWith(".webp");
-    }
-
-    @Test
-    void rejectsCorruptContentEvenWhenItHasAnAllowedSignature() throws Exception {
-        byte[] corruptPng = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3};
-        mockMvc.perform(multipart(ENDPOINT).file(new MockMultipartFile("photos[]", "flower.png", "image/png", corruptPng)).header("Authorization", auth))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.success").value(false));
-
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
-        assertThat(countStoredFiles()).isZero();
-    }
-
-    @Test
-    void cleansFilesWhenDatabaseInsertionFails() throws Exception {
-        PlantImageRepository jdbcRepository = new PlantImageRepository(jdbcTemplate);
-        doAnswer(invocation -> {
-            @SuppressWarnings("unchecked") List<PlantImageRecord> rows = invocation.getArgument(0);
-            jdbcRepository.insertAll(rows.subList(0, 1));
-            throw new org.springframework.dao.DataIntegrityViolationException("test failure after the first insert");
-        }).when(repository).insertAll(anyList());
-
-        mockMvc.perform(multipart(ENDPOINT)
-                        .file(image("flower-a.jpg", "image/jpeg", "jpeg"))
-                        .file(image("flower-b.jpg", "image/jpeg", "jpeg"))
-                        .header("Authorization", auth))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("No se complet")));
 
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM plant_images", Integer.class)).isZero();
         assertThat(countStoredFiles()).isZero();

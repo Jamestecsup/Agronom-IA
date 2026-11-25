@@ -1,4 +1,4 @@
-CREATE TABLE plant_images (
+CREATE TABLE IF NOT EXISTS plant_images (
     id CHAR(36) NOT NULL PRIMARY KEY,
     batch_id CHAR(36) NOT NULL,
     relative_path VARCHAR(255) NOT NULL UNIQUE,

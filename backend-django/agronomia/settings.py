@@ -4,7 +4,6 @@ Recibe las fotos del móvil, las valida y almacena, y ejecuta el pipeline de
 identificación + información usando Pl@ntNet y Gemini con las skills.
 """
 import os
-import sys
 
 # Usar PyMySQL como driver MySQL (evita dependencias nativas del sistema).
 try:
