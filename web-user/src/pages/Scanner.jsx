@@ -250,7 +250,7 @@ export default function Scanner({ onResult }) {
             }
           }}
         >
-          <div className="icon">📷</div>
+          <div className="icon" aria-hidden="true">📷</div>
           <strong>Arrastra tus fotos o haz clic para elegirlas</strong>
           <span>JPG, PNG o WebP · hasta {MAX_FILES} fotos · 8 MB por foto</span>
         </div>
@@ -293,6 +293,7 @@ export default function Scanner({ onResult }) {
             <button
               key={option.value}
               className={`chip ${organ === option.value ? "active" : ""}`}
+              aria-pressed={organ === option.value}
               onClick={() => setOrgan(option.value)}
               disabled={busy}
             >

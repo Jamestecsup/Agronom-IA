@@ -349,18 +349,18 @@ h4 {
 /* ---------- Escáner ---------- */
 
 .dropzone {
-  border: 2px dashed var(--green-100);
-  background: linear-gradient(180deg, #f8fcf7, #f2f8f0);
+  border: 2px dashed var(--control-border);
+  background: var(--bg);
   border-radius: var(--radius);
   padding: 34px 22px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .dropzone:hover,
 .dropzone.drag {
-  border-color: var(--green-600);
+  border-color: var(--focus);
   background: var(--green-50);
 }
 
@@ -392,7 +392,7 @@ h4 {
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: #eef2ec;
+  background: var(--green-50);
 }
 
 .preview img {
@@ -424,9 +424,9 @@ h4 {
 }
 
 .chip {
-  border: 1px solid var(--border);
-  background: #fff;
-  color: var(--muted);
+  border: 1px solid var(--control-border);
+  background: var(--surface);
+  color: var(--text);
   border-radius: 999px;
   padding: 8px 14px;
   cursor: pointer;
@@ -436,8 +436,12 @@ h4 {
 .chip.active {
   background: var(--green-700);
   border-color: var(--green-700);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
+}
+
+.chip:not(.active):enabled:hover {
+  background: var(--green-50);
 }
 
 .hint {
@@ -889,7 +893,7 @@ h4 {
 .chat-plant-list {
   padding: 25px 17px;
   border-right: 1px solid var(--border);
-  background: linear-gradient(180deg, #f7faf6 0%, #f3f7f1 100%);
+  background: var(--bg);
 }
 
 .chat-page-heading h2 {
@@ -922,40 +926,40 @@ h4 {
   width: 100%;
   min-height: 88px;
   padding: 10px;
-  border: 1px solid #e8eee6;
+  border: 1px solid var(--control-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, .74);
+  background: var(--surface);
+  color: var(--text);
   text-align: left;
   cursor: pointer;
-  transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+  transition: border-color .16s ease, box-shadow .16s ease;
 }
 
-.chat-plant-option:hover,
+.chat-plant-option:enabled:hover,
 .chat-plant-option.active {
-  background: #edf6eb;
-  border-color: #c8e0c4;
-  box-shadow: 0 5px 16px rgba(45, 111, 54, .07);
+  background: var(--green-50);
+  border-color: var(--focus);
 }
 
-.chat-plant-option:hover { transform: translateY(-1px); }
+.chat-plant-option.active { box-shadow: inset 3px 0 var(--focus); }
 
 .plant-photo {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
-  color: #4b8652;
-  background: linear-gradient(145deg, #edf6e9, #dbead7);
+  color: var(--green-800);
+  background: var(--green-50);
 }
 
 .plant-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .plant-photo svg { width: 55%; height: 55%; }
 .chat-plant-thumb { width: 62px; height: 62px; border: 1px solid rgba(30, 76, 38, .07); border-radius: 14px; }
 .chat-active-photo { width: 54px; height: 54px; border: 3px solid #edf6e9; border-radius: 17px; box-shadow: 0 3px 10px rgba(28, 63, 33, .1); }
-.chat-welcome-photo { width: 86px; height: 86px; margin: 0 auto 16px; border: 4px solid #fff; border-radius: 26px; box-shadow: 0 10px 26px rgba(32, 73, 37, .13); }
+.chat-welcome-photo { width: 86px; height: 86px; margin: 0 auto 16px; border: 4px solid var(--surface); border-radius: 26px; box-shadow: var(--shadow); }
 
 .chat-plant-copy,
-.chat-conversation-head > div:last-child {
+.chat-conversation-title {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -988,17 +992,17 @@ h4 {
   min-height: 86px;
   padding: 15px 24px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(110deg, #fff 0%, #fbfdf9 100%);
+  background: var(--surface);
 }
 
-.chat-conversation-head strong {
+.chat-conversation-title strong {
   display: block;
-  color: #183b23;
+  color: var(--text);
   font-size: 17px;
   letter-spacing: -.2px;
 }
 
-.chat-conversation-head > div:last-child > span:last-child {
+.chat-conversation-title > span:last-child {
   display: block;
   margin: 0;
   color: var(--muted);
@@ -1009,7 +1013,7 @@ h4 {
 .chat-conversation-head .chat-head-eyebrow {
   display: block;
   margin: 0 0 3px;
-  color: #829187;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 750;
   letter-spacing: 1.2px;
@@ -1029,7 +1033,7 @@ h4 {
   max-height: none;
   overflow-y: auto;
   padding: clamp(24px, 4vw, 48px);
-  background: radial-gradient(ellipse at 50% 45%, rgba(234, 244, 231, .5), transparent 52%), #fbfdfa;
+  background: var(--bg);
 }
 
 .chat-message {
@@ -1045,17 +1049,15 @@ h4 {
 .chat-message.user {
   align-self: flex-end;
   background: var(--green-700);
-  color: #fff;
+  color: var(--on-accent);
   border-bottom-right-radius: 6px;
-  background: linear-gradient(135deg, #347d3d, #286d34);
 }
 
 .chat-message.assistant {
   align-self: flex-start;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-bottom-left-radius: 6px;
-  border-color: #e6ece4;
 }
 
 .chat-welcome {
@@ -1080,36 +1082,38 @@ h4 {
   gap: 12px;
   padding: 16px 20px;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
+  align-items: flex-start;
 }
 
-.chat-page-form input {
+.chat-page-form input:not([type="file"]) {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  border: 1px solid var(--control-border);
+  border-radius: 14px;
   min-height: 50px;
   padding: 13px 19px;
-  outline: none;
-  background: #fbfdfb;
+  background: var(--bg);
+  color: var(--text);
   font-size: 15px;
   transition: border-color .16s ease, box-shadow .16s ease;
 }
 
-.chat-page-form input:focus {
-  border-color: var(--green-600);
-  box-shadow: 0 0 0 3px rgba(56, 142, 60, .1);
+.chat-page-form input::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 .chat-page-form input:disabled {
-  background: #f5f7f4;
+  background: var(--surface);
 }
 
-.chat-page-form .btn {
+.chat-page-form .btn[type="submit"] {
   flex: 0 0 auto;
   min-width: 96px;
   padding: 0 20px;
   border-radius: 14px;
+  min-height: 50px;
 }
 
 .chat-empty-list {
@@ -1147,7 +1151,7 @@ h4 {
 
 .md .md-dot {
   flex-shrink: 0;
-  color: var(--green-700);
+  color: var(--green-800);
   font-weight: 700;
 }
 
@@ -1158,7 +1162,7 @@ h4 {
 }
 
 .md code {
-  background: #eef3ec;
+  background: var(--green-50);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 0.92em;

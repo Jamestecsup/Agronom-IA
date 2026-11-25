@@ -21,6 +21,7 @@ export default function Chat({ initialPlant = "" }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const bodyRef = useRef(null);
+  const photoInput = useRef(null);
   const submitting = useRef(false);
   const activePlantId = useRef(selectedId);
   activePlantId.current = selectedId;
@@ -41,7 +42,15 @@ export default function Chat({ initialPlant = "" }) {
       .finally(() => active && setLoadingPlants(false));
     getCapabilities().then((data) => {
       if (active) setVision(data.features.chat_photo);
-    }).catch(() => { if (active) setVision({ available: false, reason: "No se pudo verificar la compatibilidad con fotos." }); });
+    }).catch((problem) => {
+      if (!active) return;
+      setVision({
+        available: false,
+        reason: problem.status === 404
+          ? "La API en ejecución aún no informa si el modelo admite fotos."
+          : "No se pudo verificar si el modelo admite fotos.",
+      });
+    });
     return () => {
       active = false;
     };
@@ -158,7 +167,7 @@ export default function Chat({ initialPlant = "" }) {
       <div className="chat-conversation">
         <header className="chat-conversation-head">
           {selectedPlant && <Cover id={selectedPlant.id} alt={selectedPlant.common_name || selectedPlant.scientific_name} />}
-          <div>
+          <div className="chat-conversation-title">
             <span className="chat-head-eyebrow">CONVERSACIÓN DE CUIDADO</span>
             <strong>{selectedPlant?.common_name || selectedPlant?.scientific_name || "Chat botánico"}</strong>
             <span>
@@ -211,16 +220,20 @@ export default function Chat({ initialPlant = "" }) {
             aria-label="Mensaje para el asistente botánico"
             maxLength={4000}
           />
-          <label className="chat-photo-control">Adjuntar foto
-            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={!selectedPlant || busy || !vision?.available}
-              aria-describedby="chat-photo-reason" onChange={(event) => {
+          <div className="chat-photo-control">
+            <button className="btn ghost" type="button" disabled={!selectedPlant || busy || !vision?.available}
+              aria-describedby="chat-photo-reason" onClick={() => photoInput.current?.click()}>
+              Adjuntar foto
+            </button>
+            <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" hidden
+              disabled={!selectedPlant || busy || !vision?.available} onChange={(event) => {
                 const file = event.target.files[0];
                 setPhoto(file && file.size <= 8 * 1024 * 1024 ? file : null);
                 if (file && file.size > 8 * 1024 * 1024) setError("La foto supera 8 MB.");
                 event.target.value = "";
               }} />
             <small id="chat-photo-reason">{vision?.reason || photo?.name || ""}</small>
-          </label>
+          </div>
           <button className="btn" type="submit" disabled={!selectedPlant || busy || loadingHistory || (!draft.trim() && !photo)}>
             Enviar
           </button>
