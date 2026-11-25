@@ -68,7 +68,7 @@ pantalla de acceso (crea cuentas con rol `user`).
 
 ## Probar con tu modelo
 
-1. Arranca la API y la web desde la rama de trabajo. Comprueba que Flyway aplicó V2 y V3 con la cuenta de migración.
+1. Si la demo anterior sigue en ejecución, detén sus procesos. Desde `backend-spring`, recompila con `.\mvnw.cmd -DskipTests package`. Desde la raíz, ejecuta `scripts\iniciar-demo.ps1` y comprueba que Flyway aplicó V2 y V3 con la cuenta de migración.
 2. Entra en Ajustes → Modelos de IA. Elige un modelo del formulario o rellena el nombre, URL HTTPS e identificador. Introduce la clave en el campo de contraseña.
 3. Para un modelo pequeño, indica su ventana y el tope de salida. Prueba la conexión y revisa la latencia, visión y JSON.
 4. Activa el proveedor y confirma el consentimiento. Escanea una planta y revisa que aparezca en el jardín al recargar. Prueba el chat y comprueba que se explique el estado del control de fotos.
