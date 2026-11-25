@@ -324,7 +324,7 @@ h4 {
 
 .page.page-chat {
   width: 100%;
-  max-width: 1580px;
+  max-width: 1200px;
   min-height: 0;
   display: flex;
   padding: 24px 30px 34px;
@@ -887,7 +887,7 @@ h4 {
 
 .chat-page {
   display: grid;
-  grid-template-columns: minmax(275px, 320px) minmax(0, 1fr);
+  grid-template-columns: clamp(220px, 24%, 280px) minmax(0, 1fr);
   width: 100%;
   grid-template-rows: minmax(0, 1fr);
   background: var(--surface);
@@ -1048,7 +1048,7 @@ h4 {
 }
 
 .chat-message {
-  max-width: min(86%, 860px);
+  max-width: min(86%, 72ch);
   padding: 15px 18px;
   border-radius: 18px;
   font-size: 15px;
@@ -1297,6 +1297,6 @@ h4 {
   }
 
   .chat-message {
-    max-width: 92%;
+    max-width: min(92%, 72ch);
   }
 }
