@@ -30,7 +30,7 @@ class IdentificationPipelineServiceTest {
         when(ai.loadSkill(anyString())).thenReturn("skill");
         when(ai.loadCategorySkill(anyString())).thenReturn("cat");
         when(ai.jsonCall(anyString(), anyString(), anyDouble())).thenAnswer(inv -> {
-            String system = String.valueOf(inv.getArgument(0));
+            String system = inv.getArgument(0, String.class);
             if (system.contains("VARIAS categor")) return Map.of(); // glossary/materials batch
             if (system.contains("ficha completa de la planta")) {
                 return Map.of(

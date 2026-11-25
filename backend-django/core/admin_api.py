@@ -4,20 +4,14 @@ Reemplaza el servicio Spring Boot admin: mismo contrato JSON/camelCase que
 espera el frontend React, pero servido desde Django sobre la misma BD.
 """
 import json
-from datetime import timedelta
 
 from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
-from django.db.models import Count, Max, Q
-from django.db.models.functions import TruncDate
 from django.http import JsonResponse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from core.authentication import issue_user_token, user_from_request
-from core.models import ChatMessage, PlantIdentification, PlantImage, Profile
-
-ROLES = {"user", "admin"}
+from core.services import admin_api as admin_service
+from core.services.admin_api import AdminOperationError
 
 
 def _error(status, message):
@@ -42,10 +36,6 @@ def _admin_user(request):
     if role != "admin":
         return None, _error(403, "Esta cuenta no tiene rol de administrador.")
     return user, None
-
-
-def _dt(value):
-    return value.isoformat() if value else ""
 
 
 @csrf_exempt
@@ -74,7 +64,7 @@ def login(request):
         "token": issue_user_token(user),
         "username": user.username,
         "role": "admin",
-        "expiresAt": int((timezone.now() + timedelta(days=14)).timestamp()),
+        "expiresAt": admin_service.admin_login_expiration(),
     })
 
 
@@ -90,9 +80,8 @@ def me(request):
 def health(request):
     if request.method != "GET":
         return _error(405, "Método no permitido; usa GET.")
-    db_ok = True
     try:
-        User.objects.exists()
+        db_ok = admin_service.database_is_available()
     except Exception:
         db_ok = False
     return JsonResponse({"status": "ok", "service": "admin", "database": db_ok})
@@ -105,38 +94,7 @@ def stats(request):
     if err:
         return err
 
-    top_species = list(
-        PlantIdentification.objects.values("scientific_name")
-        .annotate(common_name=Max("common_name"), count=Count("id"))
-        .order_by("-count", "scientific_name")[:5]
-    )
-    top_species = [
-        {
-            "scientificName": row["scientific_name"],
-            "commonName": row["common_name"] or "",
-            "count": row["count"],
-        }
-        for row in top_species
-    ]
-
-    since = timezone.localdate() - timedelta(days=13)
-    daily_rows = (
-        PlantIdentification.objects.filter(created_at__date__gte=since)
-        .annotate(day=TruncDate("created_at"))
-        .values("day")
-        .annotate(count=Count("id"))
-        .order_by("day")
-    )
-    daily = [{"date": str(row["day"]), "count": row["count"]} for row in daily_rows]
-
-    return JsonResponse({
-        "users": User.objects.count(),
-        "plants": PlantIdentification.objects.count(),
-        "chats": ChatMessage.objects.count(),
-        "images": PlantImage.objects.count(),
-        "topSpecies": top_species,
-        "daily": daily,
-    })
+    return JsonResponse(admin_service.dashboard_stats())
 
 
 def users(request):
@@ -152,22 +110,7 @@ def users(request):
     except ValueError:
         limit = 100
 
-    qs = User.objects.select_related("profile").order_by("id")
-    if query:
-        qs = qs.filter(Q(username__icontains=query) | Q(email__icontains=query))
-
-    rows = []
-    for user in qs[:limit]:
-        profile = getattr(user, "profile", None)
-        rows.append({
-            "id": user.id,
-            "username": user.username,
-            "email": user.email or "",
-            "role": getattr(profile, "role", "user"),
-            "active": user.is_active,
-            "createdAt": _dt(user.date_joined),
-        })
-    return JsonResponse(rows, safe=False)
+    return JsonResponse(admin_service.list_users(query, limit), safe=False)
 
 
 @csrf_exempt
@@ -184,32 +127,10 @@ def update_user(request, user_id):
         return _error(400, "Envía role y/o active para actualizar la cuenta.")
 
     try:
-        target = User.objects.select_related("profile").get(id=user_id)
-    except User.DoesNotExist:
-        return _error(404, "El usuario no existe.")
-
-    profile, _ = Profile.objects.get_or_create(user=target, defaults={"role": "user"})
-    next_role = (data.get("role") or profile.role).strip().lower()
-    next_active = target.is_active if data.get("active") is None else bool(data.get("active"))
-
-    if next_role not in ROLES:
-        return _error(400, "Rol inválido (user|admin).")
-    if actor.id == target.id and (next_role != "admin" or not next_active):
-        return _error(400, "No puedes quitarte el rol de administrador ni desactivar tu cuenta.")
-
-    target.is_active = next_active
-    target.save(update_fields=["is_active"])
-    profile.role = next_role
-    profile.save(update_fields=["role"])
-
-    return JsonResponse({
-        "id": target.id,
-        "username": target.username,
-        "email": target.email or "",
-        "role": profile.role,
-        "active": target.is_active,
-        "createdAt": _dt(target.date_joined),
-    })
+        result = admin_service.update_user(actor, user_id, data)
+    except AdminOperationError as exc:
+        return _error(exc.status, exc.message)
+    return JsonResponse(result)
 
 
 def plants(request):
@@ -223,20 +144,7 @@ def plants(request):
     except ValueError:
         limit = 50
 
-    rows = []
-    qs = PlantIdentification.objects.select_related("user").order_by("-created_at")[:limit]
-    for plant in qs:
-        rows.append({
-            "id": str(plant.id),
-            "userId": plant.user_id,
-            "username": plant.user.username if plant.user else "Sin usuario",
-            "scientificName": plant.scientific_name,
-            "commonName": plant.common_name or "",
-            "family": plant.family or "",
-            "confidence": float(plant.confidence),
-            "createdAt": _dt(plant.created_at),
-        })
-    return JsonResponse(rows, safe=False)
+    return JsonResponse(admin_service.list_plants(limit), safe=False)
 
 
 def chats(request):
@@ -250,16 +158,4 @@ def chats(request):
     except ValueError:
         limit = 50
 
-    rows = []
-    qs = ChatMessage.objects.select_related("user").order_by("-created_at")[:limit]
-    for msg in qs:
-        rows.append({
-            "id": str(msg.id),
-            "userId": msg.user_id,
-            "username": msg.user.username if msg.user else "Sin usuario",
-            "sessionId": msg.session_id or "",
-            "role": msg.role,
-            "content": msg.content,
-            "createdAt": _dt(msg.created_at),
-        })
-    return JsonResponse(rows, safe=False)
+    return JsonResponse(admin_service.list_chats(limit), safe=False)

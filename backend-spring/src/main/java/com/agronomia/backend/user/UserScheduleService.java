@@ -1,11 +1,9 @@
 package com.agronomia.backend.user;
 
 import com.agronomia.backend.schedule.ScheduleAiService;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,40 +15,78 @@ import java.util.*;
 
 @Service
 public class UserScheduleService {
-    private static final TypeReference<List<Map<String, Object>>> LIST = new TypeReference<>() {};
-    private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
-
-    private final JdbcTemplate jdbc;
+    private final UserScheduleRepository repository;
     private final ObjectMapper json;
     private final ScheduleAiService ai;
 
-    public UserScheduleService(JdbcTemplate jdbc, ObjectMapper json, ScheduleAiService ai) {
-        this.jdbc = jdbc;
+    public UserScheduleService(UserScheduleRepository repository, ObjectMapper json, ScheduleAiService ai) {
+        this.repository = repository;
         this.json = json;
         this.ai = ai;
     }
 
     public Map<String, Object> weekly(long userId) {
-        List<Map<String, Object>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
-                (rs, i) -> Map.of("classes", readList(rs.getString("classes"))), userId);
-        List<Map<String, Object>> pending = jdbc.query(
-                "SELECT id,parsed_classes FROM pending_schedule_imports WHERE user_id=? ORDER BY created_at DESC LIMIT 1",
-                (rs, i) -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", rs.getString("id"));
-                    m.put("classes", readList(rs.getString("parsed_classes")));
-                    return m;
-                }, userId);
-        List<Map<String, Object>> care = jdbc.query(
-                "SELECT t.id,t.plant_id,t.title,t.instructions,t.day_of_week,t.start_time,t.duration_minutes,COALESCE(p.common_name,p.scientific_name) plant_name " +
-                        "FROM care_plan_tasks t JOIN plant_identifications p ON p.id=t.plant_id WHERE t.user_id=? ORDER BY t.day_of_week,t.start_time",
-                (rs, i) -> careTaskRow(rs), userId);
-        Map<String, Object> resp = new LinkedHashMap<>();
-        resp.put("success", true);
-        resp.put("classes", schedules.isEmpty() ? List.of() : schedules.get(0).get("classes"));
-        resp.put("care_tasks", care);
-        resp.put("pending_import", pending.isEmpty() ? null : pending.get(0));
-        return resp;
+        List<Map<String, Object>> schedules = repository.findWeeklySchedule(userId);
+        List<Map<String, Object>> pending = repository.findLatestPendingImport(userId);
+        List<Map<String, Object>> care = repository.findCareTasks(userId);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("classes", schedules.isEmpty() ? List.of() : schedules.get(0).get("classes"));
+        response.put("care_tasks", care);
+        response.put("pending_import", pending.isEmpty() ? null : pending.get(0));
+        return response;
+    }
+
+    public UserScheduleDtos.WeeklyResponse weeklyResponse(long userId) {
+        Map<String, Object> response = weekly(userId);
+        Object pendingValue = response.get("pending_import");
+        UserScheduleDtos.PendingImport pending = null;
+        if (pendingValue instanceof Map<?, ?> pendingRow) {
+            pending = new UserScheduleDtos.PendingImport(stringValue(pendingRow.get("id")),
+                    weeklyClasses(pendingRow.get("classes")));
+        }
+        return new UserScheduleDtos.WeeklyResponse(true, weeklyClasses(response.get("classes")),
+                careTasks(mapRows(response.get("care_tasks"))), pending);
+    }
+
+    private List<Map<String, Object>> mapRows(Object value) {
+        if (!(value instanceof List<?> rows)) return List.of();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object row : rows) {
+            if (!(row instanceof Map<?, ?> fields)) continue;
+            Map<String, Object> mapped = new LinkedHashMap<>();
+            fields.forEach((key, fieldValue) -> mapped.put(String.valueOf(key), fieldValue));
+            result.add(mapped);
+        }
+        return result;
+    }
+
+    private List<UserScheduleDtos.WeeklyClass> weeklyClasses(Object value) {
+        if (!(value instanceof List<?> rows)) return List.of();
+        List<UserScheduleDtos.WeeklyClass> result = new ArrayList<>();
+        for (Object row : rows) {
+            if (!(row instanceof Map<?, ?> fields)) continue;
+            result.add(new UserScheduleDtos.WeeklyClass(
+                    stringValue(fields.get("course_code")), stringValue(fields.get("course_name")),
+                    integerValue(fields.get("day_of_week")), stringValue(fields.get("start_time")),
+                    stringValue(fields.get("end_time")), stringValue(fields.get("section"))));
+        }
+        return result;
+    }
+
+    private List<UserScheduleDtos.CareTask> careTasks(List<Map<String, Object>> rows) {
+        return rows.stream().map(row -> new UserScheduleDtos.CareTask(
+                stringValue(row.get("id")), stringValue(row.get("plant_id")), stringValue(row.get("plant_name")),
+                stringValue(row.get("title")), stringValue(row.get("instructions")), integerValue(row.get("day_of_week")),
+                stringValue(row.get("start_time")), integerValue(row.get("duration_minutes")))).toList();
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Integer integerValue(Object value) {
+        return value instanceof Number number ? number.intValue() : value == null ? null : Integer.valueOf(String.valueOf(value));
     }
 
     @Transactional
@@ -58,24 +94,20 @@ public class UserScheduleService {
         if (pdf == null || pdf.isEmpty()) throw new UserApiException(HttpStatus.BAD_REQUEST, "Selecciona el PDF de tu horario.");
         JsonNode parsed = ai.parseWeeklySchedule(pdf);
         List<Map<String, Object>> classes = normalizeClasses(parsed.path("classes"));
-        jdbc.update("DELETE FROM pending_schedule_imports WHERE user_id=?", userId);
+        repository.deletePendingImports(userId);
         String id = UUID.randomUUID().toString().replace("-","");
-        jdbc.update("INSERT INTO pending_schedule_imports (id,user_id,source_pdf,parsed_classes,created_at) VALUES (?,?,?,?,?)",
-                id, userId, "pending/" + id + ".pdf", writeJson(classes), Timestamp.valueOf(LocalDateTime.now()));
+        repository.insertPendingImport(id, userId, "pending/" + id + ".pdf", writeJson(classes), Timestamp.valueOf(LocalDateTime.now()));
         return Map.of("success", true, "import_id", id, "classes", classes);
     }
 
-    private Object toDbId(String id) {
+    private String toDbId(String id) {
         if (id == null) return null;
         String hex = id.replace("-", "");
         return hex.length() == 32 ? hex : id;
     }
 
     public Map<String, Object> pendingImport(long userId, String importId) {
-        List<Map<String, Object>> rows = jdbc.query(
-                "SELECT id,parsed_classes FROM pending_schedule_imports WHERE id=? AND user_id=?",
-                (rs, i) -> Map.of("id", rs.getString("id"), "classes", readList(rs.getString("parsed_classes"))),
-                toDbId(importId), userId);
+        List<Map<String, Object>> rows = repository.findPendingImport(toDbId(importId), userId);
         if (rows.isEmpty()) throw new UserApiException(HttpStatus.NOT_FOUND, "La importacion ya no esta disponible.");
         Map<String, Object> r = new LinkedHashMap<>(rows.get(0));
         r.put("success", true);
@@ -85,47 +117,27 @@ public class UserScheduleService {
     @Transactional
     public Map<String, Object> confirmImport(long userId, String importId, Object classesObj) {
         List<Map<String, Object>> classes = normalizeClasses(classesObj);
-        Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM pending_schedule_imports WHERE id=? AND user_id=?",
-                Integer.class, toDbId(importId), userId);
-        if (exists == null || exists == 0) throw new UserApiException(HttpStatus.NOT_FOUND, "La importacion ya no esta disponible.");
-        jdbc.update("INSERT INTO weekly_schedules (user_id,classes,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE classes=VALUES(classes), updated_at=VALUES(updated_at)",
-                userId, writeJson(classes), Timestamp.valueOf(LocalDateTime.now()));
-        jdbc.update("DELETE FROM care_plan_tasks WHERE user_id=?", userId);
-        jdbc.update("DELETE FROM pending_schedule_imports WHERE id=? AND user_id=?", toDbId(importId), userId);
+        if (!repository.pendingImportExists(toDbId(importId), userId)) throw new UserApiException(HttpStatus.NOT_FOUND, "La importacion ya no esta disponible.");
+        repository.upsertWeeklySchedule(userId, writeJson(classes), Timestamp.valueOf(LocalDateTime.now()));
+        repository.deleteCareTasks(userId);
+        repository.deletePendingImport(toDbId(importId), userId);
         return Map.of("success", true, "classes", classes, "pdf_removed", true);
     }
 
     @Transactional
     public Map<String, Object> cancelImport(long userId, String importId) {
-        jdbc.update("DELETE FROM pending_schedule_imports WHERE id=? AND user_id=?", toDbId(importId), userId);
+        repository.deletePendingImport(toDbId(importId), userId);
         return Map.of("success", true);
     }
 
     @Transactional
     public Map<String, Object> draftCarePlan(long userId) {
-        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
-                (rs, i) -> readList(rs.getString("classes")), userId);
+        List<List<Map<String, Object>>> schedules = repository.findWeeklyClasses(userId);
         if (schedules.isEmpty() || schedules.get(0).isEmpty()) {
             throw new UserApiException(HttpStatus.CONFLICT, "Primero importa y confirma tu horario semanal.");
         }
         List<Map<String, Object>> classes = schedules.get(0);
-        List<Map<String, Object>> plants = jdbc.query(
-                "SELECT id,scientific_name,common_name,result_json FROM plant_identifications WHERE user_id=? ORDER BY created_at ASC LIMIT 20",
-                (rs, i) -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", rs.getString("id"));
-                    m.put("scientific_name", rs.getString("scientific_name"));
-                    m.put("common_name", rs.getString("common_name"));
-                    Map<String, Object> result = readMap(rs.getString("result_json"));
-                    Object sections = result.get("sections");
-                    StringBuilder care = new StringBuilder();
-                    if (sections instanceof List<?> list) {
-                        for (Object o : list) if (o instanceof Map<?, ?> s) care.append(s.get("title")).append(": ").append(s.get("body")).append("\n");
-                    }
-                    String careText = care.toString();
-                    m.put("care_information", careText.length() > 7000 ? careText.substring(0, 7000) : careText);
-                    return m;
-                }, userId);
+        List<Map<String, Object>> plants = repository.findPlantsForCarePlan(userId);
         if (plants.isEmpty()) throw new UserApiException(HttpStatus.CONFLICT, "Primero identifica al menos una planta.");
         JsonNode draft = ai.draftCarePlan(json.valueToTree(Map.of("classes", classes, "plants", plants)));
         List<Map<String, Object>> tasks = normalizeTasks(draft.path("tasks"), classes, plants);
@@ -134,14 +146,12 @@ public class UserScheduleService {
 
     @Transactional
     public Map<String, Object> confirmCarePlan(long userId, Object tasksObj) {
-        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
-                (rs, i) -> readList(rs.getString("classes")), userId);
+        List<List<Map<String, Object>>> schedules = repository.findWeeklyClasses(userId);
         if (schedules.isEmpty()) throw new UserApiException(HttpStatus.CONFLICT, "Primero confirma tu horario semanal.");
         List<Map<String, Object>> tasks = normalizeTasks(tasksObj, schedules.get(0), null);
-        jdbc.update("DELETE FROM care_plan_tasks WHERE user_id=?", userId);
+        repository.deleteCareTasks(userId);
         for (Map<String, Object> t : tasks) {
-            jdbc.update("INSERT INTO care_plan_tasks (id,user_id,plant_id,title,instructions,day_of_week,start_time,duration_minutes,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                    UUID.randomUUID().toString().replace("-",""), userId, toDbId(String.valueOf(t.get("plant_id"))),
+            repository.insertCareTask(UUID.randomUUID().toString().replace("-",""), userId, toDbId(String.valueOf(t.get("plant_id"))).toString(),
                     String.valueOf(t.get("title")), String.valueOf(t.getOrDefault("instructions", "")),
                     ((Number) t.get("day_of_week")).intValue(), LocalTime.parse(String.valueOf(t.get("start_time"))),
                     ((Number) t.get("duration_minutes")).intValue(), Timestamp.valueOf(LocalDateTime.now()));
@@ -155,29 +165,24 @@ public class UserScheduleService {
 
     @Transactional
     public Map<String, Object> rescheduleTask(long userId, String taskId, int day, String startTime) {
-        List<List<Map<String, Object>>> schedules = jdbc.query("SELECT classes FROM weekly_schedules WHERE user_id=?",
-                (rs, i) -> readList(rs.getString("classes")), userId);
+        List<List<Map<String, Object>>> schedules = repository.findWeeklyClasses(userId);
         if (schedules.isEmpty()) throw new UserApiException(HttpStatus.CONFLICT, "Primero confirma tu horario semanal.");
         Object taskDbId = toDbId(taskId);
-        List<Map<String, Object>> rows = jdbc.query("SELECT duration_minutes FROM care_plan_tasks WHERE id=? AND user_id=?",
-                (rs, i) -> Map.of("duration_minutes", rs.getInt("duration_minutes")), taskDbId, userId);
-        if (rows.isEmpty()) throw new UserApiException(HttpStatus.NOT_FOUND, "No se encontro ese cuidado.");
-        int duration = ((Number) rows.get(0).get("duration_minutes")).intValue();
+        Integer durationValue = repository.findCareTaskDuration(String.valueOf(taskDbId), userId);
+        if (durationValue == null) throw new UserApiException(HttpStatus.NOT_FOUND, "No se encontro ese cuidado.");
+        int duration = durationValue;
         LocalTime start = LocalTime.parse(startTime);
         if (hasClassConflict(schedules.get(0), day, start, duration) || hasTaskConflict(userId, taskId, day, start, duration)) {
             throw new UserApiException(HttpStatus.CONFLICT, "El nuevo horario se cruza con una clase u otro cuidado.");
         }
-        jdbc.update("UPDATE care_plan_tasks SET day_of_week=?, start_time=? WHERE id=? AND user_id=?", day, start, taskDbId, userId);
-        List<Map<String, Object>> task = jdbc.query(
-                "SELECT t.id,t.plant_id,t.title,t.instructions,t.day_of_week,t.start_time,t.duration_minutes,COALESCE(p.common_name,p.scientific_name) plant_name " +
-                        "FROM care_plan_tasks t JOIN plant_identifications p ON p.id=t.plant_id WHERE t.id=? AND t.user_id=?",
-                (rs, i) -> careTaskRow(rs), taskDbId, userId);
+        repository.updateCareTaskTime(userId, String.valueOf(taskDbId), day, start);
+        List<Map<String, Object>> task = repository.findCareTask(userId, String.valueOf(taskDbId));
         return Map.of("success", true, "care_task", task.get(0));
     }
 
     @Transactional
     public Map<String, Object> deleteTask(long userId, String taskId) {
-        jdbc.update("DELETE FROM care_plan_tasks WHERE id=? AND user_id=?", toDbId(taskId), userId);
+        repository.deleteCareTask(userId, toDbId(taskId));
         return Map.of("success", true);
     }
 
@@ -195,10 +200,7 @@ public class UserScheduleService {
 
     private boolean hasTaskConflict(long userId, String taskId, int day, LocalTime start, int duration) {
         int s = start.toSecondOfDay() / 60, e = s + duration;
-        List<Map<String, Object>> rows = jdbc.query(
-                "SELECT start_time,duration_minutes FROM care_plan_tasks WHERE user_id=? AND day_of_week=? AND id<>?",
-                (rs, i) -> Map.of("start_time", rs.getString("start_time"), "duration_minutes", rs.getInt("duration_minutes")),
-                userId, day, toDbId(taskId));
+        List<Map<String, Object>> rows = repository.findOtherCareTasks(userId, day, toDbId(taskId));
         for (Map<String, Object> r : rows) {
             int a = LocalTime.parse(String.valueOf(r.get("start_time")).substring(0, 5)).toSecondOfDay() / 60;
             int b = a + ((Number) r.get("duration_minutes")).intValue();
@@ -292,20 +294,6 @@ public class UserScheduleService {
         return out;
     }
 
-    private Map<String, Object> careTaskRow(java.sql.ResultSet rs) throws java.sql.SQLException {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", rs.getString("id"));
-        m.put("plant_id", rs.getString("plant_id"));
-        m.put("plant_name", rs.getString("plant_name"));
-        m.put("title", rs.getString("title"));
-        m.put("instructions", rs.getString("instructions"));
-        m.put("day_of_week", rs.getInt("day_of_week"));
-        String st = rs.getString("start_time");
-        m.put("start_time", st == null ? "08:00" : st.substring(0, 5));
-        m.put("duration_minutes", rs.getInt("duration_minutes"));
-        return m;
-    }
-
     private String normalizeTime(String raw) {
         if (raw == null) return "";
         String v = raw.trim();
@@ -315,6 +303,4 @@ public class UserScheduleService {
     private String str(Object o, int max) { String s = o == null ? "" : String.valueOf(o).trim(); return s.length() > max ? s.substring(0, max) : s; }
     private int toInt(Object o) { return o instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(o)); }
     private String writeJson(Object o) { try { return json.writeValueAsString(o); } catch (Exception e) { return "[]"; } }
-    private List<Map<String, Object>> readList(String s) { try { return json.readValue(s, LIST); } catch (Exception e) { return new ArrayList<>(); } }
-    private Map<String, Object> readMap(String s) { try { return json.readValue(s, MAP); } catch (Exception e) { return new LinkedHashMap<>(); } }
 }

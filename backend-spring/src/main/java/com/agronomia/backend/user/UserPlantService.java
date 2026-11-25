@@ -1,97 +1,82 @@
 package com.agronomia.backend.user;
 
+import com.agronomia.backend.images.PlantImageRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 
-import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
 public class UserPlantService {
-    private final JdbcTemplate jdbc;
+    private final PlantIdentificationRepository plants;
+    private final PlantImageRepository images;
     private final ObjectMapper json;
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() {};
     private static final TypeReference<List<Map<String, Object>>> LIST = new TypeReference<>() {};
 
-    public UserPlantService(JdbcTemplate jdbc, ObjectMapper json) {
-        this.jdbc = jdbc;
+    public UserPlantService(PlantIdentificationRepository plants, PlantImageRepository images,
+                            ObjectMapper json) {
+        this.plants = plants;
+        this.images = images;
         this.json = json;
     }
 
     public List<Map<String, Object>> listPlants(long userId) {
-        return jdbc.query("SELECT id,batch_id,scientific_name,common_name,family,confidence,result_json,created_at FROM plant_identifications WHERE user_id=? ORDER BY created_at DESC",
-                (rs, i) -> {
-                    Map<String, Object> plant = readJson(rs.getString("result_json"));
-                    if (plant.isEmpty()) {
-                        plant = new LinkedHashMap<>();
-                        plant.put("scientific_name", rs.getString("scientific_name"));
-                        plant.put("common_name", rs.getString("common_name"));
-                        plant.put("family", rs.getString("family"));
-                        plant.put("confidence", rs.getDouble("confidence"));
-                    }
-                    String id = rs.getString("id");
-                    plant.put("id", id);
-                    plant.put("batch_id", rs.getString("batch_id"));
-                    plant.put("created_at", rs.getTimestamp("created_at").toLocalDateTime().toString());
-                    plant.put("image_url", "agronomia-api/api/plants/" + id + "/cover");
-                    return plant;
-                }, userId);
+        return plants.findAllByUserId(userId).stream().map(row -> {
+            Map<String, Object> plant = readJson(row.resultJson());
+            if (plant.isEmpty()) {
+                plant = new LinkedHashMap<>();
+                plant.put("scientific_name", row.scientificName());
+                plant.put("common_name", row.commonName());
+                plant.put("family", row.family());
+                plant.put("confidence", row.confidence());
+            }
+            plant.put("id", row.id());
+            plant.put("batch_id", row.batchId());
+            plant.put("created_at", row.createdAt().toString());
+            plant.put("image_url", "agronomia-api/api/plants/" + row.id() + "/cover");
+            return plant;
+        }).toList();
     }
 
     public Map<String, Object> findOwnedPlant(long userId, String plantId) {
-        try {
-            return jdbc.queryForObject("SELECT id,batch_id,scientific_name,common_name,result_json,created_at FROM plant_identifications WHERE id=? AND user_id=?",
-                    (rs, i) -> {
-                        Map<String, Object> m = new LinkedHashMap<>();
-                        m.put("id", rs.getString("id"));
-                        m.put("batch_id", rs.getString("batch_id"));
-                        m.put("scientific_name", rs.getString("scientific_name"));
-                        m.put("common_name", rs.getString("common_name"));
-                        m.put("result_json", readJson(rs.getString("result_json")));
-                        m.put("created_at", rs.getTimestamp("created_at").toLocalDateTime().toString());
-                        return m;
-                    }, plantId, userId);
-        } catch (EmptyResultDataAccessException e) {
-            throw new UserApiException(HttpStatus.NOT_FOUND, "No se encontró la planta solicitada.");
-        }
+        PlantIdentificationRepository.PlantRow row = plants.findByIdAndUserId(plantId, userId)
+                .orElseThrow(() -> new UserApiException(HttpStatus.NOT_FOUND,
+                        "No se encontró la planta solicitada."));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", row.id());
+        result.put("batch_id", row.batchId());
+        result.put("scientific_name", row.scientificName());
+        result.put("common_name", row.commonName());
+        result.put("result_json", readJson(row.resultJson()));
+        result.put("created_at", row.createdAt().toString());
+        return result;
     }
 
     public Optional<String> findCoverPath(long userId, String plantId) {
         Map<String, Object> plant = findOwnedPlant(userId, plantId);
         String batchId = (String) plant.get("batch_id");
-        List<String> paths = jdbc.query("SELECT relative_path FROM plant_images WHERE batch_id=? AND user_id=? ORDER BY created_at ASC LIMIT 1",
-                (rs, i) -> rs.getString("relative_path"), batchId, userId);
-        return paths.stream().findFirst();
+        return images.findFirstRelativePathByBatchIdAndUserId(batchId, userId);
     }
 
     public void saveIdentification(long userId, String batchId, Map<String, Object> plant) {
         String id = UUID.randomUUID().toString().replace("-","");
-        jdbc.update("INSERT INTO plant_identifications (id,user_id,batch_id,scientific_name,common_name,family,confidence,result_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                id, userId, batchId,
+        plants.insertPlant(id, userId, batchId,
                 str(plant.get("scientific_name")), str(plant.get("common_name")), str(plant.get("family")),
-                toDouble(plant.get("confidence")), writeJson(plant), Timestamp.valueOf(LocalDateTime.now()));
+                toDouble(plant.get("confidence")), writeJson(plant), LocalDateTime.now());
         plant.put("id", id);
     }
 
     public void saveRun(long userId, String batchId, String organ, String status, Object raw) {
-        jdbc.update("INSERT INTO identification_runs (id,user_id,batch_id,organ,status,raw_json,created_at) VALUES (?,?,?,?,?,?,?)",
-                UUID.randomUUID().toString().replace("-",""), userId, batchId, organ, status, writeJson(raw), Timestamp.valueOf(LocalDateTime.now()));
+        plants.insertRun(UUID.randomUUID().toString().replace("-", ""), userId, batchId,
+                organ, status, writeJson(raw), LocalDateTime.now());
     }
 
     public Map<String, Object> loadLatestRunRaw(long userId, String batchId) {
-        List<String> raws = jdbc.query("SELECT raw_json FROM identification_runs WHERE user_id=? AND batch_id=? ORDER BY created_at DESC LIMIT 1",
-                (rs, i) -> rs.getString("raw_json"), userId, batchId);
-        if (raws.isEmpty()) return Map.of();
-        return readJson(raws.get(0));
+        return plants.findLatestRunRawJson(userId, batchId).map(this::readJson).orElseGet(Map::of);
     }
 
     public List<Map<String, Object>> loadLatestRunCandidates(long userId, String batchId) {

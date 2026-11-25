@@ -21,19 +21,19 @@ public class UserController {
     private final UserTokenService tokens;
     private final ImageBatchService images;
     private final UserPlantService plants;
-    private final IdentificationPipelineService pipeline;
+    private final PlantIdentificationApplicationService identification;
     private final UserChatService chat;
     private final UserScheduleService schedule;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     private final Path uploadDir;
 
     public UserController(UserAuthService auth, UserTokenService tokens, ImageBatchService images,
-                          UserPlantService plants, IdentificationPipelineService pipeline, UserChatService chat,
+                          UserPlantService plants, PlantIdentificationApplicationService identification,
+                          UserChatService chat,
                           UserScheduleService schedule,
-                          org.springframework.jdbc.core.JdbcTemplate jdbc,
                           @Value("${plant.storage.directory:${PLANT_UPLOAD_DIR:C:/xampp/plant-images}}") String uploadDir) {
-        this.auth = auth; this.tokens = tokens; this.images = images; this.plants = plants; this.pipeline = pipeline; this.chat = chat;
-        this.schedule = schedule; this.jdbc = jdbc; this.uploadDir = Path.of(uploadDir);
+        this.auth = auth; this.tokens = tokens; this.images = images; this.plants = plants;
+        this.identification = identification; this.chat = chat;
+        this.schedule = schedule; this.uploadDir = Path.of(uploadDir);
     }
 
     @PostMapping("/register")
@@ -68,32 +68,7 @@ public class UserController {
                                         @RequestParam(defaultValue = "auto") String organ,
                                         HttpServletRequest request) {
         var s = requireUser(request);
-        List<Map<String,Object>> rows = jdbc.query("SELECT relative_path FROM plant_images WHERE batch_id=? AND user_id=? ORDER BY created_at ASC",
-                (rs,i) -> Map.of("p", rs.getString("relative_path")), batch_id, s.userId());
-        if (rows.isEmpty()) throw new UserApiException(HttpStatus.NOT_FOUND, "No se encontraron imágenes para ese batch_id.");
-        List<byte[]> blobs = new ArrayList<>();
-        for (Map<String,Object> r : rows) {
-            try { blobs.add(Files.readAllBytes(uploadDir.resolve(String.valueOf(r.get("p"))))); }
-            catch (Exception e) { throw new UserApiException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo leer una imagen almacenada."); }
-        }
-        Map<String,Object> result = pipeline.identify(blobs, organ);
-        plants.saveRun(s.userId(), batch_id, organ, String.valueOf(result.get("status")), result.get("raw"));
-        if ("failed".equals(result.get("status"))) throw new UserApiException(HttpStatus.BAD_GATEWAY, String.valueOf(result.get("message")));
-        Map<String,Object> resp = new LinkedHashMap<>();
-        resp.put("success", true);
-        resp.put("status", result.get("status"));
-        if ("identified".equals(result.get("status"))) {
-            Map<String,Object> plant = plants.asMap(result.get("plant"));
-            plants.saveIdentification(s.userId(), batch_id, plant);
-            resp.put("plant", plant);
-        } else if ("ambiguous".equals(result.get("status"))) {
-            resp.put("candidates", result.get("candidates"));
-        } else {
-            resp.put("message", result.get("message"));
-            if ("insufficient".equals(result.get("status"))) resp.put("plant_name", result.get("plant_name"));
-        }
-        if (result.containsKey("candidates") && !resp.containsKey("candidates")) resp.put("candidates", result.get("candidates"));
-        return resp;
+        return identification.identify(s.userId(), batch_id, organ);
     }
 
     @PostMapping("/confirm")
@@ -101,39 +76,7 @@ public class UserController {
                                        @RequestParam String scientific_name,
                                        HttpServletRequest request) {
         var s = requireUser(request);
-        Map<String, Object> raw = plants.loadLatestRunRaw(s.userId(), batch_id);
-        List<Map<String, Object>> candidates = plants.loadLatestRunCandidates(s.userId(), batch_id);
-        if (candidates.isEmpty()) throw new UserApiException(HttpStatus.NOT_FOUND, "No se encontr? una identificaci?n previa para ese lote.");
-
-        Map<String, Object> chosenResult = null;
-        Object results = raw.get("results");
-        if (results instanceof List<?> list) {
-            for (Object o : list) {
-                if (!(o instanceof Map<?, ?> m)) continue;
-                Map<String, Object> sp = plants.asMap(m.get("species"));
-                String name = plants.firstNonBlank(plants.str(sp.get("scientificNameWithoutAuthor")), plants.str(sp.get("scientificName")));
-                if (scientific_name.equals(name)) { chosenResult = plants.asMap(m); break; }
-            }
-        }
-        Map<String, Object> chosenCandidate = candidates.stream()
-                .filter(c -> scientific_name.equals(c.get("scientific_name")))
-                .findFirst().orElse(null);
-        if (chosenResult == null && chosenCandidate == null) {
-            throw new UserApiException(HttpStatus.BAD_REQUEST, "La especie elegida no coincide con las candidatas.");
-        }
-        if (chosenResult == null) {
-            chosenResult = new LinkedHashMap<>();
-            Map<String, Object> species = new LinkedHashMap<>();
-            species.put("scientificNameWithoutAuthor", chosenCandidate.get("scientific_name"));
-            species.put("scientificName", chosenCandidate.get("scientific_name"));
-            species.put("commonNames", chosenCandidate.getOrDefault("common_names", List.of()));
-            species.put("family", Map.of("scientificNameWithoutAuthor", chosenCandidate.getOrDefault("family", "")));
-            chosenResult.put("species", species);
-            chosenResult.put("score", chosenCandidate.getOrDefault("confidence", 0));
-        }
-        Map<String, Object> plant = pipeline.generatePlantInfo(chosenResult, candidates);
-        plants.saveIdentification(s.userId(), batch_id, plant);
-        return Map.of("success", true, "status", "identified", "plant", plant);
+        return identification.confirm(s.userId(), batch_id, scientific_name);
     }
 
     @GetMapping("/plants")
@@ -192,8 +135,8 @@ public class UserController {
     }
 
     @GetMapping("/schedule")
-    public Map<String, Object> weeklySchedule(HttpServletRequest request) {
-        return schedule.weekly(requireUser(request).userId());
+    public UserScheduleDtos.WeeklyResponse weeklySchedule(HttpServletRequest request) {
+        return schedule.weeklyResponse(requireUser(request).userId());
     }
 
     @PostMapping(value = "/schedule/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
