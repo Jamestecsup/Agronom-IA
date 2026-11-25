@@ -1,47 +1,22 @@
-/**
- * Cabecera con la marca, la navegación principal y la sesión del agricultor.
- */
-export default function Header({ username, view, onNavigate, onLogout }) {
-  return (
-    <header className="header">
-      <div className="brand">
-        <div className="brand-mark">🌿</div>
-        <div>
-          <h1>Agronom-IA</h1>
-          <span>ASISTENTE BOTÁNICO</span>
-        </div>
-      </div>
+import Link from "./Link";
 
-      <nav className="nav">
-        <button
-          className={view === "scanner" ? "active" : ""}
-          onClick={() => onNavigate("scanner")}
-        >
-          Escáner
-        </button>
-        <button
-          className={view === "garden" ? "active" : ""}
-          onClick={() => onNavigate("garden")}
-        >
-          Mi jardín
-        </button>
-        <button
-          className={view === "chat" ? "active" : ""}
-          onClick={() => onNavigate("chat")}
-        >
-          Chat
-        </button>
+const routes = [["/", "Escáner"], ["/garden", "Mi jardín"], ["/chat", "Chat"], ["/settings", "Ajustes"]];
+
+export default function Header({ username, path, onLogout }) {
+  const activePath = path.startsWith("/plants/") ? "/garden" : path === "/scanner" ? "/" : path;
+  return <header className="header">
+    <div className="header-inner">
+      <Link className="brand" to="/" aria-label="Agronom-IA, escáner">
+        <span className="brand-mark" aria-hidden="true">A</span>
+        <span className="brand-title">Agronom-IA</span>
+      </Link>
+      <nav aria-label="Navegación principal" className="nav">
+        {routes.map(([route, label]) => <Link key={route} to={route}
+          className={activePath === route ? "active" : ""} aria-current={activePath === route ? "page" : undefined}>{label}</Link>)}
       </nav>
-
-      <div className="spacer" />
-
-      <div className="user">
-        <div className="avatar">{username.slice(0, 1)}</div>
-        <span>{username}</span>
-        <button className="btn ghost small" onClick={onLogout}>
-          Salir
-        </button>
+      <div className="user"><span>{username}</span>
+        <button type="button" className="btn ghost small" onClick={onLogout}>Salir</button>
       </div>
-    </header>
-  );
+    </div>
+  </header>;
 }

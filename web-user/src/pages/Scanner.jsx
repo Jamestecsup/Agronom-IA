@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { confirmCandidate, identify, uploadImages } from "../api";
 import CandidateCard from "../components/CandidateCard";
 import TermDialog from "../components/TermDialog";
+import { preparePhoto } from "../image";
 
 const MAX_FILES = 5;
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -30,9 +31,12 @@ export default function Scanner({ onResult }) {
   const [candidates, setCandidates] = useState([]);
   const [batchId, setBatchId] = useState("");
   const [selectedTerm, setSelectedTerm] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
 
   const inputRef = useRef(null);
   const filesRef = useRef(files);
+  const operation = useRef(null);
+  const lastBatch = useRef(null);
   const busy = phase !== "idle";
 
   useEffect(() => {
@@ -41,10 +45,22 @@ export default function Scanner({ onResult }) {
 
   useEffect(() => {
     // Libera las miniaturas locales al salir de la pantalla.
-    return () => filesRef.current.forEach((item) => URL.revokeObjectURL(item.url));
+    return () => {
+      operation.current?.abort();
+      filesRef.current.forEach((item) => URL.revokeObjectURL(item.url));
+    };
   }, []);
 
+  useEffect(() => {
+    if (!busy) return;
+    const started = Date.now();
+    setElapsed(0);
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 500);
+    return () => clearInterval(tick);
+  }, [busy]);
+
   function addFiles(list) {
+    if (operation.current) return;
     const selected = Array.from(list || []);
     if (selected.length === 0) return;
     setError("");
@@ -54,12 +70,12 @@ export default function Scanner({ onResult }) {
     setSelectedTerm(null);
 
     const unsupported = selected.find((file) => {
-      const supportedMime = file.type === "image/jpeg" || file.type === "image/png";
-      const supportedExtension = /\.(jpe?g|png)$/i.test(file.name);
+      const supportedMime = ["image/jpeg", "image/png", "image/webp"].includes(file.type);
+      const supportedExtension = /\.(jpe?g|png|webp)$/i.test(file.name);
       return !supportedMime && !supportedExtension;
     });
     if (unsupported) {
-      setError(`"${unsupported.name}" no es compatible. Elige una foto JPG o PNG.`);
+      setError(`"${unsupported.name}" no es compatible. Elige JPG, PNG o WebP.`);
       return;
     }
 
@@ -95,6 +111,7 @@ export default function Scanner({ onResult }) {
   }
 
   function reset() {
+    lastBatch.current = null;
     files.forEach((item) => URL.revokeObjectURL(item.url));
     setFiles([]);
     setOrgan("auto");
@@ -107,7 +124,9 @@ export default function Scanner({ onResult }) {
   }
 
   async function handleIdentify() {
-    if (files.length === 0 || busy) return;
+    if (files.length === 0 || operation.current) return;
+    const controller = new AbortController();
+    operation.current = controller;
     setError("");
     setMessage("");
     setMessageTitle("No se pudo identificar.");
@@ -115,15 +134,25 @@ export default function Scanner({ onResult }) {
     setSelectedTerm(null);
 
     try {
-      setPhase("uploading");
-      const upload = await uploadImages(files.map((item) => item.file));
+      let upload = lastBatch.current?.files === files ? lastBatch.current.upload : null;
+      if (!upload) {
+        setPhase("preparing");
+        const prepared = [];
+        for (const item of files) {
+          prepared.push(await preparePhoto(item.file));
+          controller.signal.throwIfAborted();
+        }
+        setPhase("uploading");
+        upload = await uploadImages(prepared, controller.signal);
+        lastBatch.current = { files, upload };
+      }
       if (!upload || !upload.batch_id) {
         throw new Error("No pudimos recibir las fotos. Inténtalo de nuevo.");
       }
       setBatchId(upload.batch_id);
 
       setPhase("analyzing");
-      const data = await identify(upload.batch_id, organ);
+      const data = await identify(upload.batch_id, organ, controller.signal);
 
       if (data.status === "identified" && data.plant) {
         onResult(data.plant, files[0].file);
@@ -142,18 +171,22 @@ export default function Scanner({ onResult }) {
         setError("No pudimos analizar la planta. Revisa la foto e inténtalo de nuevo.");
       }
     } catch (problem) {
-      setError(problem.message);
+      if (problem.name !== "AbortError") setError(problem.message);
     } finally {
+      operation.current = null;
       setPhase("idle");
     }
   }
 
   async function choose(candidate) {
+    if (operation.current) return;
+    const controller = new AbortController();
+    operation.current = controller;
     setError("");
     setMessage("");
     setPhase("confirming");
     try {
-      const data = await confirmCandidate(batchId, candidate.scientific_name);
+      const data = await confirmCandidate(batchId, candidate.scientific_name, controller.signal);
       if (data.status === "insufficient") {
         setMessageTitle("Información insuficiente.");
         setMessage(
@@ -167,14 +200,16 @@ export default function Scanner({ onResult }) {
       }
       onResult(data.plant, files[0].file);
     } catch (problem) {
-      setError(problem.message);
+      if (problem.name !== "AbortError") setError(problem.message);
     } finally {
+      operation.current = null;
       setPhase("idle");
     }
   }
 
   const phaseLabel =
-    phase === "uploading"
+    phase === "preparing" ? "Preparando fotos…"
+      : phase === "uploading"
       ? "Subiendo fotos…"
       : phase === "analyzing"
       ? "Analizando la planta…"
@@ -210,19 +245,20 @@ export default function Scanner({ onResult }) {
           tabIndex={0}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
               inputRef.current?.click();
             }
           }}
         >
           <div className="icon">📷</div>
           <strong>Arrastra tus fotos o haz clic para elegirlas</strong>
-          <span>JPG o PNG · hasta {MAX_FILES} fotos · 8 MB por foto</span>
+          <span>JPG, PNG o WebP · hasta {MAX_FILES} fotos · 8 MB por foto</span>
         </div>
 
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+          accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
           multiple
           hidden
           onChange={(event) => {
@@ -272,8 +308,13 @@ export default function Scanner({ onResult }) {
             disabled={files.length === 0 || busy}
           >
             {busy && <span className="spinner" />}
-            {busy ? phaseLabel : "Identificar"}
+            {busy ? phaseLabel : error ? "Reintentar identificación" : "Identificar"}
           </button>
+          {busy && <button type="button" className="btn ghost" onClick={() => {
+            operation.current?.abort();
+            setMessageTitle("Espera cancelada.");
+            setMessage("Si el servidor ya estaba procesando la planta, la ficha puede aparecer en Mi jardín.");
+          }}>Cancelar espera</button>}
           {files.length > 0 && (
             <button className="btn ghost" onClick={reset} disabled={busy}>
               Limpiar
@@ -283,9 +324,10 @@ export default function Scanner({ onResult }) {
             {files.length} de {MAX_FILES} fotos
           </span>
         </div>
+        {busy && <p className="scan-progress"><span role="status">{phaseLabel}</span> <span>{elapsed} s</span></p>}
 
         {error && (
-          <div className="alert error" style={{ marginTop: 16, marginBottom: 0 }}>
+          <div className="alert error" role="alert" style={{ marginTop: 16, marginBottom: 0 }}>
             {error}
           </div>
         )}

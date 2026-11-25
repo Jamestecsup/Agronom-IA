@@ -1,108 +1,97 @@
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
-import Login from "./pages/Login";
-import Chat from "./pages/Chat";
-import Scanner from "./pages/Scanner";
-import Result from "./pages/Result";
-import Garden from "./pages/Garden";
-import {
-  clearSession,
-  loadGarden,
-  loadSession,
-  makeThumbnail,
-  saveGarden,
-  saveSession,
-} from "./storage";
+import { clearSession, loadSession, saveSession } from "./storage";
+import { clearCache, getPreferences } from "./api";
+import { navigate, useRoute } from "./route";
+import { applyAppearance, readAppearance, saveAppearance } from "./appearance";
 
-/**
- * Web de usuario: login, escáner, ficha, jardín y conversaciones por planta.
- */
+const Login = lazy(() => import("./pages/Login"));
+const Chat = lazy(() => import("./pages/Chat"));
+const Scanner = lazy(() => import("./pages/Scanner"));
+const Plant = lazy(() => import("./pages/Plant"));
+const Garden = lazy(() => import("./pages/Garden"));
+const Settings = lazy(() => import("./pages/Settings"));
+
 export default function App() {
-  const [session, setSession] = useState(() => loadSession());
-  const [view, setView] = useState("scanner");
-  const [garden, setGarden] = useState(() => loadGarden());
-  const [result, setResult] = useState(null);
+  const [session, setSession] = useState(loadSession);
+  const [appearance, setAppearance] = useState(readAppearance);
+  const [expired, setExpired] = useState(false);
+  const path = useRoute();
+  const main = useRef(null);
+  const destination = useRef(path === "/login" ? "/" : path);
 
-  function handleLogin(user) {
+  useEffect(() => {
+    const onExpired = () => {
+      destination.current = window.location.pathname + window.location.search;
+      clearSession();
+      clearCache();
+      setSession(null);
+      setExpired(true);
+      navigate("/login", true);
+    };
+    window.addEventListener("agronomia:expired", onExpired);
+    return () => window.removeEventListener("agronomia:expired", onExpired);
+  }, []);
+
+  useEffect(() => {
+    if (!session) {
+      if (path !== "/login") navigate("/login", true);
+      return;
+    }
+    if (path === "/login") navigate(destination.current, true);
+    window.scrollTo(0, 0);
+    main.current?.focus({ preventScroll: true });
+  }, [path, session]);
+
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    getPreferences().then(({ preferences }) => {
+      if (active && Object.keys(preferences).length) {
+        setAppearance(saveAppearance(preferences));
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [session]);
+
+  useEffect(() => { applyAppearance(appearance); }, [appearance]);
+
+  function login(user) {
+    clearCache();
     saveSession(user);
     setSession(user);
+    setExpired(false);
   }
 
-  function handleLogout() {
+  function logout() {
+    destination.current = "/";
+    clearCache();
     clearSession();
     setSession(null);
-    setResult(null);
-    setView("scanner");
+    navigate("/login", true);
   }
 
-  async function handleResult(plant, file) {
-    // Se guarda una miniatura para el jardín, no la foto completa.
-    const photo = file ? await makeThumbnail(file) : null;
-    const entry = {
-      id: crypto.randomUUID(),
-      plant,
-      photo,
-      createdAt: new Date().toISOString(),
-    };
+  const [pathname, search = ""] = path.split("?");
+  const plantId = /^\/plants\/([a-f0-9-]{36})$/i.exec(pathname)?.[1];
+  const wait = <p className="page-status" role="status">Cargando…</p>;
+  if (!session) return <Suspense fallback={wait}>
+    {expired && <p className="session-notice" role="status">Tu sesión terminó. Identifícate para continuar.</p>}
+    <Login onLogin={login} />
+  </Suspense>;
 
-    setResult(entry);
-    setGarden((previous) => {
-      const next = [entry, ...previous].slice(0, 30);
-      saveGarden(next);
-      return next;
-    });
-    setView("result");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function openFromGarden(entry) {
-    setResult(entry);
-    setView("result");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  if (!session) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  return (
-    <div className="app">
-      <Header
-        username={session.username}
-        view={view}
-        onNavigate={(next) => {
-          setView(next);
-          window.scrollTo({ top: 0 });
-        }}
-        onLogout={handleLogout}
-      />
-
-      <main className={`page ${view === "chat" ? "page-chat" : ""}`}>
-        {view === "scanner" && <Scanner onResult={handleResult} />}
-
-        {view === "garden" && (
-          <Garden
-            items={garden}
-            onOpen={openFromGarden}
-            onScan={() => setView("scanner")}
-            onClear={() => {
-              saveGarden([]);
-              setGarden([]);
-            }}
-          />
-        )}
-
-        {view === "result" &&
-          (result ? (
-            <Result entry={result} onBack={() => setView("scanner")} />
-          ) : (
-            <p className="empty">
-              No hay ninguna ficha abierta. Vuelve al escáner para identificar
-              una planta.
-            </p>
-          ))}
-        {view === "chat" && <Chat />}
-      </main>
-    </div>
-  );
+  return <div className="app">
+    <a className="skip-link" href="#main-content">Ir al contenido</a>
+    <Header username={session.username} path={pathname} onLogout={logout} />
+    <main id="main-content" ref={main} tabIndex={-1} className={pathname === "/chat" ? "page page-chat" : "page"}>
+      <Suspense fallback={wait}>
+        {pathname === "/" || pathname === "/scanner" || pathname === "/login"
+          ? <Scanner onResult={(plant) => navigate(plant.id ? "/plants/" + plant.id : "/garden")} />
+          : pathname === "/garden" ? <Garden layout={appearance.garden} />
+          : pathname === "/chat" ? <Chat initialPlant={new URLSearchParams(search).get("plant") || ""} />
+          : pathname === "/settings" ? <Settings username={session.username} appearance={appearance} onAppearance={setAppearance} />
+          : plantId ? <Plant key={plantId} id={plantId} />
+          : <div className="card inset"><h2>Página no encontrada</h2><a href="/">Volver al escáner</a></div>}
+      </Suspense>
+    </main>
+  </div>;
 }

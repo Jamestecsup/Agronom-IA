@@ -1,77 +1,58 @@
-/**
- * Mi jardín: fichas guardadas en el navegador (últimas 30).
- */
-export default function Garden({ items, onOpen, onScan, onClear }) {
-  if (items.length === 0) {
-    return (
-      <div className="card center" style={{ padding: 48 }}>
-        <div style={{ fontSize: 48 }}>🪴</div>
-        <h2>Tu jardín está vacío</h2>
-        <p className="hint">
-          Cada planta que identifiques se guarda aquí, en este navegador, para
-          volver a leer su ficha cuando quieras.
-        </p>
-        <button className="btn" onClick={onScan}>
-          Escanear mi primera planta
-        </button>
-      </div>
-    );
-  }
+import { useEffect, useMemo, useState } from "react";
+import { listIdentifiedPlants, clearCache } from "../api";
+import Cover from "../components/Cover";
+import Link from "../components/Link";
 
-  return (
-    <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 18,
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <h2 style={{ margin: 0 }}>Mi jardín</h2>
-          <p className="hint" style={{ margin: "4px 0 0" }}>
-            {items.length} planta{items.length === 1 ? "" : "s"} guardada
-            {items.length === 1 ? "" : "s"} en este navegador.
-          </p>
-        </div>
-        <button className="btn ghost small" onClick={onClear}>
-          Vaciar jardín
-        </button>
-      </div>
+export default function Garden({ layout }) {
+  const [items, setItems] = useState(null);
+  const [search, setSearch] = useState("");
+  const [order, setOrder] = useState("recent");
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    listIdentifiedPlants().then((data) => {
+      if (active) setItems(data.plants || []);
+    }).catch((failure) => {
+      if (active) setError(failure.message);
+    });
+    return () => { active = false; };
+  }, [retry]);
 
-      <div className="garden-grid">
-        {items.map((item) => (
-          <button
-            className="garden-card"
-            key={item.id}
-            onClick={() => onOpen(item)}
-          >
-            <div className="thumb">
-              {item.photo ? (
-                <img src={item.photo} alt={item.plant.common_name} />
-              ) : (
-                "🌿"
-              )}
-            </div>
-            <div className="info">
-              <strong>
-                {item.plant.common_name || item.plant.scientific_name}
-              </strong>
-              <em>{item.plant.scientific_name}</em>
-              <span>
-                {new Date(item.createdAt).toLocaleDateString("es-PE", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
-          </button>
-        ))}
-      </div>
-    </>
-  );
+  const filtered = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("es");
+    const result = (items || []).filter((plant) =>
+      [plant.common_name, plant.scientific_name].some((name) => name?.toLocaleLowerCase("es").includes(term)));
+    if (order === "name") result.sort((a,b) => name(a).localeCompare(name(b), "es"));
+    else result.sort((a,b) => b.created_at.localeCompare(a.created_at));
+    return result;
+  }, [items, search, order]);
+
+  return <section aria-labelledby="garden-heading">
+    <div className="section-heading"><div><h1 id="garden-heading">Mi jardín</h1>
+      <p>Las plantas identificadas en tu cuenta.</p></div>
+      <Link className="btn" to="/">Identificar planta</Link></div>
+    {error ? <div className="card inset"><p role="alert">{error}</p><button className="btn" onClick={() => {
+      clearCache(); setError(""); setRetry((count) => count + 1);
+    }}>Reintentar</button></div> : !items ? <p role="status">Cargando jardín…</p> : !items.length
+      ? <div className="card inset"><h2>Tu jardín está vacío</h2><p>Identifica una planta para encontrarla aquí.</p></div>
+      : <>
+        <div className="garden-tools"><label>Buscar planta<input type="search" value={search}
+          onChange={(event) => setSearch(event.target.value)} placeholder="Nombre común o científico" /></label>
+          <label>Ordenar<select value={order} onChange={(event) => setOrder(event.target.value)}>
+            <option value="recent">Más recientes</option><option value="name">Nombre</option>
+          </select></label></div>
+        <p className="muted" role="status">{filtered.length} de {items.length} plantas</p>
+        {filtered.length === 0 ? <p>No hay plantas que coincidan con la búsqueda.</p> :
+          <div className={layout === "list" ? "server-garden garden-list" : "server-garden"}>
+            {filtered.map((plant) => <Link to={"/plants/" + plant.id} className="server-plant" key={plant.id}>
+              <Cover id={plant.id} alt={name(plant)} /><div className="plant-meta">
+              <strong>{name(plant)}</strong><i>{plant.scientific_name}</i>
+              <small>{new Date(plant.created_at).toLocaleDateString("es-PE")}</small></div>
+            </Link>)}
+          </div>}
+      </>}
+  </section>;
 }
+
+function name(plant) { return plant.common_name || plant.scientific_name; }
