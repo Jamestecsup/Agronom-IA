@@ -71,3 +71,10 @@ Propuesta: añadir `POST /agronomia-api/api/identification-jobs` y `GET /agronom
 - `AI_AUX_MODEL` es opcional y solo selecciona el modelo de glosario y materiales. Si se omite, se usa `AI_MODEL`. La plantilla incluye como ejemplo `nvidia/nemotron-3.5-lightning:free`.
 - `LiveEnrichmentTest` se habilita solo con `LIVE_AI=true`. Usa texto fijo para ocho categorías, omite la identificación y limita la ejecución a dos llamadas en paralelo, sin reintentos. El diagnóstico en vivo queda pendiente de autorización.
 - Pasaron 43 pruebas de Spring y 4 de Django. La suite offline omitió la prueba en vivo. Los dobles verificaron la ejecución paralela, los plazos de 75 s y el presupuesto restante, los límites de elementos y la selección del modelo.
+
+## Auditoría y diseño de modelos por usuario · 2026-11-25
+
+- Rama local `feature/ia-modelos-y-web` creada desde `54deab1`. La nota Obsidian «Modelos de IA por usuario» recoge la evidencia de la web, las amenazas y la dirección Orgánica Biofílica seleccionada con UI/UX Pro Max.
+- Base Vite de 42 módulos, JS de entrada de 173,42 kB (56,12 gzip) y CSS de 17,06 kB (4,40 gzip). El jardín tenía un límite local de 30 y las pantallas se montaban sin rutas.
+- Las credenciales se vinculan al usuario y al perfil mediante AES-GCM. El transporte resuelve y fija la dirección permitida antes de cada conexión, con redirecciones desactivadas. `AI_ALLOW_PRIVATE_HOSTS` habilita explícitamente HTTP solo para direcciones de desarrollo, con metadatos, CGNAT y link-local bloqueados.
+- Se conserva la compatibilidad de Android y Django mediante contratos aditivos de Spring. Las migraciones se validan en una base descartable.
