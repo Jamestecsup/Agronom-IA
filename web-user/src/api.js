@@ -33,6 +33,7 @@ export const probeProvider = (id) => scopedChange("/ai/providers/" + encodeURICo
 export const selectProvider = (id, consent) => scopedChange("/ai/selection", "PUT", { provider_id: id, consent });
 export const removeProvider = (id) => scopedChange("/ai/providers/" + encodeURIComponent(id), "DELETE");
 export const deleteChat = (id) => scopedChange("/chat?plant_id=" + encodeURIComponent(id), "DELETE");
+export const listChatPlants = () => request(API + "/chats");
 export const deleteAllChats = () => scopedChange("/chats?confirm=true", "DELETE");
 export const getPlant = (id) => cached("/plants/" + encodeURIComponent(id));
 

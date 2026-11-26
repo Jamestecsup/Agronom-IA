@@ -108,8 +108,17 @@ a { color: var(--green-800); }
 .settings-dialog::backdrop { background: rgba(8, 20, 13, .72); }
 .theme-preview { border: 1px solid var(--border); background: var(--green-50); color: var(--text); border-radius: 12px; padding: .75rem; margin: .8rem 0; }
 .theme-preview p { margin: .25rem 0; }
-.chat-menu { margin-inline-start: auto; }
-.chat-menu summary { cursor: pointer; padding: .4rem; align-content: center; }
+.chat-menu { margin-inline-start: auto; position: relative; }
+.chat-menu summary {
+  display: grid; place-items: center; width: 44px; min-height: 44px;
+  cursor: pointer; border-radius: 50%; color: var(--text); letter-spacing: .08em;
+}
+.chat-menu summary::-webkit-details-marker { display: none; }
+.chat-menu summary:hover, .chat-menu[open] summary { background: var(--green-50); }
+.chat-menu > .btn.ghost {
+  position: absolute; inset-block-start: 100%; inset-inline-end: 0; z-index: 1;
+  white-space: nowrap; background: var(--surface); box-shadow: var(--shadow);
+}
 .chat-conversation-head .plant-cover { width: min(16%, 80px); flex: none; border-radius: 10px; }
 .chat-photo-control { display: grid; gap: .3rem; max-width: min(100%, 13rem); }
 .chat-photo-control .btn { justify-self: start; min-height: 50px; }
@@ -130,7 +139,6 @@ a { color: var(--green-800); }
   .field-grid, .garden-tools { grid-template-columns: 1fr; }
   .user span { display: none; }
   .chat-conversation-head { flex-wrap: wrap; gap: .5rem; padding-inline: 1rem; }
-  .chat-menu { margin-inline-start: 0; }
   .app-chat .nav { display: flex; flex-wrap: wrap; justify-content: space-between; }
   .app-chat .header-inner { gap: .25rem; padding-block: .25rem; }
   .chat-page-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem; padding: .5rem; }

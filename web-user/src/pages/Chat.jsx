@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Markdown from "../components/Markdown";
 import PlantPhoto from "../components/PlantPhoto";
-import { deleteChat, getCapabilities, getChatHistory, listIdentifiedPlants, sendChat } from "../api";
+import { deleteChat, getCapabilities, getChatHistory, listChatPlants, listIdentifiedPlants, sendChat } from "../api";
+import Link from "../components/Link";
 import Cover from "../components/Cover";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { preparePhoto } from "../image";
@@ -12,7 +13,7 @@ export default function Chat({ initialPlant = "" }) {
   const [selectedId, setSelectedId] = useState(initialPlant);
   const [photo, setPhoto] = useState(null);
   const [vision, setVision] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
@@ -27,16 +28,18 @@ export default function Chat({ initialPlant = "" }) {
   const activePlantId = useRef(selectedId);
   activePlantId.current = selectedId;
   const selectedPlant = plants.find((plant) => plant.id === selectedId);
+  const conversations = plants.filter((plant) => plant.hasChat);
 
   useEffect(() => {
     let active = true;
-    listIdentifiedPlants()
-      .then((data) => {
+    Promise.all([listIdentifiedPlants(), listChatPlants()])
+      .then(([data, chats]) => {
         if (!active) return;
-        const items = data.plants || [];
+        const ids = new Set(chats.plant_ids);
+        const items = data.plants.map((plant) => ({ ...plant, hasChat: ids.has(plant.id) }));
         setPlants(items);
         setSelectedId((current) =>
-          items.some((plant) => plant.id === current) ? current : items[0]?.id || "",
+          items.some((plant) => plant.id === current) ? current : items.find((plant) => plant.hasChat)?.id || "",
         );
       })
       .catch((problem) => active && setError(problem.message))
@@ -108,6 +111,9 @@ export default function Chat({ initialPlant = "" }) {
     try {
       const image = photo && vision?.available ? await preparePhoto(photo) : null;
       const data = await sendChat(text, plantId, image);
+      if (!selectedPlant.hasChat) {
+        setPlants((items) => items.map((plant) => plant.id === plantId ? { ...plant, hasChat: true } : plant));
+      }
       if (activePlantId.current === plantId) {
         setPhoto(null);
         setMessages((previous) => [
@@ -128,16 +134,24 @@ export default function Chat({ initialPlant = "" }) {
   }
 
   async function removeConversation() {
+    const id = deleteTarget.id;
     setDeleting(true);
     setError("");
     try {
-      await deleteChat(selectedId);
-      setMessages([]);
-      setConfirmDelete(false);
+      await deleteChat(id);
+      setPlants((items) => items.map((plant) => plant.id === id ? { ...plant, hasChat: false } : plant));
+      if (activePlantId.current === id) {
+        const next = conversations.find((plant) => plant.id !== id);
+        setMessages([]);
+        setDraft("");
+        setPhoto(null);
+        setSelectedId(next?.id || "");
+        navigate(next ? "/chat?plant=" + encodeURIComponent(next.id) : "/chat", true);
+      }
     } catch (problem) {
-      setConfirmDelete(false);
       setError(problem.message);
     } finally {
+      setDeleteTarget(null);
       setDeleting(false);
     }
   }
@@ -147,26 +161,26 @@ export default function Chat({ initialPlant = "" }) {
       <aside className="chat-plant-list">
         <div className="chat-page-heading">
           <div>
-            <h2>Tus plantas</h2>
-            <p>Elige una para continuar su conversación.</p>
+            <h2>Conversaciones</h2>
           </div>
         </div>
         {loadingPlants ? (
-          <p className="muted">Cargando tus identificaciones…</p>
-        ) : plants.length === 0 ? (
-          <p className="chat-empty-list">Todavía no tienes plantas identificadas.</p>
+          <p className="muted">Cargando conversaciones…</p>
+        ) : conversations.length === 0 ? (
+          <p className="chat-empty-list">Aún no tienes conversaciones.</p>
         ) : (
           <>
             <label className="chat-plant-picker">
-              Tus plantas
+              Conversaciones
               <select value={selectedId} disabled={busy || deleting} onChange={(event) => selectPlant(event.target.value)}>
-                {plants.map((plant) => <option key={plant.id} value={plant.id}>
+                {selectedPlant && !selectedPlant.hasChat && <option value={selectedId}>Nueva conversación</option>}
+                {conversations.map((plant) => <option key={plant.id} value={plant.id}>
                   {plant.common_name || plant.scientific_name} · {new Date(plant.created_at).toLocaleDateString("es-PE")}
                 </option>)}
               </select>
             </label>
             <div className="chat-plant-options">
-              {plants.map((plant) => (
+              {conversations.map((plant) => (
                 <button
                   key={plant.id}
                   className={`chat-plant-option ${selectedId === plant.id ? "active" : ""}`}
@@ -184,6 +198,7 @@ export default function Chat({ initialPlant = "" }) {
             </div>
           </>
         )}
+        <Link to="/garden">Iniciar un chat desde mi jardín</Link>
       </aside>
 
       <div className="chat-conversation">
@@ -198,8 +213,16 @@ export default function Chat({ initialPlant = "" }) {
                 : "Tus conversaciones se guardan en tu cuenta"}
             </span>
           </div>
-          {selectedPlant && <details className="chat-menu"><summary>Opciones del chat</summary>
-            <button className="btn ghost" disabled={busy || loadingHistory || deleting} onClick={() => setConfirmDelete(true)}>
+          {selectedPlant?.hasChat && <details className="chat-menu" key={selectedId}>
+            <summary aria-label="Opciones del chat" title="Opciones del chat">
+              <span aria-hidden="true">•••</span>
+            </summary>
+            <button className="btn ghost" disabled={busy || loadingHistory || deleting} onClick={(event) => {
+              const menu = event.currentTarget.closest("details");
+              menu.open = false;
+              menu.querySelector("summary").focus();
+              setDeleteTarget(selectedPlant);
+            }}>
               Eliminar conversación
             </button>
           </details>}
@@ -213,7 +236,7 @@ export default function Chat({ initialPlant = "" }) {
             <div className="chat-welcome">
               <PlantPhoto className="chat-welcome-photo" alt="Ilustración botánica" />
               <h3>Tu asistente botánico</h3>
-              <p>Identifica una planta para iniciar una conversación que podrás retomar cuando quieras.</p>
+              <p>Elige una planta en tu jardín y abre su ficha para iniciar una conversación.</p>
             </div>
           )}
           {selectedPlant && loadingHistory && <p className="muted">Recuperando conversación…</p>}
@@ -264,8 +287,9 @@ export default function Chat({ initialPlant = "" }) {
           </button>
         </form>
       </div>
-      {confirmDelete && <ConfirmDialog title="Eliminar conversación" text="Se eliminarán los mensajes y las fotos de progreso de esta planta."
-        confirmLabel="Eliminar" busy={deleting} onConfirm={removeConversation} onClose={() => setConfirmDelete(false)} />}
+      {deleteTarget && <ConfirmDialog title="Eliminar conversación"
+        text={`Se eliminarán los mensajes y las fotos de progreso de ${deleteTarget.common_name || deleteTarget.scientific_name}. Su ficha seguirá en tu jardín.`}
+        confirmLabel="Eliminar" busy={deleting} onConfirm={removeConversation} onClose={() => setDeleteTarget(null)} />}
     </section>
   );
 }

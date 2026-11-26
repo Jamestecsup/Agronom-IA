@@ -187,6 +187,14 @@ public class UserChatController {
                 .orElseThrow(() -> error(HttpStatus.NOT_FOUND, "No se encontró esa imagen en tu cuenta."));
     }
 
+    @GetMapping("/chats")
+    public Map<String, Object> conversations(@RequestHeader(name = "Authorization", required = false) String token) {
+        long user = accounts.requireUser(token);
+        var sessions = jdbc.queryForList("SELECT DISTINCT session_id FROM mensajes_chat WHERE user_id=?", String.class, user);
+        return Map.of("plant_ids", sessions.stream().filter(id -> id.startsWith("plant_"))
+                .map(id -> id.substring("plant_".length())).toList());
+    }
+
     @DeleteMapping("/chat")
     public ResponseEntity<Void> deleteChat(@RequestHeader(name = "Authorization", required = false) String token,
                                            @RequestParam("plant_id") String plantId) {

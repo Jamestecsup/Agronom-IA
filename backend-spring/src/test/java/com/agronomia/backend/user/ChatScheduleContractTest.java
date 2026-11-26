@@ -99,6 +99,16 @@ class ChatScheduleContractTest {
     }
 
     @Test
+    void listsPlantChatsFromTheCurrentUsersRemainingMessages() {
+        var chat = chat(mock(AiClient.class));
+        var plant = plantFixture();
+        when(jdbc.queryForList("SELECT DISTINCT session_id FROM mensajes_chat WHERE user_id=?", String.class, USER))
+                .thenReturn(List.of("default", plant.sessionId()), List.of());
+        assertThat(chat.conversations(BEARER)).containsEntry("plant_ids", List.of(plant.publicId()));
+        assertThat(chat.conversations(BEARER)).containsEntry("plant_ids", List.of());
+    }
+
+    @Test
     void deletesOnlyOwnedChatAndItsFilesAndCanRepeat() throws Exception {
         var chat = chat(mock(AiClient.class));
         var plant = plantFixture();
