@@ -100,6 +100,8 @@ export default function Chat({ initialPlant = "" }) {
     submitting.current = true;
     followLatest.current = true;
     const plantId = selectedPlant.id;
+    const outgoing = { id: `local-${Date.now()}`, role: "user", content: text || "Foto de progreso" };
+    setMessages((previous) => [...previous, outgoing]);
     setDraft("");
     setError("");
     setBusy(true);
@@ -110,12 +112,15 @@ export default function Chat({ initialPlant = "" }) {
         setPhoto(null);
         setMessages((previous) => [
           ...previous,
-          { id: `local-${Date.now()}`, role: "user", content: text || "Foto de progreso" },
           { id: `reply-${Date.now()}`, role: "assistant", content: data.reply },
         ]);
       }
     } catch (problem) {
-      if (activePlantId.current === plantId) { setError(problem.message); setDraft(text); }
+      if (activePlantId.current === plantId) {
+        setMessages((previous) => previous.filter((message) => message !== outgoing));
+        setDraft(draft);
+        setError(problem.message);
+      }
     } finally {
       submitting.current = false;
       if (activePlantId.current === plantId) setBusy(false);
@@ -227,7 +232,7 @@ export default function Chat({ initialPlant = "" }) {
               {message.role === "assistant" ? <Markdown text={message.content} /> : message.content}
             </div>
           ))}
-          {busy && <div className="chat-message assistant muted">Escribiendo…</div>}
+          {busy && <div className="chat-message assistant muted" role="status">Escribiendo…</div>}
           {error && <div className="alert error" role="alert">{error}</div>}
         </div>
 
