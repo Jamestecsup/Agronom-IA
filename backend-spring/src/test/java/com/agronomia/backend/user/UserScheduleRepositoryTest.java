@@ -24,9 +24,9 @@ class UserScheduleRepositoryTest {
 
     @BeforeEach
     void createScheduleTablesInTestDatabase() {
-        jdbc.execute("CREATE TABLE IF NOT EXISTS pending_schedule_imports (id CHAR(32) PRIMARY KEY, user_id BIGINT NOT NULL, source_pdf VARCHAR(255) NOT NULL, parsed_classes CLOB NOT NULL, created_at TIMESTAMP NOT NULL)");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS weekly_schedules (user_id BIGINT PRIMARY KEY, classes CLOB NOT NULL, updated_at TIMESTAMP NOT NULL)");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS care_plan_tasks (id CHAR(32) PRIMARY KEY, user_id BIGINT NOT NULL, plant_id CHAR(36) NOT NULL, title VARCHAR(180) NOT NULL, instructions CLOB NOT NULL, day_of_week INT NOT NULL, start_time TIME NOT NULL, duration_minutes INT NOT NULL, created_at TIMESTAMP NOT NULL)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS pending_schedule_imports (id CHAR(32) PRIMARY KEY, user_id BIGINT NOT NULL, source_pdf VARCHAR(255) NOT NULL, parsed_classes LONGTEXT NOT NULL, created_at TIMESTAMP NOT NULL)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS weekly_schedules (user_id BIGINT PRIMARY KEY, classes LONGTEXT NOT NULL, updated_at TIMESTAMP NOT NULL)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS care_plan_tasks (id CHAR(32) PRIMARY KEY, user_id BIGINT NOT NULL, plant_id CHAR(36) NOT NULL, title VARCHAR(180) NOT NULL, instructions LONGTEXT NOT NULL, day_of_week INT NOT NULL, start_time TIME NOT NULL, duration_minutes INT NOT NULL, created_at TIMESTAMP NOT NULL)");
     }
 
     @Test
@@ -62,7 +62,11 @@ class UserScheduleRepositoryTest {
         assertThat(repository.findCareTaskDuration("task-1", isolatedUserId)).isEqualTo(20);
         assertThat(repository.findCareTaskDuration("task-1", 8)).isNull();
         repository.updateCareTaskTime(isolatedUserId, "task-1", 2, LocalTime.of(9, 0));
-        assertThat(repository.findOtherCareTasks(isolatedUserId, 2, "task-2")).containsExactly(Map.of("start_time", "09:00:00", "duration_minutes", 20));
+        List<Map<String, Object>> otherTasks = repository.findOtherCareTasks(isolatedUserId, 2, "task-2");
+        assertThat(otherTasks).singleElement().satisfies(task -> {
+            assertThat(String.valueOf(task.get("start_time"))).startsWith("09:00:00");
+            assertThat(task).containsEntry("duration_minutes", 20);
+        });
         repository.deleteCareTask(isolatedUserId, "task-1");
         assertThat(repository.findCareTasks(isolatedUserId)).isEmpty();
     }

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,8 +58,10 @@ class UserChatRepositoryTest {
         String id = repository.insertMessage(9, "plant-plant-9", "assistant", "Respuesta guardada");
 
         assertThat(id).hasSize(32);
-        assertThat(jdbc.queryForMap("SELECT user_id,session_id,role,content FROM chat_messages WHERE id=?", id))
-                .containsEntry("USER_ID", 9L)
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT user_id,session_id,role,content FROM chat_messages WHERE id=?", id);
+        assertThat(((Number) row.get("USER_ID")).longValue()).isEqualTo(9L);
+        assertThat(row)
                 .containsEntry("SESSION_ID", "plant-plant-9")
                 .containsEntry("ROLE", "assistant")
                 .containsEntry("CONTENT", "Respuesta guardada");
@@ -89,10 +92,11 @@ class UserChatRepositoryTest {
 
         repository.insertProgressImage(7, plantId, messageId, "progress/new.jpg", "image/jpeg", 42, "nota");
 
-        assertThat(jdbc.queryForMap(
+        Map<String, Object> row = jdbc.queryForMap(
                 "SELECT user_id,plant_id,message_id,relative_path,mime_type,file_size,caption " +
-                        "FROM chat_progress_images WHERE relative_path=?", "progress/new.jpg"))
-                .containsEntry("USER_ID", 7L)
+                        "FROM chat_progress_images WHERE relative_path=?", "progress/new.jpg");
+        assertThat(((Number) row.get("USER_ID")).longValue()).isEqualTo(7L);
+        assertThat(row)
                 .containsEntry("PLANT_ID", "12345678123412341234123456789abc")
                 .containsEntry("MESSAGE_ID", "abcdefabcdefabcdefabcdefabcdefab")
                 .containsEntry("MIME_TYPE", "image/jpeg")
