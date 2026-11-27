@@ -16,16 +16,18 @@ Copia `application-example.env` a `.env`, configura las variables y lanza ambos 
 | `AI_KEYS_MASTER_KEY` | Clave maestra AES-256 en Base64 (32 bytes aleatorios) para guardar perfiles propios. Mantén una copia protegida. |
 | `AI_KEYS_KID`, `AI_KEYS_PREVIOUS` | Identificador activo (por defecto `v1`) y mapa JSON de claves históricas por identificador para rotación. Una alta o actualización de credencial cifra con el identificador activo. Conserva los identificadores históricos hasta reemplazar las credenciales. |
 | `AI_ALLOW_PRIVATE_HOSTS` | Opt-in local de desarrollo, apagado por defecto. HTTP solo se admite para hosts locales permitidos. |
-| `AI_SYSTEM_DAILY_QUOTA` | Máximo de intentos de proveedor del sistema por usuario al día en UTC. Por defecto, 100. |
+| `AI_SYSTEM_DAILY_QUOTA` | Máximo de intentos de proveedor del sistema por usuario al día en UTC. Por defecto, 25. Una ficha suele usar unas 5 llamadas. Ajusta la cuota al límite real del proveedor del sistema, teniendo en cuenta el uso conjunto de todas las cuentas y los reintentos. |
 | `UPLOAD_DIR` | Directorio de imágenes, fotos de progreso y PDFs pendientes. Mantén el volumen privado. |
 
 La cuenta de ejecución solo tiene permisos de datos. Flyway registra la línea base 1 después de que Django cree el esquema. V2 crea proveedores y preferencias y V3 crea el contador diario. Flyway usa `agronomia_admin`. Spring comprueba estas tablas después de migrar.
+
+Spring mantiene Flyway 11.7.2 (núcleo y módulo MySQL). El aviso de MySQL 8.4 indica que el motor es más reciente que la versión verificada por ese componente. V2 y V3 se aplicaron correctamente en MySQL 8.4 y Spring verificó las tablas al arrancar. Esa comprobación cubre las migraciones actuales. Prueba cada nueva migración en MySQL 8.4 antes de desplegarla.
 
 ## Rutas y seguridad
 
 La API conserva registro y login, `images.php`, `identify`, `confirm`, `plants` y portadas, `chat` e historial con fotos, `schedule` e importaciones y cuidados. Las rutas privadas requieren Bearer. La carga exige JPEG/PNG y usuario activo. Los intentos de login se limitan por cuenta e IP en cada proceso. Para un despliegue de varias instancias, aplica un límite compartido en el perímetro. `GET /agronomia-api/api/health` verifica la base sin usar cuota.
 
-Ejecuta `.\mvnw.cmd test` para las pruebas locales de imágenes y proveedores HTTP simulados.
+Ejecuta `.\mvnw.cmd -o test` con la caché de Maven disponible para las pruebas locales de imágenes, filtros, aislamiento de cuentas y proveedores simulados. La prueba en vivo queda desactivada por defecto.
 
 ## Contrato aditivo de IA y privacidad
 
@@ -44,4 +46,4 @@ Prefijo `/agronomia-api/api` y autenticación Bearer de usuario. Los perfiles y 
 | GET `/plants/{id}` | Devuelve `summary` y la ficha `plant` de una planta propia. |
 | DELETE `/chat?plant_id=…` y `/chats?confirm=true` | Elimina mensajes y fotos con 204. Los archivos se aíslan durante la transacción y se purgan al confirmar. |
 
-El proveedor propio recibe datos solo tras activación con consentimiento. Las pruebas de conexión envían texto e imagen sintéticos. HTTPS con DNS validado y conexión fijada a las direcciones aprobadas es el modo normal. La cuota diaria del sistema se guarda en MySQL. Los límites de tasa y concurrencia de proveedores propios son por proceso.
+El proveedor propio recibe datos solo tras activación con consentimiento. La prueba de visión envía una imagen roja de 16 × 16 y exige la respuesta de color `rojo` o `red`. HTTPS con DNS validado y conexión fijada a las direcciones aprobadas es el modo normal. La cuota diaria del sistema se guarda en MySQL. Los límites de tasa, pruebas de conexión y concurrencia del proveedor propio son por proceso de Spring. Cada cinco minutos se retiran las entradas de horas anteriores sin solicitudes en curso. Para varias instancias, usa un límite compartido si necesitas un tope global.

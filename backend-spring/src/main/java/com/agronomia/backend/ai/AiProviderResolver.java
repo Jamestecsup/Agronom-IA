@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -16,7 +17,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Primary
 @Component
 public class AiProviderResolver implements AiClient {
-    private static final String PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lF0AAAAASUVORK5CYII=";
+    private static final String RED_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAGElEQVR4nGP4z8BAEiJN9aiGUQ0MQ0kDAJD5/wGaM2eTAAAAAElFTkSuQmCC";
+    private static final java.util.regex.Pattern RED = java.util.regex.Pattern.compile("(?iu)^\\s*(?:rojo|red)[.!]?\\s*$");
     private final OpenAiClient system;
     private final ProviderStore store;
     private final ProviderTransport transport;
@@ -25,7 +27,7 @@ public class AiProviderResolver implements AiClient {
     private final ConcurrentHashMap<Long, Limits> limits = new ConcurrentHashMap<>();
 
     AiProviderResolver(OpenAiClient system, ProviderStore store, ProviderTransport transport, ObjectMapper json,
-                       @Value("${AI_SYSTEM_DAILY_QUOTA:100}") int systemQuota) {
+                       @Value("${AI_SYSTEM_DAILY_QUOTA:25}") int systemQuota) {
         if (systemQuota < 1) throw new IllegalArgumentException("AI_SYSTEM_DAILY_QUOTA debe ser positivo.");
         this.system = system;
         this.store = store;
@@ -49,8 +51,7 @@ public class AiProviderResolver implements AiClient {
 
     ProviderStore.Profile probe(long owner, String id) {
         var profile = store.require(owner, id);
-        var limiter = limits.computeIfAbsent(owner, unused -> new Limits());
-        limiter.begin(profile.concurrency(), true);
+        var limiter = acquire(owner, profile.concurrency(), true);
         try {
             long started = System.nanoTime();
             var deadline = Deadline.after(Duration.ofSeconds(28));
@@ -62,9 +63,10 @@ public class AiProviderResolver implements AiClient {
                     true, deadline.cap(Duration.ofSeconds(6)));
             boolean jsonMode = parseObject(content(structured)).path("ok").asBoolean(false);
             var image = Map.<String, Object>of("role", "user", "content", List.of(
-                    Map.of("type", "text", "text", "Responde OK si recibiste la imagen."),
-                    Map.of("type", "image_url", "image_url", Map.of("url", PIXEL))));
-            boolean vision = !content(perform(profile, List.of(image), false, deadline.cap(Duration.ofSeconds(7)))).isBlank();
+                    Map.of("type", "text", "text", "¿Cuál es el color sólido de la imagen? Responde solo con el nombre del color."),
+                    Map.of("type", "image_url", "image_url", Map.of("url", RED_IMAGE))));
+            var visual = perform(profile, List.of(image), false, deadline.cap(Duration.ofSeconds(7)));
+            boolean vision = visual.status() == 200 && RED.matcher(content(visual)).matches();
             int context = profile.context();
             if (deadline.remainingNanos() > 2_000_000_000L) {
                 var models = transport.call(profile, "/models", null, deadline.cap(Duration.ofSeconds(4)));
@@ -160,8 +162,7 @@ public class AiProviderResolver implements AiClient {
             int estimate = estimate(messages);
             if (estimate > inputBudget()) throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "El contenido no cabe en el contexto del modelo activo.");
-            var limiter = limits.computeIfAbsent(profile.owner(), unused -> new Limits());
-            limiter.begin(profile.concurrency(), false);
+            var limiter = acquire(profile.owner(), profile.concurrency(), false);
             try {
                 var response = perform(active, messages, structured && active.jsonMode(), deadline.cap(Duration.ofSeconds(75)));
                 int actual = response.body().path("usage").path("prompt_tokens").asInt(0);
@@ -174,6 +175,21 @@ public class AiProviderResolver implements AiClient {
                 limiter.end();
             }
         }
+    }
+
+    private Limits acquire(long owner, int maximum, boolean probe) {
+        return limits.compute(owner, (id, current) -> {
+            var limiter = current == null ? new Limits() : current;
+            limiter.begin(maximum, probe);
+            return limiter;
+        });
+    }
+
+    @Scheduled(fixedDelay = 300_000)
+    void removeExpiredLimits() {
+        long hour = System.currentTimeMillis() / 3_600_000;
+        limits.forEach((owner, ignored) -> limits.computeIfPresent(owner,
+                (id, limiter) -> limiter.expiredBefore(hour) ? null : limiter));
     }
 
     private static final class Limits {
@@ -190,5 +206,6 @@ public class AiProviderResolver implements AiClient {
             concurrent++;
         }
         synchronized void end() { concurrent--; }
+        synchronized boolean expiredBefore(long currentHour) { return concurrent == 0 && hour < currentHour; }
     }
 }

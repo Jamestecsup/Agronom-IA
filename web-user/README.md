@@ -77,4 +77,14 @@ pantalla de acceso (crea cuentas con rol `user`).
 
 El router usa History API con importaciones dinámicas para evitar una dependencia de navegación. La caché en memoria deduplica las lecturas durante 30 s y se invalida al mutar o salir. El servidor de producción debe servir `index.html` para rutas de interfaz y conservar la API como proxy separado. Para CSP, el script inicial de apariencia se sirve desde el mismo origen y funciona con `script-src 'self'`.
 
-`npm.cmd test` verifica preferencias, caducidad, jardín, solicitudes de proveedor, borrado y escape de Markdown con los recursos locales.
+`npm.cmd test` verifica el cliente de API, la apariencia, el escape de Markdown y el contraste AA de los pares de color de los tres acentos en claro y oscuro. Ejecuta `npm.cmd run build` para compilar.
+
+`npm.cmd run test:ui` usa Vitest, Testing Library y jest-axe para probar las pantallas y sus interacciones. `npm.cmd run lint` usa ESLint. Con acceso al registro npm, instala las dependencias y versiona el lockfile actualizado:
+
+```powershell
+npm.cmd install -D vitest@^3 jsdom@^26 @testing-library/react@^16 @testing-library/dom@^10 jest-axe@^10 eslint@^9 @eslint/js@^9 globals eslint-plugin-react eslint-plugin-react-hooks
+npm.cmd run test:ui
+npm.cmd run lint
+```
+
+«Lectura clara» usa Atkinson Hyperlegible si está instalada y, en su defecto, la tipografía del sistema con espaciado aumentado. Queda pendiente versionar el WOFF2 latino y su licencia OFL con `font-display: swap`. La familia se aplica solo al activar esa preferencia.

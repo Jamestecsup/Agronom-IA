@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,7 +21,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ImageDtos.ErrorResponse> handleApi(ApiException exception) {
-        return ResponseEntity.status(exception.status()).body(new ImageDtos.ErrorResponse(false, exception.getMessage()));
+        return ResponseEntity.status(exception.status()).cacheControl(CacheControl.noStore())
+                .body(new ImageDtos.ErrorResponse(false, exception.getMessage()));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

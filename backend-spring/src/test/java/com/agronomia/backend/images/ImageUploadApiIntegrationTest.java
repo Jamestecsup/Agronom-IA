@@ -141,6 +141,10 @@ class ImageUploadApiIntegrationTest {
     void rejectsMalformedMultipartBeforeParsingWhenThereIsNoBearer() throws Exception {
         mockMvc.perform(post(ENDPOINT).contentType("multipart/form-data").content("sin boundary"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(post(ENDPOINT).header("Authorization", "Bearer invalid-fixture")
+                        .contentType("multipart/form-data").content("sin boundary"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
         assertThat(countStoredFiles()).isZero();
     }
 
