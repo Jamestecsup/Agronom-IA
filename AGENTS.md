@@ -1,0 +1,12 @@
+# Agronom-IA: instrucciones para agentes
+- Backends: Spring (usuario, 8081) y Django (administración, 8000). Webs: web-user (5174) y web-admin (5173). MySQL 8.4.
+- Al empezar: `git status --short` y `git log -3 --oneline`. Lee solo la sección "Estado actual" de backend-spring/PROGRESO.md. El historial está en backend-spring/HISTORIAL.md: no lo leas salvo que haga falta.
+- Nunca toques `main` ni hagas push. Trabaja en la rama indicada en el prompt y termina cada hilo con un commit.
+- Secretos: nunca los imprimas ni los commitees. `.env` y `local.properties` están ignorados. Si trabajas en un worktree nuevo, avísame para copiarlos, sin mostrar valores.
+- Sin llamadas externas (IA, Pl@ntNet) salvo autorización explícita: usa dobles de prueba.
+- No leas: node_modules, dist, target, .venv, build, Obsidian/.obsidian, archivos .lock ni binarios.
+- No imprimas archivos completos: busca con rg y lee solo los rangos necesarios.
+- Comandos silenciosos (mvnw -q, npm test --silent, git status --short). Durante una fase corre solo las pruebas afectadas y la suite completa al final.
+- No repitas verificaciones que ya pasaron. Si algo falla dos veces por la misma causa, detente e infórmame.
+- Decisiones ambiguas: elige la opción más segura, documéntala en "Estado actual" y continúa. Detente solo si es irreversible o afecta datos.
+- Al terminar: actualiza "Estado actual" (máx. 25 líneas), haz commit y da un informe de máx. 10 líneas.
